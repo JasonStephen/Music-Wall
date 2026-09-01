@@ -42,7 +42,7 @@ export interface WallItem {
   source: AlbumSource;
   /** 锁定：禁止元数据编辑（搜索导入默认 true） */
   locked: boolean;
-  /** 单卡样式覆盖；缺省跟随全局 */
+  /** @deprecated 单卡样式已废弃：渲染一律跟随墙级全局样式，此字段仅为旧文件保留 */
   style?: DiscStyle;
   /** 用户曾手动编辑过元数据（解锁编辑后 true） */
   metaEdited?: boolean;
@@ -111,3 +111,5 @@ export const WALL_FILE_VERSION = 1;
 export const WALL_EXT = "mw";
 /** ItemView 类型标识 */
 export const WALL_VIEW_TYPE = "music-wall-view";
+/** 唱片卡片跨墙拖拽的 DataTransfer MIME */
+export const WALL_DRAG_MIME = "application/x-music-wall-item";

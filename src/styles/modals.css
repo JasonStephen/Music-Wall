@@ -16,12 +16,6 @@
   flex: 0 0 42%;
   min-width: 220px;
 }
-.mw-panel__switcher {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
 .mw-panel__preview {
   width: 100%;
   max-width: 300px;

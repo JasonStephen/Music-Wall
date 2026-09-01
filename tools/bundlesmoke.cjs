@@ -58,6 +58,7 @@ Object.defineProperty(global, "navigator", {
 class FakeComponent {
   registerEvent() {}
   register() {}
+  registerDomEvent() {}
 }
 class FakeModal extends FakeComponent {
   constructor(app) { super(); this.app = app; this.contentEl = el(); }
@@ -211,22 +212,24 @@ const origLoad = Module._load;
   const leaf = { app: fakeApp, setEphemeralState: () => {} };
   const view = FakePlugin.views["music-wall-view"](leaf);
   await view.onOpen();
-  // 渲染冒烟：带数据（含四种样式卡片构建）
+  // 渲染冒烟：带数据 + 四种墙级全局样式轮换（样式统一，不再按卡覆盖）
   view.data = {
     version: 1,
     name: "t",
     style: "vinyl",
-    items: ["vinyl", "cd", "cassette", "cover"].map((s, i) => ({
+    items: [0, 1, 2, 3].map((i) => ({
       albumId: i,
       source: "search",
       locked: true,
-      style: s,
       meta: { albumId: i, name: "A", artist: "B", cover: "", trackCount: 2, year: "2020", tags: ["x"], tracks: [{ id: 1, name: "t", duration: 1000 }] },
       addedAt: new Date().toISOString(),
     })),
   };
-  await view.render();
-  console.log("视图渲染（空态 + 四样式数据）未抛错");
+  for (const s of ["vinyl", "cd", "cassette", "cover"]) {
+    view.data.style = s;
+    await view.render();
+  }
+  console.log("视图渲染（空态 + 四样式全局轮换）未抛错");
 
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);

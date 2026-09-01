@@ -86,6 +86,13 @@ export function serializeWall(data: MusicWallData): string {
   return JSON.stringify(data, null, 2);
 }
 
+/** 按 albumId 去重插入单条目（样式跟随目标墙全局设置）。返回是否实际插入 */
+export function insertItem(target: MusicWallData, item: WallItem): boolean {
+  if (target.items.some((i) => i.albumId === item.albumId)) return false;
+  target.items.push({ ...item, style: undefined });
+  return true;
+}
+
 /** 合并另一个墙的数据，返回 {merged, addedCount, skippedCount}（按 albumId 去重） */
 export function mergeWalls(
   target: MusicWallData,

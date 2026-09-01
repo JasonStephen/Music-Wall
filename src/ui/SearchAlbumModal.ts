@@ -2,16 +2,15 @@
 // 通过 WallHost 接口与当前墙解耦，视图实现该接口。
 
 import { App, Modal, Notice } from "obsidian";
-import type { AlbumMeta, AlbumSummary, DiscStyle } from "../types";
+import type { AlbumMeta, AlbumSummary } from "../types";
 import { parseAlbumInput, sizedCover } from "../core/metadata";
 
 export interface WallHost {
   searchAlbums(keyword: string, offset: number): Promise<AlbumSummary[]>;
   fetchAlbumDetail(albumId: number): Promise<AlbumMeta>;
   getExistingIds(): Set<number>;
-  addAlbum(meta: AlbumMeta, style: DiscStyle, source: "search" | "manual"): void;
-  getStyle(): DiscStyle;
-  confirmAdd(meta: AlbumMeta, style: DiscStyle, onAdd: (s: DiscStyle) => void): void;
+  addAlbum(meta: AlbumMeta, source: "search" | "manual"): void;
+  confirmAdd(meta: AlbumMeta, onAdd: () => void): void;
 }
 
 const PAGE = 20;
@@ -87,9 +86,7 @@ export class SearchAlbumModal extends Modal {
       const meta = await this.host.fetchAlbumDetail(albumId);
       this.setStatus("");
       this.close();
-      this.host.confirmAdd(meta, this.host.getStyle(), (style) =>
-        this.host.addAlbum(meta, style, "search")
-      );
+      this.host.confirmAdd(meta, () => this.host.addAlbum(meta, "search"));
     } catch (e: any) {
       this.setStatus("获取失败：" + (e?.message ?? e));
     }
@@ -159,8 +156,8 @@ export class SearchAlbumModal extends Modal {
     btn.textContent = "拉取中…";
     try {
       const meta = await this.host.fetchAlbumDetail(summary.albumId);
-      this.host.confirmAdd(meta, this.host.getStyle(), (style) => {
-        this.host.addAlbum(meta, style, "search");
+      this.host.confirmAdd(meta, () => {
+        this.host.addAlbum(meta, "search");
         this.markAdded(summary.albumId);
       });
     } catch (e: any) {

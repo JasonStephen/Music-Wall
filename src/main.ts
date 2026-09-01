@@ -11,19 +11,21 @@ import {
 } from "obsidian";
 import {
   DEFAULT_SETTINGS,
+  WALL_DRAG_MIME,
   WALL_EXT,
   WALL_VIEW_TYPE,
   type AlbumMeta,
   type AlbumSummary,
   type MusicWallData,
   type MusicWallSettings,
+  type WallItem,
 } from "./types";
 import type { Requester } from "./core/metadata";
 import {
   fetchAlbumDetail as fetchAlbumDetailApi,
   searchAlbums as searchAlbumsApi,
 } from "./core/metadata";
-import { emptyWall, mergeWalls, parseWall } from "./core/store";
+import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { checkGit, listWallFiles, syncRepo, type GitWallFile } from "./core/git";
 import { listUserPlaylists, verifyCookie } from "./core/playlist";
 import type { PlaybackDeps } from "./core/playback";
@@ -35,6 +37,8 @@ import { MusicWallSettingTab } from "./settings";
 
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
+/** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
+const BUILD_TAG = "20260902-04";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -45,6 +49,7 @@ export default class MusicWallPlugin extends Plugin {
   private requester: Requester;
 
   async onload(): Promise<void> {
+    console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
     await this.loadSettings();
 
     this.requester = async (req) => {
@@ -129,6 +134,9 @@ export default class MusicWallPlugin extends Plugin {
         );
       })
     );
+
+    // 拖拽迁移：唱片卡片可拖到文件列表中的 .mw 上（运行时事件，防御式注册）
+    this.registerFileDrop();
   }
 
   async loadSettings(): Promise<void> {
@@ -148,6 +156,93 @@ export default class MusicWallPlugin extends Plugin {
     return this.app.workspace
       .getLeavesOfType(WALL_VIEW_TYPE)
       .map((l) => l.view as MusicWallView);
+  }
+
+  // ================= 迁移 =================
+
+  /** 库内全部 .mw 文件（排除插件缓存目录与指定路径） */
+  wallFiles(excludePath?: string): TFile[] {
+    return this.app.vault
+      .getFiles()
+      .filter(
+        (f) =>
+          f.extension === WALL_EXT &&
+          !f.path.startsWith(".obsidian/") &&
+          f.path !== excludePath
+      );
+  }
+
+  /** 将条目写入目标墙文件（查重）；重复或读写失败返回 false */
+  async migrateItemInto(item: WallItem, target: TFile): Promise<boolean> {
+    let data: MusicWallData;
+    try {
+      data = parseWall(await this.app.vault.read(target));
+    } catch (e: any) {
+      new Notice("读取目标墙失败：" + (e?.message ?? e));
+      return false;
+    }
+    if (!insertItem(data, item)) {
+      new Notice(`《${item.meta.name}》已在《${target.basename}》中，迁移取消`);
+      return false;
+    }
+    try {
+      await this.app.vault.modify(target, JSON.stringify(data, null, 2));
+    } catch (e: any) {
+      new Notice("写入目标墙失败：" + (e?.message ?? e));
+      return false;
+    }
+    return true;
+  }
+
+  /** 拖拽迁移核心：从源视图移出条目并写入目标墙（file-drop 与墙内 drop 共用） */
+  async receiveWallDrag(
+    srcPath: string,
+    albumId: number,
+    target: TFile
+  ): Promise<void> {
+    const src = this.allWallViews().find((v) => v.getFile()?.path === srcPath);
+    if (!src) {
+      new Notice("拖拽源墙已不在前台标签中，请改用卡片右键「迁移到其他墙…」");
+      return;
+    }
+    const data = src.getData();
+    const item = data?.items.find((i) => i.albumId === albumId);
+    if (!data || !item) return;
+    if (!(await this.migrateItemInto(item, target))) return;
+    await src.takeOutItem(albumId);
+    new Notice(`已迁移《${item.meta.name}》→ ${target.basename}.mw`);
+  }
+
+  /** 资源管理器文件落点（1.4+ 运行时事件，类型声明未收录，做防御式注册） */
+  private registerFileDrop(): void {
+    const ref = (this.app.workspace as any).on(
+      "file-drop",
+      (...args: unknown[]) => void this.onExplorerFileDrop(args)
+    );
+    if (ref) this.registerEvent(ref);
+  }
+
+  private async onExplorerFileDrop(args: unknown[]): Promise<void> {
+    const file = args.find(
+      (a: any) =>
+        a && typeof a.extension === "string" && typeof a.path === "string"
+    ) as TFile | undefined;
+    if (!file || file.extension !== WALL_EXT) return;
+    const dt = args.find(
+      (a: any) => a && typeof a.getData === "function"
+    ) as DataTransfer | undefined;
+    const raw = dt?.getData(WALL_DRAG_MIME);
+    if (!raw) return;
+    const ev = args.find(
+      (a: any) => a && typeof a.preventDefault === "function" && a !== dt
+    ) as DragEvent | undefined;
+    ev?.preventDefault();
+    try {
+      const p = JSON.parse(raw) as { srcPath: string; albumId: number };
+      if (p.srcPath !== file.path) await this.receiveWallDrag(p.srcPath, p.albumId, file);
+    } catch {
+      /* 载荷损坏：忽略 */
+    }
   }
 
   /** 当前活动墙视图；找不到则返回 null（调用方给 Notice） */

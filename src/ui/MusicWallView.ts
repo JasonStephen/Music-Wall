@@ -1,6 +1,6 @@
 ﻿// 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
 // FileView 基类负责 file 绑定/切换/重命名刷标题/导航历史，本类只管加载与渲染；
-// 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + 右键操作 + 外部修改自动刷新。
+// 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + ⋯ 菜单 + 外部修改自动刷新。
 
 import {
   FileView,
@@ -13,6 +13,7 @@ import {
 } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
+  WALL_DRAG_MIME,
   WALL_VIEW_TYPE,
   type AlbumMeta,
   type AlbumSummary,
@@ -21,11 +22,13 @@ import {
   type WallItem,
 } from "../types";
 import { loadWall, saveWall } from "../core/store";
+import { playAlbum } from "../core/playback";
 import { ALL_STYLES, STYLE_LABELS, buildDiscElement } from "./disc";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { EditMetaModal } from "./EditMetaModal";
 import { InputModal } from "./InputModal";
+import { PickerModal } from "./smallModals";
 import { SearchAlbumModal, type WallHost } from "./SearchAlbumModal";
 
 type SortKey = "addedAt" | "name" | "artist" | "year";
@@ -95,6 +98,26 @@ export class MusicWallView extends FileView implements WallHost {
         }
       })
     );
+    // 放置靶点：其他墙拖来的唱片卡片可直接落在本墙上
+    this.registerDomEvent(this.contentEl, "dragover", (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes(WALL_DRAG_MIME)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }
+    });
+    this.registerDomEvent(this.contentEl, "drop", (e: DragEvent) => {
+      const raw = e.dataTransfer?.getData(WALL_DRAG_MIME);
+      if (!raw || !this.file) return;
+      e.preventDefault();
+      try {
+        const p = JSON.parse(raw) as { srcPath: string; albumId: number };
+        if (p.srcPath !== this.file.path) {
+          void this.plugin.receiveWallDrag(p.srcPath, p.albumId, this.file);
+        }
+      } catch {
+        /* 载荷损坏：忽略 */
+      }
+    });
     // 无文件（新建/瞬态）时也要有可读的界面，onLoadFile 接管后续渲染
     await this.render();
   }
@@ -140,6 +163,14 @@ export class MusicWallView extends FileView implements WallHost {
     this.render();
   }
 
+  /** 从本墙移出条目并保存（迁移流程调用） */
+  async takeOutItem(albumId: number): Promise<void> {
+    if (!this.data) return;
+    this.data.items = this.data.items.filter((i) => i.albumId !== albumId);
+    await this.persist();
+    this.render();
+  }
+
   // ---- WallHost 接口（供 SearchAlbumModal 调用） ----
 
   getExistingIds(): Set<number> {
@@ -154,19 +185,19 @@ export class MusicWallView extends FileView implements WallHost {
   async fetchAlbumDetail(albumId: number): Promise<AlbumMeta> {
     return this.plugin.fetchAlbumDetail(albumId);
   }
-  confirmAdd(meta: AlbumMeta, style: DiscStyle, onAdd: (s: DiscStyle) => void): void {
+  confirmAdd(meta: AlbumMeta, onAdd: () => void): void {
     new AlbumPanelModal(this.app, "add", {
       meta,
-      style,
+      style: this.getStyle(),
       source: "search",
       deps: this.plugin.getPlaybackDeps(),
-      onAdd: (s) => {
-        onAdd(s);
+      onAdd: () => {
+        onAdd();
         new Notice(`已添加《${meta.name}》`);
       },
     }).open();
   }
-  addAlbum(meta: AlbumMeta, style: DiscStyle, source: "search" | "manual"): void {
+  addAlbum(meta: AlbumMeta, source: "search" | "manual"): void {
     if (!this.data) return;
     if (this.getExistingIds().has(meta.albumId)) {
       new Notice("该专辑已在当前音乐墙中");
@@ -176,7 +207,6 @@ export class MusicWallView extends FileView implements WallHost {
       albumId: meta.albumId,
       source,
       locked: source === "search",
-      style: style !== this.data.style ? style : undefined,
       meta,
       addedAt: new Date().toISOString(),
     });
@@ -412,7 +442,7 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private buildCard(item: WallItem): HTMLElement {
-    const style = item.style ?? this.data!.style;
+    const style = this.data!.style;
     const card = document.createElement("div");
     card.className = "mw-card";
     card.appendChild(buildDiscElement(item, style, { coverSize: 300 }));
@@ -426,6 +456,38 @@ export class MusicWallView extends FileView implements WallHost {
       this.confirmDelete(item);
     });
     card.appendChild(delBtn);
+
+    // 可见菜单入口：不依赖 contextmenu 事件路径（部分环境右键被拖拽系统吞掉），
+    // 触屏同样可用
+    const menuBtn = document.createElement("button");
+    menuBtn.className = "mw-card__menu";
+    menuBtn.textContent = "⋯";
+    menuBtn.title = "更多操作";
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = menuBtn.getBoundingClientRect();
+      this.openCardMenu({ x: rect.left, y: rect.bottom + 4 } as MouseEvent, item);
+    });
+    card.appendChild(menuBtn);
+
+    // 拖出：自定义 MIME 载荷 = 源墙路径 + 专辑 ID（完整条目由源视图内存提供）。
+    // 常驻 draggable 会让 Windows Chromium 把右键当作右键拖拽吞掉 contextmenu，
+    // 故仅左键按下时临时启用，dragend 复位；⋯ 按钮始终作为保底菜单入口。
+    card.addEventListener("pointerdown", (e) => {
+      card.draggable = (e as PointerEvent).button === 0;
+    });
+    card.addEventListener("dragend", () => {
+      card.draggable = false;
+    });
+    card.addEventListener("dragstart", (e) => {
+      const de = e as DragEvent;
+      if (!de.dataTransfer || !this.file) return;
+      de.dataTransfer.setData(
+        WALL_DRAG_MIME,
+        JSON.stringify({ srcPath: this.file.path, albumId: item.albumId })
+      );
+      de.dataTransfer.effectAllowed = "copyMove";
+    });
 
     const cap = document.createElement("div");
     cap.className = "mw-card__caption";
@@ -457,7 +519,7 @@ export class MusicWallView extends FileView implements WallHost {
   private openPlayModal(item: WallItem): void {
     new AlbumPanelModal(this.app, "play", {
       meta: item.meta,
-      style: item.style ?? this.data!.style,
+      style: this.data!.style,
       locked: item.locked,
       source: item.source,
       deps: this.plugin.getPlaybackDeps(),
@@ -467,33 +529,10 @@ export class MusicWallView extends FileView implements WallHost {
   private openCardMenu(evt: MouseEvent, item: WallItem): void {
     const menu = new Menu();
     menu.addItem((it) =>
-      it.setTitle("▶ 播放").setIcon("play").onClick(() => this.openPlayModal(item))
-    );
-    const styleItem = menu.addItem((it) =>
-      it.setTitle("切换样式").setIcon("disc")
-    );
-    const sub = (styleItem as any).subMenu as Menu;
-    for (const s of ALL_STYLES) {
-      sub.addItem((it) =>
-        it
-          .setTitle(STYLE_LABELS[s] + ((item.style ?? this.data!.style) === s ? " ✓" : ""))
-          .onClick(async () => {
-            item.style = item.style === s && this.data!.style === s ? undefined : s;
-            if (item.style === this.data!.style) item.style = undefined;
-            await this.persist();
-            this.render();
-          })
-      );
-    }
-    menu.addItem((it) =>
       it
-        .setTitle(item.locked ? "解锁（允许编辑元数据）" : "锁定")
-        .setIcon(item.locked ? "lock-open" : "lock")
-        .onClick(async () => {
-          item.locked = !item.locked;
-          await this.persist();
-          this.render();
-        })
+        .setTitle("播放")
+        .setIcon("play")
+        .onClick(() => void playAlbum(item.meta, this.plugin.getPlaybackDeps()))
     );
     if (!item.locked) {
       menu.addItem((it) =>
@@ -508,6 +547,12 @@ export class MusicWallView extends FileView implements WallHost {
         })
       );
     }
+    menu.addItem((it) =>
+      it
+        .setTitle("迁移到其他墙…")
+        .setIcon("arrow-right")
+        .onClick(() => this.migrateCard(item))
+    );
     menu.addItem((it) =>
       it.setTitle("复制专辑链接").setIcon("link").onClick(async () => {
         await navigator.clipboard.writeText(
@@ -539,6 +584,33 @@ export class MusicWallView extends FileView implements WallHost {
         new Notice(`已移除《${item.meta.name}》`);
       },
     }).open();
+  }
+
+  /** 迁移（移动语义）：选取库内另一面墙作为目标 */
+  private migrateCard(item: WallItem): void {
+    const files = this.plugin.wallFiles(this.file?.path);
+    if (!files.length) {
+      new Notice("库中没有其他 .mw 音乐墙，可先新建一面再迁移");
+      return;
+    }
+    new PickerModal(
+      this.app,
+      `将《${item.meta.name}》迁移到…`,
+      files.map((f) => ({
+        label: f.basename,
+        detail:
+          f.parent && f.parent.path !== "/" ? f.parent.path : "库根目录",
+      })),
+      (i) => void this.doMigrate(item, files[i])
+    ).open();
+  }
+
+  private async doMigrate(item: WallItem, target: TFile): Promise<void> {
+    if (!this.data) return;
+    const ok = await this.plugin.migrateItemInto(item, target);
+    if (!ok) return;
+    await this.takeOutItem(item.albumId);
+    new Notice(`已迁移《${item.meta.name}》→ ${target.basename}.mw`);
   }
 
   openSearchModal(): void {

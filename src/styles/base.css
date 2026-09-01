@@ -81,6 +81,10 @@
   height: auto;
   padding: 3px 6px;
   font-size: 0.85em;
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mw-toolbar__dir {
   width: 26px;
@@ -135,10 +139,10 @@
   cursor: pointer;
   outline: none;
 }
-.mw-card__delete {
+.mw-card__delete,
+.mw-card__menu {
   position: absolute;
   top: 2px;
-  right: 2px;
   width: 22px;
   height: 22px;
   display: flex;
@@ -156,15 +160,27 @@
   transition: opacity 0.15s, color 0.15s, border-color 0.15s;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.mw-card:hover .mw-card__delete {
+.mw-card__delete {
+  right: 2px;
+}
+.mw-card__menu {
+  right: 28px;
+}
+.mw-card:hover .mw-card__delete,
+.mw-card:hover .mw-card__menu {
   opacity: 0.92;
 }
 .mw-card__delete:hover {
   color: #e93147;
   border-color: #e93147;
 }
+.mw-card__menu:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
 @media (hover: none) {
-  .mw-card__delete {
+  .mw-card__delete,
+  .mw-card__menu {
     opacity: 0.75;
   }
 }
