@@ -1,0 +1,161 @@
+/* ===== 磁带 Cassette =====
+   外盒壳子（半透塑料盒 + 封面插页 + 书脊），hover 时磁带本体从盒内向右滑出、轮盘转动 */
+
+.mw-disc--cassette {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.mw-case {
+  position: absolute;
+  inset: 0;
+  perspective: 900px;
+}
+
+/* 半透塑料外盒（正面，承载封面插页） */
+.mw-case__front {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(150deg, rgba(220, 226, 232, 0.12), rgba(120, 130, 140, 0.18));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s;
+}
+
+/* 左侧书脊 */
+.mw-case__spine {
+  flex: 0 0 12%;
+  background: repeating-linear-gradient(
+    90deg,
+    #26262e 0 3px,
+    #33333c 3px 6px
+  );
+  box-shadow: inset -2px 0 4px rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+.mw-case__spine::after {
+  content: "◤ ◢";
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: -2px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* 封面插页 */
+.mw-case__cover {
+  position: relative;
+  flex: 1;
+  background: #1c1c22;
+}
+.mw-case__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mw-case__cover.mw-cover-broken {
+  background: linear-gradient(135deg, #3a3a46, #1a1a22);
+}
+/* 塑料反光条 */
+.mw-case__cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.16) 32%,
+    transparent 40%
+  );
+  pointer-events: none;
+}
+
+/* 磁带本体：藏在盒内，只露一点边缘，hover 向右滑出 */
+.mw-tape {
+  position: absolute;
+  top: 50%;
+  left: 12%;
+  width: 88%;
+  height: 30%;
+  transform: translate(0, -50%);
+  z-index: 1;
+  border-radius: 4px;
+  background: linear-gradient(160deg, #2a2a32, #17171c);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  padding: 0 8%;
+  box-sizing: border-box;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mw-tape__win {
+  width: 100%;
+  height: 62%;
+  border-radius: 4px;
+  background: #0d0d10;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6%;
+  box-sizing: border-box;
+  position: relative;
+}
+.mw-tape__hub {
+  width: 32%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(from 0deg, #e6e6ec 0deg 15deg, #a2a2ac 15deg 30deg),
+    #ccc;
+  box-shadow: inset 0 0 0 2px #5a5a63;
+  position: relative;
+}
+.mw-tape__hub::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: #0d0d10;
+  transform: translate(-50%, -50%);
+}
+/* 两齿轮之间的磁带（棕色） */
+.mw-tape__strip {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 50%;
+  height: 30%;
+  transform: translateY(-50%);
+  background: linear-gradient(#5a3c22, #3d2716);
+  border-radius: 2px;
+}
+
+/* hover：盒盖抬起，磁带滑出 */
+.mw-card:hover .mw-case__front,
+.mw-disc--cassette:hover .mw-case__front {
+  transform: translateY(-5%) scale(1.02);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.mw-card:hover .mw-tape,
+.mw-disc--cassette:hover .mw-tape {
+  transform: translate(26%, -50%);
+}
+.mw-card:hover .mw-tape__hub,
+.mw-disc--cassette:hover .mw-tape__hub {
+  animation: mw-spin-cd 1.6s linear infinite;
+}

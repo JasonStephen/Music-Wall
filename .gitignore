@@ -1,0 +1,22 @@
+# 依赖
+node_modules/
+
+# 构建产物（npm run build 可再生）
+main.js
+main.js.map
+styles.css
+dist/
+
+# 自检脚本编译输出
+tools/*.cjs
+
+# 临时/缓存
+.obsidian-git-cache/
+.mw-git-tmp/
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,64 @@
+/* ===== 纯封面 Cover =====
+   无盘片，hover 抬升 + 阴影 + 顶部光泽扫过 */
+
+.mw-disc--cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.mw-disc--cover .mw-cover--standalone {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #222;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s;
+}
+.mw-disc--cover .mw-cover--standalone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 光泽层 */
+.mw-disc--cover .mw-cover--standalone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.22) 45%,
+    rgba(255, 255, 255, 0.05) 55%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.7s ease;
+  pointer-events: none;
+}
+
+.mw-card:hover .mw-disc--cover .mw-cover--standalone,
+.mw-disc--cover:hover .mw-cover--standalone {
+  transform: translateY(-8px) scale(1.03);
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.55);
+}
+.mw-card:hover .mw-disc--cover .mw-cover--standalone::after,
+.mw-disc--cover:hover .mw-cover--standalone::after {
+  transform: translateX(120%);
+}
+
+/* 无障碍：减少动效偏好（仅抑制位移/抬升，保留盘片旋转这一核心特征） */
+@media (prefers-reduced-motion: reduce) {
+  .mw-card:hover .mw-disc--vinyl .mw-record,
+  .mw-card:hover .mw-disc--cover .mw-cover--standalone,
+  .mw-card:hover .mw-case__front,
+  .mw-card:hover .mw-tape {
+    transform: none;
+    transition: none;
+  }
+  .mw-disc--cover .mw-cover--standalone::after {
+    transition: none;
+  }
+}
