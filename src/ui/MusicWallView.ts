@@ -1,8 +1,9 @@
-﻿// 音乐墙 ItemView：点开 .mw 文件即渲染唱片墙。
+﻿// 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
+// FileView 基类负责 file 绑定/切换/重命名刷标题/导航历史，本类只管加载与渲染；
 // 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + 右键操作 + 外部修改自动刷新。
 
 import {
-  ItemView,
+  FileView,
   Menu,
   Notice,
   Platform,
@@ -19,7 +20,7 @@ import {
   type MusicWallData,
   type WallItem,
 } from "../types";
-import { emptyWall, loadWall, saveWall } from "../core/store";
+import { loadWall, saveWall } from "../core/store";
 import { ALL_STYLES, STYLE_LABELS, buildDiscElement } from "./disc";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { ConfirmModal } from "./ConfirmModal";
@@ -35,10 +36,10 @@ const SORT_LABELS: Record<SortKey, string> = {
   year: "发行年份",
 };
 
-export class MusicWallView extends ItemView implements WallHost {
+export class MusicWallView extends FileView implements WallHost {
   private plugin: MusicWallPlugin;
-  private file: TFile | null = null;
   private data: MusicWallData | null = null;
+  allowNoFile = true;
 
   // 纯前端筛选/排序/搜索状态（不写入文件）
   private q = "";
@@ -64,30 +65,28 @@ export class MusicWallView extends ItemView implements WallHost {
     return "music";
   }
 
-  async setState(state: { file?: string }, result: any): Promise<void> {
-    const path = state?.file;
-    if (path) {
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile && f.path !== this.file?.path) {
-        this.file = f;
-        await this.reload();
-      } else if (!this.file) {
-        this.file = f instanceof TFile ? f : null;
-        await this.reload();
-      }
+  /** 框架在绑定新文件后调用：读数据 + 渲染（setState/getState 由 FileView 基类接管） */
+  async onLoadFile(file: TFile): Promise<void> {
+    try {
+      this.data = await loadWall(this.app.vault, file);
+    } catch (e: any) {
+      new Notice("读取音乐墙失败：" + (e?.message ?? e));
+      this.data = null;
     }
-    await super.setState(state, result);
     await this.render();
   }
 
-  getState(): Record<string, unknown> {
-    return { file: this.file?.path };
+  async onUnloadFile(file: TFile): Promise<void> {
+    this.data = null;
+  }
+
+  /** 文件被重命名/移动：super 刷新标签页标题，render 刷新视图内工具栏标题 */
+  async onRename(file: TFile): Promise<void> {
+    await super.onRename(file);
+    await this.render();
   }
 
   async onOpen(): Promise<void> {
-    if (!this.data && !this.file) {
-      this.data = emptyWall("未命名音乐墙", this.plugin.settings.defaultStyle);
-    }
     this.registerEvent(
       this.app.vault.on("modify", (f) => {
         if (this.suppressSelf) return;
@@ -96,6 +95,7 @@ export class MusicWallView extends ItemView implements WallHost {
         }
       })
     );
+    // 无文件（新建/瞬态）时也要有可读的界面，onLoadFile 接管后续渲染
     await this.render();
   }
 
@@ -128,17 +128,7 @@ export class MusicWallView extends ItemView implements WallHost {
     }
   }
 
-  /** 供 main 在打开/切换文件后调用 */
-  async showForFile(file: TFile): Promise<void> {
-    this.file = file;
-    await this.reload();
-    await this.render();
-  }
-
   // ---- 供 main.ts 使用的公开访问器 ----
-  getFilePath(): string | undefined {
-    return this.file?.path;
-  }
   getFile(): TFile | null {
     return this.file;
   }
@@ -568,11 +558,12 @@ export class MusicWallView extends ItemView implements WallHost {
             this.file!,
             normalizePath(`${name}.mw`)
           );
-          this.file = this.app.vault.getAbstractFileByPath(
-            normalizePath(`${name}.mw`)
-          ) as TFile;
-          this.data!.name = name;
-          await this.persist();
+          // this.file 与标签标题由 FileView 基类的 rename 处理自动更新；
+          // 这里只需同步 .mw 内部的 name 字段并重绘工具栏标题
+          if (this.data) {
+            this.data.name = name;
+            await this.persist();
+          }
           this.render();
         } catch (e: any) {
           new Notice("重命名失败：" + (e?.message ?? e));

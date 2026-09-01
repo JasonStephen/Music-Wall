@@ -6,7 +6,7 @@
 
 ## 功能概览
 
-- **文件即视图**：像新建 md 一样新建 `.mw` 文件，点开即渲染音乐墙（自定义 ItemView）。
+- **文件即视图**：像新建 md 一样新建 `.mw` 文件，点开即渲染音乐墙（FileView：切文件/重命名/导航由框架管理）。
 - **四种唱片样式**：纹理清晰、悬停动效（黑胶滑出旋转、CD 衍射自转、磁带双轮转动、封面抬升高光），支持全局默认 + 单卡覆盖。
 - **详情面板**：左样式预览 / 右 metadata，可就地切换样式；搜索添加与播放前确认**共用同一组件**。
 - **搜索导入**：模态框搜索专辑 → 选结果 → 详情确认 → 自动抓取完整元数据。
@@ -65,7 +65,7 @@ src/
     EditMetaModal.ts      解锁后元数据编辑
     InputModal.ts         单行输入（新建/命名/链接）
     smallModals.ts        ChoiceModal / PickerModal
-    MusicWallView.ts      音乐墙 ItemView（工具栏/网格/筛选排序/右键/自动刷新）
+    MusicWallView.ts      音乐墙 FileView（工具栏/网格/筛选排序/右键/自动刷新）
   styles/                 base + vinyl + cd + cassette + cover + modals（构建合并为 styles.css）
 ```
 

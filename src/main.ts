@@ -116,16 +116,8 @@ export default class MusicWallPlugin extends Plugin {
 
     this.addSettingTab(new MusicWallSettingTab(this.app, this));
 
-    // 点开 .mw 文件 → 替换为音乐墙视图
-    this.registerEvent(
-      this.app.workspace.on("file-open", (file) => {
-        if (file && file.extension === WALL_EXT) {
-          this.ensureWallView(file);
-        }
-      })
-    );
-
     // 文件列表右键文件夹/库根目录 → 直接新建「新的音乐墙.mw」并打开
+    // （点开 .mw 文件由 registerExtensions + FileView 原生处理，无需 file-open 转换）
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, target) => {
         if (!(target instanceof TFolder)) return;
@@ -160,26 +152,16 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 当前活动墙视图；找不到则返回 null（调用方给 Notice） */
   activeWallView(): MusicWallView | null {
-    const leaf = this.app.workspace.getMostRecentLeaf();
-    if (leaf && leaf.view instanceof MusicWallView) return leaf.view;
+    const active = this.app.workspace.getActiveViewOfType(MusicWallView);
+    if (active) return active;
     const views = this.allWallViews();
     return views.length ? views[0] : null;
   }
 
-  private ensureWallView(file: TFile): void {
-    const existing = this.app.workspace
-      .getLeavesOfType(WALL_VIEW_TYPE)
-      .find((l) => (l.view as MusicWallView).getFilePath() === file.path);
-    if (existing) {
-      this.app.workspace.revealLeaf(existing);
-      return;
-    }
-    const leaf = this.app.workspace.getLeaf(false);
-    void leaf.setViewState({
-      type: WALL_VIEW_TYPE,
-      active: true,
-      state: { file: file.path },
-    });
+  /** 在合适的新标签页打开 .mw 文件（视图类型由 registerExtensions 解析） */
+  async openWall(file: TFile): Promise<void> {
+    const leaf = this.app.workspace.getLeaf(true);
+    await leaf.openFile(file);
   }
 
   // ================= 网络服务 =================
@@ -289,14 +271,7 @@ export default class MusicWallPlugin extends Plugin {
         const wall = emptyWall(name, this.settings.defaultStyle);
         await this.app.vault.create(path, JSON.stringify(wall, null, 2));
         const f = this.app.vault.getAbstractFileByPath(path);
-        if (f instanceof TFile) {
-          const leaf = this.app.workspace.getLeaf(true);
-          await leaf.setViewState({
-            type: WALL_VIEW_TYPE,
-            active: true,
-            state: { file: f.path },
-          });
-        }
+        if (f instanceof TFile) await this.openWall(f);
       }
     ).open();
   }
@@ -309,14 +284,7 @@ export default class MusicWallPlugin extends Plugin {
     const wall = emptyWall(name, this.settings.defaultStyle);
     await this.app.vault.create(path, JSON.stringify(wall, null, 2));
     const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) {
-      const leaf = this.app.workspace.getLeaf(true);
-      await leaf.setViewState({
-        type: WALL_VIEW_TYPE,
-        active: true,
-        state: { file: f.path },
-      });
-    }
+    if (f instanceof TFile) await this.openWall(f);
   }
 
   async exportCurrentWall(view: MusicWallView): Promise<void> {
@@ -530,11 +498,6 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   private openWallFile(file: TFile): void {
-    const leaf = this.app.workspace.getLeaf(true);
-    void leaf.setViewState({
-      type: WALL_VIEW_TYPE,
-      active: true,
-      state: { file: file.path },
-    });
+    void this.openWall(file);
   }
 }

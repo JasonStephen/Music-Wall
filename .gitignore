@@ -7,8 +7,9 @@ main.js.map
 styles.css
 dist/
 
-# 自检脚本编译输出
-tools/*.cjs
+# 自检脚本编译输出（bundlesmoke.cjs 是手写测试件，需入库）
+tools/netcheck.cjs
+tools/storecheck.cjs
 
 # 临时/缓存
 .obsidian-git-cache/
