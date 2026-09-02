@@ -38,7 +38,7 @@ import { MusicWallSettingTab } from "./settings";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "20260902-04";
+const BUILD_TAG = "20260902-06";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -78,7 +78,7 @@ export default class MusicWallPlugin extends Plugin {
     });
     this.addCommand({
       id: "search-add-album",
-      name: "搜索导入专辑（当前墙·推荐）",
+      name: "添加专辑（当前墙）",
       checkCallback: (checking) => {
         const view = this.activeWallView();
         if (!view) return false;

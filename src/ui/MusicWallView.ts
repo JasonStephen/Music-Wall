@@ -20,9 +20,11 @@ import {
   type DiscStyle,
   type MusicWallData,
   type WallItem,
+  type WallLayout,
 } from "../types";
 import { loadWall, saveWall } from "../core/store";
 import { playAlbum } from "../core/playback";
+import { sizedCover } from "../core/metadata";
 import { ALL_STYLES, STYLE_LABELS, buildDiscElement } from "./disc";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { ConfirmModal } from "./ConfirmModal";
@@ -38,6 +40,13 @@ const SORT_LABELS: Record<SortKey, string> = {
   artist: "艺术家",
   year: "发行年份",
 };
+const LAYOUT_LABELS: Record<WallLayout, string> = { grid: "网格", list: "列表" };
+
+/** "2015" → "2010s"；无效返回 "" */
+function decadeOf(y?: string): string {
+  const n = parseInt(y ?? "", 10);
+  return Number.isFinite(n) ? `${Math.floor(n / 10) * 10}s` : "";
+}
 
 export class MusicWallView extends FileView implements WallHost {
   private plugin: MusicWallPlugin;
@@ -47,7 +56,7 @@ export class MusicWallView extends FileView implements WallHost {
   // 纯前端筛选/排序/搜索状态（不写入文件）
   private q = "";
   private filterArtist = "";
-  private filterYear = "";
+  private filterDecade = "";
   private filterTag = "";
   private sortKey: SortKey = "addedAt";
   private sortAsc = false;
@@ -225,7 +234,8 @@ export class MusicWallView extends FileView implements WallHost {
     }
 
     this.renderToolbar(root);
-    const grid = root.createDiv({ cls: "mw-grid" });
+    const isList = this.data.layout === "list";
+    const grid = root.createDiv({ cls: isList ? "mw-grid mw-grid--list" : "mw-grid" });
     grid.style.setProperty("--mw-min-col", `${this.plugin.settings.minColumnWidth}px`);
     this.renderGrid(grid);
   }
@@ -245,16 +255,30 @@ export class MusicWallView extends FileView implements WallHost {
       text: `${this.data!.items.length} 张`,
     });
 
-    // 全局样式切换
-    const styles = bar.createDiv({ cls: "mw-toolbar__styles" });
-    for (const s of ALL_STYLES) {
-      const chip = styles.createEl("button", {
-        cls: "mw-chip",
-        text: STYLE_LABELS[s],
-      });
-      chip.toggleClass("is-active", this.data!.style === s);
+    // 全局样式切换（仅网格模式有意义，列表模式隐藏）
+    if ((this.data!.layout ?? "grid") === "grid") {
+      const styles = bar.createDiv({ cls: "mw-toolbar__styles" });
+      for (const s of ALL_STYLES) {
+        const chip = styles.createEl("button", {
+          cls: "mw-chip",
+          text: STYLE_LABELS[s],
+        });
+        chip.toggleClass("is-active", this.data!.style === s);
+        chip.addEventListener("click", async () => {
+          this.data!.style = s;
+          await this.persist();
+          this.render();
+        });
+      }
+    }
+
+    // 布局切换：网格 / 多列列表
+    const layouts = bar.createDiv({ cls: "mw-toolbar__styles" });
+    for (const l of ["grid", "list"] as WallLayout[]) {
+      const chip = layouts.createEl("button", { cls: "mw-chip", text: LAYOUT_LABELS[l] });
+      chip.toggleClass("is-active", (this.data!.layout ?? "grid") === l);
       chip.addEventListener("click", async () => {
-        this.data!.style = s;
+        this.data!.layout = l === "grid" ? undefined : l;
         await this.persist();
         this.render();
       });
@@ -305,11 +329,11 @@ export class MusicWallView extends FileView implements WallHost {
       }
     );
     select(
-      "年份",
-      this.filterYear,
-      uniq((i) => i.meta.year),
+      "年代",
+      this.filterDecade,
+      [...new Set(this.data!.items.map((i) => decadeOf(i.meta.year)).filter(Boolean))].sort(),
       (v) => {
-        this.filterYear = v;
+        this.filterDecade = v;
         this.rerenderGrid();
       }
     );
@@ -327,34 +351,30 @@ export class MusicWallView extends FileView implements WallHost {
       );
     }
 
-    const sortWrap = controls.createDiv({ cls: "mw-toolbar__sort" });
-    const sortSel = sortWrap.createEl("select", { cls: "mw-toolbar__select" });
+    // 排序类型与升降序合并为一个下拉：选择当前项 = 翻转方向（选项文字带箭头指示）
+    const sortSel = controls.createEl("select", { cls: "mw-toolbar__select" });
     for (const k of Object.keys(SORT_LABELS) as SortKey[]) {
-      sortSel.createEl("option", { text: `按${SORT_LABELS[k]}`, value: k });
+      const label = `按${SORT_LABELS[k]}`;
+      sortSel.createEl("option", {
+        text: k === this.sortKey ? `${label} ${this.sortAsc ? "↑" : "↓"}` : label,
+        value: k,
+      });
     }
     sortSel.value = this.sortKey;
     sortSel.addEventListener("change", () => {
-      this.sortKey = sortSel.value as SortKey;
-      this.rerenderGrid();
-    });
-    const dirBtn = sortWrap.createEl("button", {
-      cls: "mw-toolbar__dir",
-      text: this.sortAsc ? "↑" : "↓",
-    });
-    dirBtn.setAttr("title", "切换升/降序");
-    dirBtn.addEventListener("click", () => {
-      this.sortAsc = !this.sortAsc;
-      this.rerenderGrid();
+      const k = sortSel.value as SortKey;
+      if (k === this.sortKey) this.sortAsc = !this.sortAsc;
+      else this.sortKey = k;
+      this.render();
     });
 
-    // 添加按钮：搜索（推荐）+ 手动
     const addGroup = controls.createDiv({ cls: "mw-toolbar__add" });
-    const btnSearch = addGroup.createEl("button", {
+    const btnAdd = addGroup.createEl("button", {
       cls: "mw-btn mw-btn--primary",
-      text: "🔍 搜索导入",
+      text: "＋ 添加",
     });
-    btnSearch.setAttr("title", "自动抓取完整元数据");
-    btnSearch.addEventListener("click", () => this.openSearchModal());
+    btnAdd.setAttr("title", "搜索网易云专辑并抓取完整元数据");
+    btnAdd.addEventListener("click", () => this.openSearchModal());
     const btnMore = addGroup.createEl("button", { cls: "mw-btn", text: "⋯" });
     btnMore.addEventListener("click", (e) => this.openMoreMenu(e as MouseEvent));
   }
@@ -377,7 +397,8 @@ export class MusicWallView extends FileView implements WallHost {
     }
     if (this.filterArtist)
       items = items.filter((i) => i.meta.artist === this.filterArtist);
-    if (this.filterYear) items = items.filter((i) => i.meta.year === this.filterYear);
+    if (this.filterDecade)
+      items = items.filter((i) => decadeOf(i.meta.year) === this.filterDecade);
     if (this.filterTag)
       items = items.filter((i) => (i.meta.tags ?? []).includes(this.filterTag));
 
@@ -416,12 +437,12 @@ export class MusicWallView extends FileView implements WallHost {
       });
       if (!this.data!.items.length) {
         empty.createDiv({
-          text: "「搜索导入」会抓取完整专辑元数据，添加后可随时在右键菜单中锁定或解锁。",
+          text: "「添加」会搜索网易云专辑并抓取完整元数据，随时可用顶部栏切换四种唱片样式与网格/列表布局。",
           cls: "mw-empty__sub",
         });
         const actions = empty.createDiv({ cls: "mw-empty__actions" });
         actions
-          .createEl("button", { cls: "mw-btn mw-btn--primary", text: "🔍 搜索导入" })
+          .createEl("button", { cls: "mw-btn mw-btn--primary", text: "＋ 添加" })
           .addEventListener("click", () => this.openSearchModal());
       } else {
         empty
@@ -429,7 +450,7 @@ export class MusicWallView extends FileView implements WallHost {
           .addEventListener("click", () => {
             this.q = "";
             this.filterArtist = "";
-            this.filterYear = "";
+            this.filterDecade = "";
             this.filterTag = "";
             this.render();
           });
@@ -437,7 +458,11 @@ export class MusicWallView extends FileView implements WallHost {
       return;
     }
     for (const item of items) {
-      grid.appendChild(this.buildCard(item));
+      grid.appendChild(
+        this.data!.layout === "list"
+          ? this.buildListRow(item)
+          : this.buildCard(item)
+      );
     }
   }
 
@@ -446,48 +471,9 @@ export class MusicWallView extends FileView implements WallHost {
     const card = document.createElement("div");
     card.className = "mw-card";
     card.appendChild(buildDiscElement(item, style, { coverSize: 300 }));
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "mw-card__delete";
-    delBtn.textContent = "✕";
-    delBtn.title = "移出音乐墙";
-    delBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.confirmDelete(item);
-    });
-    card.appendChild(delBtn);
-
-    // 可见菜单入口：不依赖 contextmenu 事件路径（部分环境右键被拖拽系统吞掉），
-    // 触屏同样可用
-    const menuBtn = document.createElement("button");
-    menuBtn.className = "mw-card__menu";
-    menuBtn.textContent = "⋯";
-    menuBtn.title = "更多操作";
-    menuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const rect = menuBtn.getBoundingClientRect();
-      this.openCardMenu({ x: rect.left, y: rect.bottom + 4 } as MouseEvent, item);
-    });
-    card.appendChild(menuBtn);
-
-    // 拖出：自定义 MIME 载荷 = 源墙路径 + 专辑 ID（完整条目由源视图内存提供）。
-    // 常驻 draggable 会让 Windows Chromium 把右键当作右键拖拽吞掉 contextmenu，
-    // 故仅左键按下时临时启用，dragend 复位；⋯ 按钮始终作为保底菜单入口。
-    card.addEventListener("pointerdown", (e) => {
-      card.draggable = (e as PointerEvent).button === 0;
-    });
-    card.addEventListener("dragend", () => {
-      card.draggable = false;
-    });
-    card.addEventListener("dragstart", (e) => {
-      const de = e as DragEvent;
-      if (!de.dataTransfer || !this.file) return;
-      de.dataTransfer.setData(
-        WALL_DRAG_MIME,
-        JSON.stringify({ srcPath: this.file.path, albumId: item.albumId })
-      );
-      de.dataTransfer.effectAllowed = "copyMove";
-    });
+    card.appendChild(this.makeMenuButton(item));
+    card.appendChild(this.makeDelButton(item));
+    this.wireDraggable(card, item);
 
     const cap = document.createElement("div");
     cap.className = "mw-card__caption";
@@ -514,6 +500,96 @@ export class MusicWallView extends FileView implements WallHost {
       this.openCardMenu(e as MouseEvent, item);
     });
     return card;
+  }
+
+  /** 列表模式行：封面 + 三行文字（专辑名/艺术家/年份）+ 操作钮 */
+  private buildListRow(item: WallItem): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "mw-row";
+
+    const thumb = document.createElement("img");
+    thumb.className = "mw-row__thumb";
+    thumb.loading = "lazy";
+    thumb.alt = item.meta.name;
+    thumb.addEventListener("error", () => (thumb.style.visibility = "hidden"));
+    thumb.src = sizedCover(item.meta.cover, 200);
+
+    const info = document.createElement("div");
+    info.className = "mw-row__info";
+    const name = document.createElement("div");
+    name.className = "mw-card__name";
+    name.textContent = item.meta.name;
+    name.title = item.meta.name;
+    const artist = document.createElement("div");
+    artist.className = "mw-card__sub";
+    artist.textContent = item.meta.artist || "未知艺术家";
+    const year = document.createElement("div");
+    year.className = "mw-card__sub mw-card__year";
+    year.textContent = item.meta.year ? `发行于 ${item.meta.year}` : "";
+    info.append(name, artist, year);
+
+    const actions = document.createElement("div");
+    actions.className = "mw-row__actions";
+    actions.append(this.makeMenuButton(item), this.makeDelButton(item));
+
+    row.append(thumb, info, actions);
+    this.wireDraggable(row, item);
+    row.addEventListener("click", () => this.openPlayModal(item));
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.openCardMenu(e as MouseEvent, item);
+    });
+    return row;
+  }
+
+  /** ✕ 快捷删除钮（网格悬停浮层 / 列表行内共用） */
+  private makeDelButton(item: WallItem): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.className = "mw-iconbtn mw-iconbtn--del";
+    btn.textContent = "✕";
+    btn.title = "移出音乐墙";
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.confirmDelete(item);
+    });
+    return btn;
+  }
+
+  /** ⋯ 保底菜单钮：不依赖 contextmenu 事件路径，触屏同样可用 */
+  private makeMenuButton(item: WallItem): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.className = "mw-iconbtn mw-iconbtn--menu";
+    btn.textContent = "⋯";
+    btn.title = "更多操作";
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = btn.getBoundingClientRect();
+      this.openCardMenu({ x: rect.left, y: rect.bottom + 4 } as MouseEvent, item);
+    });
+    return btn;
+  }
+
+  /**
+   * 拖出迁移：自定义 MIME 载荷 = 源墙路径 + 专辑 ID。
+   * 常驻 draggable 会让 Windows Chromium 把右键当右键拖拽吞掉 contextmenu，
+   * 故仅左键按下时临时启用，dragend 复位。
+   */
+  private wireDraggable(root: HTMLElement, item: WallItem): void {
+    root.addEventListener("pointerdown", (e) => {
+      root.draggable = (e as PointerEvent).button === 0;
+    });
+    root.addEventListener("dragend", () => {
+      root.draggable = false;
+    });
+    root.addEventListener("dragstart", (e) => {
+      const de = e as DragEvent;
+      if (!de.dataTransfer || !this.file) return;
+      de.dataTransfer.setData(
+        WALL_DRAG_MIME,
+        JSON.stringify({ srcPath: this.file.path, albumId: item.albumId })
+      );
+      de.dataTransfer.effectAllowed = "copyMove";
+    });
   }
 
   private openPlayModal(item: WallItem): void {

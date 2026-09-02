@@ -35,7 +35,7 @@ export class SearchAlbumModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass("mw-search-modal");
-    contentEl.createEl("h2", { text: "搜索网易云专辑（推荐）" });
+    contentEl.createEl("h2", { text: "搜索网易云专辑" });
     contentEl.createEl("p", {
       cls: "mw-search-modal__hint",
       text: "搜索导入的专辑会自动抓取完整元数据并锁定；也可直接粘贴专辑链接/ID。",

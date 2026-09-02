@@ -37,6 +37,7 @@ function migrate(data: any): MusicWallData {
     version: WALL_FILE_VERSION,
     name: typeof data?.name === "string" && data.name ? data.name : "未命名音乐墙",
     style,
+    layout: data?.layout === "list" ? "list" : undefined,
     items,
   };
 }

@@ -229,7 +229,9 @@ const origLoad = Module._load;
     view.data.style = s;
     await view.render();
   }
-  console.log("视图渲染（空态 + 四样式全局轮换）未抛错");
+  view.data.layout = "list";
+  await view.render();
+  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表）未抛错");
 
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);

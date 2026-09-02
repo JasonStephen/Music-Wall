@@ -4,6 +4,9 @@
 /** 唱片视觉样式 */
 export type DiscStyle = "vinyl" | "cd" | "cassette" | "cover";
 
+/** 墙布局：网格（默认）或多列列表 */
+export type WallLayout = "grid" | "list";
+
 /** 专辑来源 */
 export type AlbumSource = "search" | "manual";
 
@@ -57,6 +60,8 @@ export interface MusicWallData {
   name: string;
   /** 全局默认样式 */
   style: DiscStyle;
+  /** 布局模式；缺省 = grid（旧文件兼容） */
+  layout?: WallLayout;
   items: WallItem[];
 }
 
