@@ -236,8 +236,11 @@ const origLoad = Module._load;
     view.data.style = s;
     await view.render();
   }
+  // 展示架场景内详情：开→关
+  view.openShelfDetail(view.data.items[0]);
+  view.closeShelfDetail();
   view.data.layout = undefined;
-  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式）未抛错");
+  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式 + 场景详情）未抛错");
 
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);

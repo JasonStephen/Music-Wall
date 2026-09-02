@@ -32,6 +32,7 @@ import { EditMetaModal } from "./EditMetaModal";
 import { InputModal } from "./InputModal";
 import { PickerModal } from "./smallModals";
 import { SearchAlbumModal, type WallHost } from "./SearchAlbumModal";
+import { openShelfMenu, type ShelfMenuItem } from "./ShelfMenu";
 
 type SortKey = "addedAt" | "name" | "artist" | "year";
 const SORT_LABELS: Record<SortKey, string> = {
@@ -50,6 +51,12 @@ const LAYOUT_LABELS: Record<WallLayout, string> = {
 function decadeOf(y?: string): string {
   const n = parseInt(y ?? "", 10);
   return Number.isFinite(n) ? `${Math.floor(n / 10) * 10}s` : "";
+}
+
+/** 毫秒 → "m:ss" */
+function fmtDur(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export class MusicWallView extends FileView implements WallHost {
@@ -111,6 +118,10 @@ export class MusicWallView extends FileView implements WallHost {
         }
       })
     );
+    // 展示架场景内详情：Esc 返回展示架
+    this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Escape") this.closeShelfDetail();
+    });
     // 放置靶点：其他墙拖来的唱片卡片可直接落在本墙上
     this.registerDomEvent(this.contentEl, "dragover", (e: DragEvent) => {
       if (e.dataTransfer?.types.includes(WALL_DRAG_MIME)) {
@@ -242,11 +253,16 @@ export class MusicWallView extends FileView implements WallHost {
 
     this.renderToolbar(root);
     const layout = this.data.layout ?? "grid";
-    const grid = root.createDiv({
+    const stage = root.createDiv({ cls: "mw-stage" });
+    const grid = stage.createDiv({
       cls: layout === "list" ? "mw-grid mw-grid--list" : layout === "shelf" ? "mw-grid mw-grid--shelf" : "mw-grid",
     });
     grid.style.setProperty("--mw-min-col", `${this.plugin.settings.minColumnWidth}px`);
     this.renderGrid(grid);
+    if (layout === "shelf") {
+      // 场景内详情面板（懒填充）：点唱片从右滑入，整架左滑退场
+      stage.createDiv({ cls: "mw-shelf-detail" });
+    }
   }
 
   private renderToolbar(root: HTMLElement): void {
@@ -264,8 +280,9 @@ export class MusicWallView extends FileView implements WallHost {
       text: `${this.data!.items.length} 张`,
     });
 
-    // 全局样式切换（仅网格模式有意义，列表模式隐藏）
-    if ((this.data!.layout ?? "grid") === "grid") {
+    // 全局样式切换（网格与展示架显示，列表隐藏）
+    const showStyles = (this.data!.layout ?? "grid") !== "list";
+    if (showStyles) {
       const styles = bar.createDiv({ cls: "mw-toolbar__styles" });
       for (const s of ALL_STYLES) {
         const chip = styles.createEl("button", {
@@ -538,7 +555,10 @@ export class MusicWallView extends FileView implements WallHost {
       .forEach((el) => el.removeClass("is-pulled"));
   }
 
-  /** 展示架卡片：木板上靠立的封套，hover/首触抽出，vinyl 样式盘片右滑出 */
+  /** 长按标志：触屏长按唤出菜单后抑制同次 click */
+  private longPressFired = false;
+
+  /** 展示架卡片：木板上平放封套，hover/首触抽出，点击进场景详情，右键/长按菜单 */
   private buildShelfCard(item: WallItem): HTMLElement {
     const style = this.data!.style;
     const card = document.createElement("div");
@@ -558,9 +578,6 @@ export class MusicWallView extends FileView implements WallHost {
     slot.appendChild(jacket);
     card.appendChild(slot);
 
-    card.appendChild(this.makeMenuButton(item));
-    card.appendChild(this.makeDelButton(item));
-
     const cap = document.createElement("div");
     cap.className = "mw-shelf-cap";
     const name = document.createElement("div");
@@ -573,17 +590,43 @@ export class MusicWallView extends FileView implements WallHost {
     cap.append(name, artist);
     card.appendChild(cap);
 
+    // 触屏长按 450ms 唤出菜单；滚动（pointercancel）自动取消
+    let pressTimer = 0;
+    card.addEventListener("pointerdown", (e) => {
+      if (!this.touchMode) return;
+      const pe = e as PointerEvent;
+      const x = pe.clientX;
+      const y = pe.clientY;
+      pressTimer = window.setTimeout(() => {
+        pressTimer = 0;
+        this.longPressFired = true;
+        this.openShelfCardMenu(x, y, item);
+      }, 450);
+    });
+    const cancelPress = () => {
+      if (pressTimer) window.clearTimeout(pressTimer);
+      pressTimer = 0;
+    };
+    card.addEventListener("pointerup", cancelPress);
+    card.addEventListener("pointercancel", cancelPress);
+    card.addEventListener("pointerleave", cancelPress);
+
     card.addEventListener("click", () => {
+      if (this.longPressFired) {
+        this.longPressFired = false;
+        return;
+      }
       if (this.touchMode && !card.hasClass("is-pulled")) {
         this.retractAllShelf();
         card.addClass("is-pulled");
         return;
       }
-      this.openPlayModal(item);
+      this.openShelfDetail(item);
     });
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      this.openCardMenu(e as MouseEvent, item);
+      cancelPress();
+      this.openShelfCardMenu((e as MouseEvent).x, (e as MouseEvent).y, item);
     });
     this.wireDraggable(card, item);
     return card;
@@ -687,6 +730,137 @@ export class MusicWallView extends FileView implements WallHost {
       source: item.source,
       deps: this.plugin.getPlaybackDeps(),
     }).open();
+  }
+
+  // ---- 展示架：自绘风格菜单（右键 / 触屏长按共用） ----
+
+  private openShelfCardMenu(x: number, y: number, item: WallItem): void {
+    const items: ShelfMenuItem[] = [
+      {
+        title: "播放",
+        onClick: () => void playAlbum(item.meta, this.plugin.getPlaybackDeps()),
+      },
+    ];
+    if (!item.locked) {
+      items.push({ title: "编辑元数据", onClick: () => this.editItemMeta(item, false) });
+    }
+    items.push(
+      { title: "迁移到其他墙…", onClick: () => this.migrateCard(item) },
+      {
+        title: "复制专辑链接",
+        onClick: async () => {
+          await navigator.clipboard.writeText(
+            `https://music.163.com/album?id=${item.albumId}`
+          );
+          new Notice("已复制");
+        },
+      },
+      { title: "删除", danger: true, onClick: () => this.confirmDelete(item) }
+    );
+    openShelfMenu(x, y, items);
+  }
+
+  /** 解锁后元数据编辑；reopenDetail = 编辑保存后回到场景内详情 */
+  private editItemMeta(item: WallItem, reopenDetail: boolean): void {
+    new EditMetaModal(this.app, item.meta, async (meta) => {
+      item.meta = meta;
+      item.metaEdited = true;
+      await this.persist();
+      this.render();
+      new Notice("元数据已保存");
+      if (reopenDetail) this.openShelfDetail(item);
+    }).open();
+  }
+
+  // ---- 展示架：场景内详情（替代播放模态，仅 shelf 布局） ----
+
+  private openShelfDetail(item: WallItem): void {
+    const stage = this.contentEl.querySelector(".mw-stage");
+    const detail = this.contentEl.querySelector(".mw-shelf-detail");
+    if (!stage || !detail) return;
+    this.retractAllShelf();
+    this.buildShelfDetail(detail as HTMLElement, item);
+    (detail as HTMLElement).addClass("is-open");
+    (stage as HTMLElement).addClass("is-detail");
+  }
+
+  private closeShelfDetail(): void {
+    this.contentEl.querySelector(".mw-shelf-detail")?.removeClass("is-open");
+    this.contentEl.querySelector(".mw-stage")?.removeClass("is-detail");
+  }
+
+  private buildShelfDetail(detail: HTMLElement, item: WallItem): void {
+    detail.empty();
+    const meta = item.meta;
+
+    const back = detail.createDiv({ cls: "mw-shelf-detail__back", text: "←" });
+    back.setAttr("title", "返回展示架 (Esc)");
+    back.addEventListener("click", () => this.closeShelfDetail());
+
+    const left = detail.createDiv({ cls: "mw-shelf-detail__left" });
+    left.appendChild(buildDiscElement(item, this.data!.style, { coverSize: 500 }));
+
+    const right = detail.createDiv({ cls: "mw-shelf-detail__right" });
+    right.createDiv({ cls: "mw-shelf-detail__name", text: meta.name });
+    right.createDiv({
+      cls: "mw-shelf-detail__artist",
+      text: meta.artist || "未知艺术家",
+    });
+    if (meta.year) {
+      right.createDiv({ cls: "mw-shelf-detail__year", text: `发行于 ${meta.year}` });
+    }
+    if (meta.tags?.length) {
+      const tags = right.createDiv({ cls: "mw-shelf-detail__tags" });
+      for (const t of meta.tags) {
+        const tag = tags.createSpan({ cls: "mw-shelf-detail__tag", text: t });
+        tag.title = t;
+      }
+    }
+
+    const actions = right.createDiv({ cls: "mw-shelf-detail__actions" });
+    actions
+      .createEl("button", { cls: "mw-btn mw-btn--primary mw-shelf-detail__play", text: "▶ 播放整张" })
+      .addEventListener("click", () =>
+        void playAlbum(item.meta, this.plugin.getPlaybackDeps())
+      );
+    if (!item.locked) {
+      actions
+        .createEl("button", { cls: "mw-btn", text: "编辑" })
+        .addEventListener("click", () => this.editItemMeta(item, true));
+    }
+    actions
+      .createEl("button", { cls: "mw-btn", text: "迁移" })
+      .addEventListener("click", () => this.migrateCard(item));
+    actions
+      .createEl("button", { cls: "mw-btn", text: "复制链接" })
+      .addEventListener("click", async () => {
+        await navigator.clipboard.writeText(
+          `https://music.163.com/album?id=${item.albumId}`
+        );
+        new Notice("已复制");
+      });
+    actions
+      .createEl("button", { cls: "mw-btn", text: "删除" })
+      .addEventListener("click", () => this.confirmDelete(item));
+
+    if (meta.description) {
+      const desc = right.createDiv({ cls: "mw-shelf-detail__desc", text: meta.description });
+      desc.title = "专辑简介";
+    }
+
+    const tracks = right.createDiv({ cls: "mw-shelf-detail__tracks" });
+    const list = meta.tracks ?? [];
+    if (!list.length) {
+      tracks.createDiv({ cls: "mw-shelf-detail__noTrack", text: "无曲目快照" });
+      return;
+    }
+    list.forEach((t, i) => {
+      const row = tracks.createDiv({ cls: "mw-shelf-detail__track" });
+      row.createSpan({ cls: "mw-shelf-detail__trackNo", text: String(i + 1) });
+      const name = row.createSpan({ cls: "mw-shelf-detail__trackName", text: t.name });
+      name.title = t.name;
+      row.createSpan({ cls: "mw-shelf-detail__trackDur", text: fmtDur(t.duration) });
+    });
   }
 
   private openCardMenu(evt: MouseEvent, item: WallItem): void {

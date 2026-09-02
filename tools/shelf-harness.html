@@ -10,8 +10,13 @@
 </head>
 <body class="is-desktop">
 <div class="mw-view mw-shelfcap-pull">
-  <div class="mw-toolbar"><div class="mw-toolbar__left"><div class="mw-toolbar__title">验收墙</div></div></div>
-  <div class="mw-grid mw-grid--shelf" style="--mw-min-col:180px" id="grid"></div>
+  <div class="mw-toolbar">
+    <div class="mw-toolbar__left"><div class="mw-toolbar__title">验收墙</div></div>
+  </div>
+  <div class="mw-stage" id="stage">
+    <div class="mw-grid mw-grid--shelf" style="--mw-min-col:180px" id="grid"></div>
+    <div class="mw-shelf-detail" id="detail"></div>
+  </div>
 </div>
 <script>
 "use strict";
@@ -22,7 +27,6 @@ function cover(i, name){
   return "data:image/svg+xml,"+encodeURIComponent(svg);
 }
 function disc(i){
-  const h=(i*53+10)%360;
   return `<div class="mw-disc mw-disc--vinyl"><div class="mw-record"><div class="mw-record__plate"><div class="mw-record__label"><img src="${cover(i,"")}" alt=""></div><div class="mw-record__center"></div></div></div></div>`;
 }
 const grid = document.getElementById("grid");
@@ -34,13 +38,45 @@ NAMES.forEach((n,i)=>{
     <div class="mw-shelf-slot">${vinyl}
       <div class="mw-shelf-jacket"><img src="${cover(i,n)}" alt="${n}"></div>
     </div>
-    <button class="mw-iconbtn mw-iconbtn--menu">⋯</button>
-    <button class="mw-iconbtn mw-iconbtn--del">✕</button>
     <div class="mw-shelf-cap"><div class="mw-shelf-cap__name">${n}</div><div class="mw-shelf-cap__artist">艺术家 ${i+1}</div></div>`;
+  card.addEventListener("click", () => openDetail(n, i));
   grid.appendChild(card);
 });
-// 抽出第 3 张模拟 hover（is-pulled）
 if(location.search.includes("pulled")) grid.children[2].classList.add("is-pulled");
+
+function fmtDur(ms){ const s=Math.round(ms/1000); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function openDetail(n, i){
+  const d = document.getElementById("detail");
+  d.innerHTML = `
+    <div class="mw-shelf-detail__back">←</div>
+    <div class="mw-shelf-detail__left">${disc(i)}</div>
+    <div class="mw-shelf-detail__right">
+      <div class="mw-shelf-detail__name">${n}</div>
+      <div class="mw-shelf-detail__artist">艺术家 ${i+1}</div>
+      <div class="mw-shelf-detail__year">发行于 202${i%6}</div>
+      <div class="mw-shelf-detail__tags"><span class="mw-shelf-detail__tag">史诗</span><span class="mw-shelf-detail__tag">器乐</span></div>
+      <div class="mw-shelf-detail__actions">
+        <button class="mw-btn mw-btn--primary mw-shelf-detail__play">▶ 播放整张</button>
+        <button class="mw-btn">编辑</button><button class="mw-btn">迁移</button>
+        <button class="mw-btn">复制链接</button><button class="mw-btn">删除</button>
+      </div>
+      <div class="mw-shelf-detail__tracks">
+        ${[1,2,3,4,5,6].map(t=>`<div class="mw-shelf-detail__track"><span class="mw-shelf-detail__trackNo">${t}</span><span class="mw-shelf-detail__trackName">第 ${t} 首曲目名称示例</span><span class="mw-shelf-detail__trackDur">${fmtDur(210000+t*7000)}</span></div>`).join("")}
+      </div>
+    </div>`;
+  d.querySelector(".mw-shelf-detail__back").addEventListener("click", ()=>{ d.classList.remove("is-open"); stage.classList.remove("is-detail"); });
+  document.getElementById("stage").classList.add("is-detail");
+  d.classList.add("is-open");
+}
+if(location.search.includes("detail")) openDetail("七里香", 2);
+
+if(location.search.includes("menu")){
+  const menu=document.createElement("div");
+  menu.className="mw-shelf-menu";
+  menu.style.left="320px"; menu.style.top="220px";
+  menu.innerHTML = `<div class="mw-shelf-menu__item">播放</div><div class="mw-shelf-menu__item">编辑元数据</div><div class="mw-shelf-menu__item">迁移到其他墙…</div><div class="mw-shelf-menu__item">复制专辑链接</div><div class="mw-shelf-menu__item is-danger">删除</div>`;
+  document.body.appendChild(menu);
+}
 </script>
 </body>
 </html>
