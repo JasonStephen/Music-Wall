@@ -558,20 +558,13 @@ export class MusicWallView extends FileView implements WallHost {
   /** 长按标志：触屏长按唤出菜单后抑制同次 click */
   private longPressFired = false;
 
-  /** 展示架卡片：木板上平放封套，hover/首触抽出，点击进场景详情，右键/长按菜单 */
+  /** 展示架卡片：木板上平放封套，hover/首触抽出（聚光灯照亮），点击进场景详情，右键/长按菜单 */
   private buildShelfCard(item: WallItem): HTMLElement {
-    const style = this.data!.style;
     const card = document.createElement("div");
     card.className = "mw-card mw-shelf-card";
 
     const slot = document.createElement("div");
     slot.className = "mw-shelf-slot";
-    if (style === "vinyl") {
-      const vinyl = document.createElement("div");
-      vinyl.className = "mw-shelf-vinyl";
-      vinyl.appendChild(buildDiscElement(item, "vinyl", { coverSize: 200 }));
-      slot.appendChild(vinyl);
-    }
     const jacket = document.createElement("div");
     jacket.className = "mw-shelf-jacket";
     jacket.appendChild(makeCoverImg(sizedCover(item.meta.cover, 300), item.meta.name));

@@ -11,10 +11,21 @@
   --mw-shelf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   gap: 68px 0;
   padding-top: 44px;
+  /* 暗色墙纸：细竖纹 + 斜向织纹叠在暖棕底上，纯 CSS 保证铺满 */
   background:
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
     radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
-    linear-gradient(180deg, #191410, #211913 45%, #100b07);
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 226, 180, 0.02) 0 2px,
+      rgba(0, 0, 0, 0) 2px 7px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.012) 0 14px,
+      rgba(0, 0, 0, 0) 14px 28px
+    ),
+    linear-gradient(180deg, #1b1511, #241b14 45%, #120d09);
 }
 
 /* 家具深色固定，不随明暗主题；文字用暖浅色保证两主题下均可读 */
@@ -151,7 +162,7 @@
   aspect-ratio: 1 / 1;
 }
 
-/* ---- 抽出（hover 或触屏 .is-pulled） ---- */
+/* ---- 抽出（hover 或触屏 .is-pulled）+ 聚光灯聚焦 ---- */
 .mw-shelf-card:hover,
 .mw-shelf-card.is-pulled {
   z-index: 10;
@@ -159,18 +170,21 @@
 .mw-shelf-card:hover .mw-shelf-jacket,
 .mw-shelf-card.is-pulled .mw-shelf-jacket {
   transform: translateY(calc(var(--mw-pull-up) * -1)) scale(var(--mw-pull-scale));
+  /* 聚光灯：顶部暖光晕 + 离板长影 */
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 -10px 44px rgba(255, 214, 140, 0.2),
+    0 0 26px rgba(255, 214, 140, 0.12),
     0 26px 34px rgba(0, 0, 0, 0.65),
     0 8px 12px rgba(0, 0, 0, 0.5);
 }
-.mw-shelf-card:hover .mw-shelf-vinyl,
-.mw-shelf-card.is-pulled .mw-shelf-vinyl {
-  transform: translateY(calc(var(--mw-pull-up) * -1)) translateX(40%);
+/* 被照亮：增亮提饱和；其余卡片压暗（舞台聚光） */
+.mw-grid--shelf .mw-shelf-card:hover .mw-shelf-jacket,
+.mw-grid--shelf .mw-shelf-card.is-pulled .mw-shelf-jacket {
+  filter: brightness(1.1) saturate(1.06);
 }
-/* 抽出时其余卡片轻微压暗，聚焦当前专辑 */
 .mw-grid--shelf:hover .mw-shelf-card:not(:hover) .mw-shelf-jacket {
-  filter: brightness(0.82);
+  filter: brightness(0.72);
 }
 
 /* ---- 文字三档（档位类挂在 .mw-view 根上，全局设置驱动） ---- */
@@ -238,7 +252,17 @@
   --mw-shelf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   background:
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
-    linear-gradient(180deg, #171310, #1d1611 45%, #0e0a06);
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 226, 180, 0.02) 0 2px,
+      rgba(0, 0, 0, 0) 2px 7px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.012) 0 14px,
+      rgba(0, 0, 0, 0) 14px 28px
+    ),
+    linear-gradient(180deg, #1a1410, #221a13 45%, #0e0a06);
   transform: translateX(100%);
   visibility: hidden;
 }
@@ -313,19 +337,22 @@
   color: #e6dcc9;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
-/* 详情按钮与主题解耦：自有木风样式 */
+/* 展示架场景内按钮与主题解耦：自有木风样式（架子空态 + 详情页共用） */
+.mw-grid--shelf .mw-btn,
 .mw-shelf-detail__right .mw-btn {
   background: linear-gradient(180deg, #4a3423, #38261a);
   border: 1px solid rgba(255, 226, 180, 0.28);
   color: #e6dcc9;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
 }
+.mw-grid--shelf .mw-btn:hover,
 .mw-shelf-detail__right .mw-btn:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 226, 180, 0.55);
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
+.mw-grid--shelf .mw-btn--primary,
 .mw-shelf-detail__right .mw-btn--primary {
   background: linear-gradient(180deg, #a4703c, #7d5227);
   border-color: rgba(255, 220, 160, 0.5);
@@ -492,10 +519,6 @@
   .mw-shelf-card.is-pulled .mw-shelf-jacket {
     transform: none;
     transition: none;
-  }
-  .mw-shelf-card:hover .mw-shelf-vinyl,
-  .mw-shelf-card.is-pulled .mw-shelf-vinyl {
-    transform: none;
   }
   .mw-shelf-card:hover .mw-disc--vinyl .mw-record__plate,
   .mw-shelf-card.is-pulled .mw-disc--vinyl .mw-record__plate,
