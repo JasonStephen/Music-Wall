@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<!-- Music Wall 展示架（shelf）视觉原型：浏览器直开调参，验收后移植 shelf.css。 -->
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>shelf proto · Music Wall</title>
+<style>
+  :root {
+    --lean: 5deg;          /* 后仰 rotateX */
+    --tilt: 1.4deg;        /* 平面倾角基准 */
+    --pull-up: 14%;        /* 抽出位移 */
+    --pull-scale: 1.06;    /* 抽出缩放 */
+    --dur: 0.35s;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --plank-h: 19px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; background: #0b0b0d; color: #ddd; }
+
+  /* ---- 调参台 ---- */
+  .panel {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+    padding: 10px 16px; background: #1b1b1f; border-bottom: 1px solid #333;
+    font-size: 12px;
+  }
+  .panel label { display: flex; align-items: center; gap: 6px; }
+  .panel output { min-width: 3.2em; color: #ffd479; font-variant-numeric: tabular-nums; }
+  .panel select, .panel input[type=range] { accent-color: #c98a4b; }
+
+  /* ---- 墙容器 ---- */
+  .wall {
+    height: calc(100vh - 52px);
+    overflow-y: auto;
+    padding: 44px clamp(16px, 4vw, 48px) 60px;
+    background:
+      radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.10), transparent 55%),
+      radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
+      linear-gradient(180deg, #191410, #211913 45%, #100b07);
+    scroll-behavior: smooth;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 68px 0;
+  }
+
+  /* ---- 卡片 ---- */
+  .card { position: relative; cursor: pointer; }
+  .slot { position: relative; aspect-ratio: 1 / 1; }
+
+  /* 木横板：每卡自带一段，列距为 0 时拼成整行连续横板 */
+  .slot::after {
+    content: "";
+    position: absolute;
+    left: -1px; right: -1px; bottom: calc(var(--plank-h) * -1 + 2px);
+    height: var(--plank-h);
+    z-index: 3;
+    background:
+      linear-gradient(rgba(255, 238, 208, 0.20), rgba(255, 200, 140, 0.04) 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.5) 82%, rgba(0, 0, 0, 0.62)),
+      var(--wood);
+    background-size: auto, 240px 100%;
+    box-shadow:
+      0 14px 22px rgba(0, 0, 0, 0.65),
+      0 3px 5px rgba(0, 0, 0, 0.7),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 226, 180, 0.25);
+  }
+  /* 板下贴墙阴影 */
+  .slot::before {
+    content: "";
+    position: absolute;
+    left: -1px; right: -1px; bottom: calc(var(--plank-h) * -1 + 2px - 20px);
+    height: 20px;
+    background: linear-gradient(rgba(0, 0, 0, 0) 5%, rgba(0, 0, 0, 0.55));
+    filter: blur(3px);
+    pointer-events: none;
+  }
+
+  /* 封套 */
+  .jacket {
+    position: absolute;
+    left: 6%; right: 6%; bottom: calc(var(--plank-h) - 4px);
+    aspect-ratio: 1 / 1;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #26222a;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+      inset 7px 0 9px -8px rgba(0, 0, 0, 0.95),
+      inset -4px 0 8px -6px rgba(0, 0, 0, 0.9),
+      2px 2px 0 rgba(20, 12, 6, 0.55),
+      4px 5px 10px rgba(0, 0, 0, 0.6);
+    transform-origin: bottom center;
+    transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    will-change: transform;
+    z-index: 4;
+  }
+  .jacket img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* 封套顶部反光 + 左侧书脊亮线 */
+  .jacket::after {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0.4%, rgba(0, 0, 0, 0.28) 1.4%, transparent 5.5%, transparent 96%, rgba(255, 255, 255, 0.08) 98%, transparent 100%),
+      linear-gradient(115deg, rgba(255,255,255,0.20) 0%, transparent 30%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* 伪随机姿态：靠板后仰 + 小幅侧倾 + 微差尺寸（6 循环，避免整排雷同） */
+  .card .jacket            { transform: rotateX(var(--lean)) rotate(var(--tilt)) scale(1); }
+  .card:nth-child(6n+2) .jacket { transform: rotateX(calc(var(--lean) * 0.55)) rotate(calc(var(--tilt) * -1.25)) scale(0.985); }
+  .card:nth-child(6n+3) .jacket { transform: rotateX(calc(var(--lean) * 1.3)) rotate(calc(var(--tilt) * 0.45)) translateY(1px); }
+  .card:nth-child(6n+4) .jacket { transform: rotateX(calc(var(--lean) * 0.75)) rotate(calc(var(--tilt) * -0.6)) scale(1.015); }
+  .card:nth-child(6n+5) .jacket { transform: rotateX(calc(var(--lean) * 1.05)) rotate(calc(var(--tilt) * 1.6)); }
+  .card:nth-child(6n) .jacket   { transform: rotateX(calc(var(--lean) * 0.4)) rotate(calc(var(--tilt) * -0.9)) scale(0.992); }
+
+  /* 黑胶（仅 vinyl 样式注入）：与封套同心藏于其后，抽出时随封套抬起并向右滑出 */
+  .vinyl {
+    position: absolute;
+    left: 13%; bottom: calc(var(--plank-h) - 4px + 6.5%);
+    width: 74%;
+    aspect-ratio: 1 / 1;
+    z-index: 2;
+    transform: translateX(0);
+    transition: transform var(--dur) var(--ease);
+  }
+  .vinyl .disc {
+    width: 100%; height: 100%; border-radius: 50%;
+    background:
+      conic-gradient(from 210deg, rgba(255,255,255,0.15) 0deg, transparent 26deg 152deg, rgba(255,255,255,0.10) 180deg, transparent 208deg 332deg, rgba(255,255,255,0.15) 360deg),
+      repeating-radial-gradient(circle at 50% 50%, #141414 0px, #1f1f1f 1.5px, #0b0b0b 2.6px, #1a1a1a 3.4px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vinyl .disc::before {
+    content: ""; width: 42%; height: 42%; border-radius: 50%;
+    background: var(--label, linear-gradient(135deg, #7a5c3e, #2c2118));
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
+  }
+  .vinyl .disc::after {
+    content: ""; position: absolute; width: 4.5%; height: 4.5%; border-radius: 50%;
+    background: #120d09; box-shadow: 0 0 0 2px rgba(255,255,255,0.14);
+  }
+  .vinyl .disc { position: relative; }
+  .card:hover .vinyl .disc, .card.is-pulled .vinyl .disc { animation: spin 4.5s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 悬停抽出 */
+  .card:hover, .card.is-pulled { z-index: 10; }
+  .card:hover .jacket, .card.is-pulled .jacket {
+    transform: translateY(calc(var(--pull-up) * -1)) rotateX(0deg) rotate(0deg) scale(var(--pull-scale));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+      0 26px 34px rgba(0, 0, 0, 0.65),
+      0 8px 12px rgba(0, 0, 0, 0.5);
+  }
+  .card:hover .vinyl, .card.is-pulled .vinyl { transform: translateX(26%); }
+  /* 抽出时旁边的卡轻微变暗（沉浸聚焦） */
+  .grid:hover .card:not(:hover) .jacket { filter: brightness(0.82); }
+  .grid .jacket { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur); }
+
+  /* 文字三档 */
+  .cap {
+    position: absolute; top: calc(100% + var(--plank-h) + 10px);
+    left: 4%; right: 4%; text-align: center;
+    color: #e6dcc9; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    opacity: 0; transition: opacity 0.25s var(--ease); pointer-events: none;
+  }
+  .cap .t { font-size: 0.95em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cap .a { font-size: 0.75em; color: #a89a86; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body[data-cap="pull"] .card:hover .cap, body[data-cap="pull"] .card.is-pulled .cap { opacity: 1; }
+  body[data-cap="always"] .cap { opacity: 1; }
+  body[data-cap="always"] .cap .a { display: none; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <label>样式
+    <select id="styleSel"><option value="vinyl">黑胶（含彩蛋）</option><option value="cover" selected>封套</option></select>
+  </label>
+  <label>文字
+    <select id="capSel"><option value="hidden">隐藏</option><option value="pull" selected>抽出时显示</option><option value="always">常驻</option></select>
+  </label>
+  <label>后仰 <input id="leanR" type="range" min="0" max="14" value="5"><output id="leanO"></output></label>
+  <label>侧倾 <input id="tiltR" type="range" min="0" max="30" value="14"><output id="tiltO"></output></label>
+  <label>抽出 <input id="pullR" type="range" min="0" max="26" value="14"><output id="pullO"></output></label>
+  <label>时长 <input id="durR" type="range" min="10" max="90" value="35"><output id="durO"></output></label>
+  <label>缓动
+    <select id="easeSel">
+      <option value="cubic-bezier(0.22, 1, 0.36, 1)" selected>ease-out-quint</option>
+      <option value="cubic-bezier(0.34, 1.56, 0.64, 1)">spring</option>
+      <option value="ease">ease</option>
+      <option value="linear">linear</option>
+    </select>
+  </label>
+  <button id="pullBtn">模拟抽出第 3 张</button>
+</div>
+<div class="wall" id="wall"><div class="grid" id="grid"></div></div>
+
+<script>
+"use strict";
+/* 木纹：SVG feTurbulence，程序化生成一次作为 data-URI（浏览器解码为位图，非实时滤镜） */
+const woodSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='260' height='64' viewBox='0 0 260 64'>
+<defs>
+<filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.006 0.095' numOctaves='5' seed='17' result='n'/>
+<feColorMatrix in='n' type='matrix' values='0 0 0 0 0.52 0 0 0 0 0.34 0 0 0 0 0.18 0 0 0 2.8 -0.9'/></filter>
+<filter id='f'><feTurbulence type='turbulence' baseFrequency='0.015 0.55' numOctaves='2' seed='4' result='n'/>
+<feColorMatrix in='n' type='matrix' values='0 0 0 0 0.14 0 0 0 0 0.07 0 0 0 0 0.03 0 0 0 1.6 -0.62'/></filter>
+<linearGradient id='b' x1='0' y1='0' x2='0' y2='1'>
+<stop offset='0' stop-color='#6b4830'/><stop offset='.55' stop-color='#4e311d'/><stop offset='1' stop-color='#37220f'/></linearGradient>
+</defs>
+<rect width='260' height='64' fill='url(#b)'/>
+<rect width='260' height='64' filter='url(#g)' opacity='.55'/>
+<rect width='260' height='64' filter='url(#f)' opacity='.38'/>
+</svg>`;
+document.documentElement.style.setProperty("--wood", `url("data:image/svg+xml,${encodeURIComponent(woodSvg)}")`);
+
+const ALBUMS = [
+  "范特西", "叶惠美", "七里香", "八度空间", "十一月的萧邦", "跨时代", "哎呦，不错哦", "周杰伦的床边故事",
+  "魔杰座", "Jay", "感恩节的秘密", "十二新作", "最伟大的作品", "依然范特西", "秘密花园", "橙色假期",
+  "蓝色旋律", "午夜车站", "山丘之歌", "风说过的话", "旧日记", "银河出租", "纸飞机", "雨天电台",
+];
+const grid = document.getElementById("grid");
+const styleSel = document.getElementById("styleSel");
+if (location.search.includes("vinyl")) styleSel.value = "vinyl";
+
+function cover(i, name) {
+  const h = (i * 47 + 12) % 360;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'>
+<defs><linearGradient id='c' x1='0' y1='0' x2='1' y2='1'>
+<stop offset='0' stop-color='hsl(${h},45%,42%)'/><stop offset='1' stop-color='hsl(${(h+50)%360},55%,18%)'/></linearGradient></defs>
+<rect width='300' height='300' fill='url(#c)'/>
+<circle cx='235' cy='70' r='42' fill='hsla(${h},70%,75%,0.5)'/>
+<text x='20' y='278' font-family='sans-serif' font-size='26' fill='rgba(255,255,255,0.92)'>${name}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+const labelCss = (i) => {
+  const h = (i * 47 + 12) % 360;
+  return `linear-gradient(135deg, hsl(${h},40%,45%), hsl(${h},50%,20%))`;
+};
+
+function build() {
+  grid.innerHTML = "";
+  ALBUMS.forEach((name, i) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const vinyl = styleSel.value === "vinyl"
+      ? `<div class="vinyl"><div class="disc" style="--label:${labelCss(i)}"></div></div>` : "";
+    card.innerHTML = `<div class="slot">${vinyl}
+      <div class="jacket"><img src="${cover(i, name)}" alt="${name}"></div></div>
+      <div class="cap"><div class="t">${name}</div><div class="a">艺术家 ${i + 1}</div></div>`;
+    card.addEventListener("click", () => {           /* 触屏两段式模拟 */
+      if (card.classList.contains("is-pulled")) { card.classList.remove("is-pulled"); return; }
+      grid.querySelectorAll(".is-pulled").forEach((c) => c.classList.remove("is-pulled"));
+      card.classList.add("is-pulled");
+    });
+    grid.appendChild(card);
+  });
+}
+build();
+styleSel.onchange = build;
+
+const bind = (id, out, prop, fmt) => {
+  const r = document.getElementById(id), o = document.getElementById(out);
+  const upd = () => { document.documentElement.style.setProperty(prop, fmt(r.value)); o.textContent = fmt(r.value); };
+  r.oninput = upd; upd();
+};
+bind("leanR", "leanO", "--lean", (v) => v + "deg");
+bind("tiltR", "tiltO", "--tilt", (v) => (v / 10).toFixed(1) + "deg");
+bind("pullR", "pullO", "--pull-up", (v) => v + "%");
+bind("durR", "durO", "--dur", (v) => (v / 100).toFixed(2) + "s");
+document.getElementById("easeSel").onchange = (e) =>
+  document.documentElement.style.setProperty("--ease", e.target.value);
+document.getElementById("capSel").onchange = (e) =>
+  document.body.dataset.cap = e.target.value;
+document.body.dataset.cap = "pull";
+document.getElementById("pullBtn").onclick = () => {
+  grid.children[2]?.classList.toggle("is-pulled");
+};
+if (location.search.includes("pulled")) grid.children[2]?.classList.add("is-pulled");
+</script>
+</body>
+</html>
