@@ -476,9 +476,14 @@ export class MusicWallView extends FileView implements WallHost {
             : this.buildCard(item)
       );
     }
-    // 展示架：滚动即收起所有抽出卡（grid 每次渲染重建，监听随元素回收）
+    // 展示架：滚动或点空白即收起所有抽出卡（grid 每次渲染重建，监听随元素回收）
     if ((this.data!.layout ?? "grid") === "shelf") {
       grid.addEventListener("scroll", () => this.retractAllShelf());
+      grid.addEventListener("click", (e) => {
+        if (!(e.target as HTMLElement | null)?.closest(".mw-shelf-card")) {
+          this.retractAllShelf();
+        }
+      });
     }
   }
 
