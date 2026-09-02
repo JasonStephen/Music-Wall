@@ -4,8 +4,11 @@
 /** 唱片视觉样式 */
 export type DiscStyle = "vinyl" | "cd" | "cassette" | "cover";
 
-/** 墙布局：网格（默认）或多列列表 */
-export type WallLayout = "grid" | "list";
+/** 墙布局：网格（默认）、多列列表或展示架 */
+export type WallLayout = "grid" | "list" | "shelf";
+
+/** 展示架布局下，专辑名称文字显示档位（全局设置） */
+export type ShelfCaption = "hidden" | "pull" | "always";
 
 /** 专辑来源 */
 export type AlbumSource = "search" | "manual";
@@ -97,6 +100,8 @@ export interface MusicWallSettings {
   playbackPlaylistId: string;
   /** 是否已提示过移动端限制 */
   mobileNoticeShown: boolean;
+  /** 展示架布局下文字显示档位 */
+  shelfCaption: ShelfCaption;
 }
 
 export const DEFAULT_SETTINGS: MusicWallSettings = {
@@ -108,6 +113,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   neteaseCookie: "",
   playbackPlaylistId: "",
   mobileNoticeShown: false,
+  shelfCaption: "pull",
 };
 
 /** 当前 .mw 文件 schema 版本 */

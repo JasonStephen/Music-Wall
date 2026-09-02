@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #1e1e22; }
+  .mw-view { height: 100vh; }
+</style>
+</head>
+<body class="is-desktop">
+<div class="mw-view mw-shelfcap-pull">
+  <div class="mw-toolbar"><div class="mw-toolbar__left"><div class="mw-toolbar__title">验收墙</div></div></div>
+  <div class="mw-grid mw-grid--shelf" style="--mw-min-col:180px" id="grid"></div>
+</div>
+<script>
+"use strict";
+const NAMES = ["范特西","叶惠美","七里香","八度空间","十一月的萧邦","跨时代","哎呦不错哦","魔杰座","依然范特西","十二新作","最伟大的作品","奇迹"];
+function cover(i, name){
+  const h=(i*53+10)%360;
+  const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><defs><linearGradient id='c' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${h},48%,45%)'/><stop offset='1' stop-color='hsl(${(h+40)%360},55%,16%)'/></linearGradient></defs><rect width='300' height='300' fill='url(#c)'/><circle cx='230' cy='72' r='44' fill='hsla(${h},70%,80%,0.45)'/><text x='16' y='280' font-family='sans-serif' font-size='24' fill='rgba(255,255,255,0.92)'>${name}</text></svg>`;
+  return "data:image/svg+xml,"+encodeURIComponent(svg);
+}
+function disc(i){
+  const h=(i*53+10)%360;
+  return `<div class="mw-disc mw-disc--vinyl"><div class="mw-record"><div class="mw-record__plate"><div class="mw-record__label"><img src="${cover(i,"")}" alt=""></div><div class="mw-record__center"></div></div></div></div>`;
+}
+const grid = document.getElementById("grid");
+NAMES.forEach((n,i)=>{
+  const card=document.createElement("div");
+  card.className="mw-card mw-shelf-card";
+  const vinyl = i%2===0 ? `<div class="mw-shelf-vinyl">${disc(i)}</div>` : "";
+  card.innerHTML = `
+    <div class="mw-shelf-slot">${vinyl}
+      <div class="mw-shelf-jacket"><img src="${cover(i,n)}" alt="${n}"></div>
+    </div>
+    <button class="mw-iconbtn mw-iconbtn--menu">⋯</button>
+    <button class="mw-iconbtn mw-iconbtn--del">✕</button>
+    <div class="mw-shelf-cap"><div class="mw-shelf-cap__name">${n}</div><div class="mw-shelf-cap__artist">艺术家 ${i+1}</div></div>`;
+  grid.appendChild(card);
+});
+// 抽出第 3 张模拟 hover（is-pulled）
+if(location.search.includes("pulled")) grid.children[2].classList.add("is-pulled");
+</script>
+</body>
+</html>

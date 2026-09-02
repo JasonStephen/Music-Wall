@@ -118,8 +118,8 @@
   /* 黑胶（仅 vinyl 样式注入）：与封套同心藏于其后，抽出时随封套抬起并向右滑出 */
   .vinyl {
     position: absolute;
-    left: 13%; bottom: calc(var(--plank-h) - 4px + 6.5%);
-    width: 74%;
+    left: 12%; bottom: calc(var(--plank-h) - 4px + 3%);
+    width: 82%;
     aspect-ratio: 1 / 1;
     z-index: 2;
     transform: translateX(0);
@@ -155,7 +155,7 @@
       0 26px 34px rgba(0, 0, 0, 0.65),
       0 8px 12px rgba(0, 0, 0, 0.5);
   }
-  .card:hover .vinyl, .card.is-pulled .vinyl { transform: translateX(26%); }
+  .card:hover .vinyl, .card.is-pulled .vinyl { transform: translateY(calc(var(--pull-up) * -1)) translateX(40%); }
   /* 抽出时旁边的卡轻微变暗（沉浸聚焦） */
   .grid:hover .card:not(:hover) .jacket { filter: brightness(0.82); }
   .grid .jacket { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur); }

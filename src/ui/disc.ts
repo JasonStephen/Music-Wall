@@ -33,6 +33,11 @@ function makeImg(src: string, alt: string): HTMLImageElement {
   return img;
 }
 
+/** 供展示架等外部构建器复用的封面 <img>（破图时父容器获得 mw-cover-broken） */
+export function makeCoverImg(src: string, alt: string): HTMLImageElement {
+  return makeImg(src, alt);
+}
+
 /** 构建一张唱片的视觉元素 */
 export function buildDiscElement(
   item: WallItem,

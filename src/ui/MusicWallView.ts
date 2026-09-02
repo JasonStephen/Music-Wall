@@ -25,7 +25,7 @@ import {
 import { loadWall, saveWall } from "../core/store";
 import { playAlbum } from "../core/playback";
 import { sizedCover } from "../core/metadata";
-import { ALL_STYLES, STYLE_LABELS, buildDiscElement } from "./disc";
+import { ALL_STYLES, STYLE_LABELS, buildDiscElement, makeCoverImg } from "./disc";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { EditMetaModal } from "./EditMetaModal";
@@ -40,7 +40,11 @@ const SORT_LABELS: Record<SortKey, string> = {
   artist: "艺术家",
   year: "发行年份",
 };
-const LAYOUT_LABELS: Record<WallLayout, string> = { grid: "网格", list: "列表" };
+const LAYOUT_LABELS: Record<WallLayout, string> = {
+  grid: "网格",
+  list: "列表",
+  shelf: "展示架",
+};
 
 /** "2015" → "2010s"；无效返回 "" */
 function decadeOf(y?: string): string {
@@ -228,14 +232,19 @@ export class MusicWallView extends FileView implements WallHost {
     const root = this.contentEl;
     root.empty();
     root.addClass("mw-view");
+    const cap = this.plugin.settings.shelfCaption ?? "pull";
+    root.removeClass("mw-shelfcap-hidden", "mw-shelfcap-pull", "mw-shelfcap-always");
+    root.addClass(`mw-shelfcap-${cap}`);
     if (!this.data) {
       root.createDiv({ cls: "mw-empty", text: "未选择音乐墙文件" });
       return;
     }
 
     this.renderToolbar(root);
-    const isList = this.data.layout === "list";
-    const grid = root.createDiv({ cls: isList ? "mw-grid mw-grid--list" : "mw-grid" });
+    const layout = this.data.layout ?? "grid";
+    const grid = root.createDiv({
+      cls: layout === "list" ? "mw-grid mw-grid--list" : layout === "shelf" ? "mw-grid mw-grid--shelf" : "mw-grid",
+    });
     grid.style.setProperty("--mw-min-col", `${this.plugin.settings.minColumnWidth}px`);
     this.renderGrid(grid);
   }
@@ -272,9 +281,9 @@ export class MusicWallView extends FileView implements WallHost {
       }
     }
 
-    // 布局切换：网格 / 多列列表
+    // 布局切换：网格 / 多列列表 / 展示架
     const layouts = bar.createDiv({ cls: "mw-toolbar__styles" });
-    for (const l of ["grid", "list"] as WallLayout[]) {
+    for (const l of ["grid", "list", "shelf"] as WallLayout[]) {
       const chip = layouts.createEl("button", { cls: "mw-chip", text: LAYOUT_LABELS[l] });
       chip.toggleClass("is-active", (this.data!.layout ?? "grid") === l);
       chip.addEventListener("click", async () => {
@@ -437,7 +446,7 @@ export class MusicWallView extends FileView implements WallHost {
       });
       if (!this.data!.items.length) {
         empty.createDiv({
-          text: "「添加」会搜索网易云专辑并抓取完整元数据，随时可用顶部栏切换四种唱片样式与网格/列表布局。",
+          text: "「添加」会搜索网易云专辑并抓取完整元数据，随时可用顶部栏切换四种唱片样式与网格/列表/展示架布局。",
           cls: "mw-empty__sub",
         });
         const actions = empty.createDiv({ cls: "mw-empty__actions" });
@@ -458,11 +467,18 @@ export class MusicWallView extends FileView implements WallHost {
       return;
     }
     for (const item of items) {
+      const layout = this.data!.layout ?? "grid";
       grid.appendChild(
-        this.data!.layout === "list"
+        layout === "list"
           ? this.buildListRow(item)
-          : this.buildCard(item)
+          : layout === "shelf"
+            ? this.buildShelfCard(item)
+            : this.buildCard(item)
       );
+    }
+    // 展示架：滚动即收起所有抽出卡（grid 每次渲染重建，监听随元素回收）
+    if ((this.data!.layout ?? "grid") === "shelf") {
+      grid.addEventListener("scroll", () => this.retractAllShelf());
     }
   }
 
@@ -499,6 +515,72 @@ export class MusicWallView extends FileView implements WallHost {
       e.preventDefault();
       this.openCardMenu(e as MouseEvent, item);
     });
+    return card;
+  }
+
+  /** 触屏（无 hover）环境：抽出需两段式点击 */
+  private get touchMode(): boolean {
+    return (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(hover: none)").matches
+    );
+  }
+
+  /** 收起展示架中所有已抽出的卡片 */
+  private retractAllShelf(): void {
+    this.contentEl
+      .querySelectorAll(".mw-shelf-card.is-pulled")
+      .forEach((el) => el.removeClass("is-pulled"));
+  }
+
+  /** 展示架卡片：木板上靠立的封套，hover/首触抽出，vinyl 样式盘片右滑出 */
+  private buildShelfCard(item: WallItem): HTMLElement {
+    const style = this.data!.style;
+    const card = document.createElement("div");
+    card.className = "mw-card mw-shelf-card";
+
+    const slot = document.createElement("div");
+    slot.className = "mw-shelf-slot";
+    if (style === "vinyl") {
+      const vinyl = document.createElement("div");
+      vinyl.className = "mw-shelf-vinyl";
+      vinyl.appendChild(buildDiscElement(item, "vinyl", { coverSize: 200 }));
+      slot.appendChild(vinyl);
+    }
+    const jacket = document.createElement("div");
+    jacket.className = "mw-shelf-jacket";
+    jacket.appendChild(makeCoverImg(sizedCover(item.meta.cover, 300), item.meta.name));
+    slot.appendChild(jacket);
+    card.appendChild(slot);
+
+    card.appendChild(this.makeMenuButton(item));
+    card.appendChild(this.makeDelButton(item));
+
+    const cap = document.createElement("div");
+    cap.className = "mw-shelf-cap";
+    const name = document.createElement("div");
+    name.className = "mw-shelf-cap__name";
+    name.textContent = item.meta.name;
+    name.title = item.meta.name;
+    const artist = document.createElement("div");
+    artist.className = "mw-shelf-cap__artist";
+    artist.textContent = item.meta.artist || "未知艺术家";
+    cap.append(name, artist);
+    card.appendChild(cap);
+
+    card.addEventListener("click", () => {
+      if (this.touchMode && !card.hasClass("is-pulled")) {
+        this.retractAllShelf();
+        card.addClass("is-pulled");
+        return;
+      }
+      this.openPlayModal(item);
+    });
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.openCardMenu(e as MouseEvent, item);
+    });
+    this.wireDraggable(card, item);
     return card;
   }
 

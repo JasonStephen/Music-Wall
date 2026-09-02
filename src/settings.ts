@@ -2,7 +2,7 @@
 
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
-import type { DiscStyle } from "./types";
+import type { DiscStyle, ShelfCaption } from "./types";
 import { STYLE_LABELS } from "./ui/disc";
 
 export class MusicWallSettingTab extends PluginSettingTab {
@@ -119,6 +119,25 @@ export class MusicWallSettingTab extends PluginSettingTab {
         d.setValue(this.plugin.settings.defaultStyle).onChange(async (v) => {
           this.plugin.settings.defaultStyle = v as DiscStyle;
           await this.plugin.saveSettings();
+        });
+      });
+
+    const CAPTION_LABELS: Record<ShelfCaption, string> = {
+      hidden: "隐藏",
+      pull: "抽出时显示",
+      always: "常驻显示",
+    };
+    new Setting(containerEl)
+      .setName("展示架文字显示")
+      .setDesc("仅「展示架」布局生效：专辑名/艺术家的显示档位")
+      .addDropdown((d) => {
+        for (const [v, label] of Object.entries(CAPTION_LABELS)) {
+          d.addOption(v, label);
+        }
+        d.setValue(this.plugin.settings.shelfCaption).onChange(async (v) => {
+          this.plugin.settings.shelfCaption = v as ShelfCaption;
+          await this.plugin.saveSettings();
+          this.plugin.refreshOpenViews();
         });
       });
 

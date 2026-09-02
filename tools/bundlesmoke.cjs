@@ -231,7 +231,13 @@ const origLoad = Module._load;
   }
   view.data.layout = "list";
   await view.render();
-  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表）未抛错");
+  view.data.layout = "shelf";
+  for (const s of ["vinyl", "cd", "cassette", "cover"]) {
+    view.data.style = s;
+    await view.render();
+  }
+  view.data.layout = undefined;
+  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式）未抛错");
 
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);
