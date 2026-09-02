@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<!--
+  Music Wall 展示架「推镜 + 3D 开盒详情」(Gatefold Detail) — M0 独立原型
+  纯 CSS 3D + WAAPI，file:// 直开，不引外部资源。封面用内联 SVG/渐变占位。
+  目的：验证四阶段时间线观感与版面结构，验收后参数移植进 src/ui/MusicWallView.ts。
+  结构/类名对齐 src/styles/shelf.css 的 .mw-gf__* 段。
+  截图自查：Edge headless + #auto（直接呈现开盒终态）。
+-->
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gatefold proto · Music Wall</title>
+<style>
+  :root {
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --perspective: 1700px;
+    --push-dur: 460ms;
+    --open-dur: 640ms;
+    --tilt: -14deg;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif;
+    background: #0b0b0d; color: #ddd;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ---- 参数区 ---- */
+  .panel {
+    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center;
+    padding: 10px 16px; background: #1b1b1f; border-bottom: 1px solid #333; font-size: 12px;
+    z-index: 100;
+  }
+  .panel label { display: flex; align-items: center; gap: 6px; color: #b8ac97; }
+  .panel input[type=number] { width: 74px; background: #111; color: #ffd479; border: 1px solid #3a3a3a; border-radius: 5px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+  .panel .hint { color: #6d6459; margin-left: auto; }
+
+  /* ---- 舞台（对齐 .mw-stage：relative + overflow hidden + 容器查询锚） ---- */
+  .mw-stage {
+    position: relative; flex: 1; min-height: 0; overflow: hidden;
+    container: mw-stage / size;
+  }
+
+  /* ---- 展示架墙（对齐 .mw-grid--shelf 背板 + 抽出） ---- */
+  .mw-grid--shelf {
+    --mw-plank-h: 19px; --mw-pull-up: 14%; --mw-pull-scale: 1.06;
+    position: absolute; inset: 0; overflow-y: auto; padding: 44px clamp(16px, 4vw, 48px) 60px;
+    display: grid; gap: 68px 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background:
+      radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.10), transparent 55%),
+      radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
+      repeating-linear-gradient(90deg, rgba(255, 226, 180, 0.02) 0 2px, rgba(0,0,0,0) 2px 7px),
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.012) 0 14px, rgba(0,0,0,0) 14px 28px),
+      linear-gradient(180deg, #1b1511, #241b14 45%, #120d09);
+  }
+  .mw-shelf-card { position: relative; cursor: pointer; }
+  .mw-shelf-slot { position: relative; aspect-ratio: 1 / 1; }
+  .mw-shelf-slot::after {
+    content: ""; position: absolute; left: -1px; right: -1px;
+    bottom: calc(var(--mw-plank-h) * -1 + 2px); height: var(--mw-plank-h); z-index: 3;
+    background:
+      linear-gradient(rgba(255,238,208,0.2), rgba(255,200,140,0.04) 28%, rgba(0,0,0,0.18) 55%, rgba(0,0,0,0.5) 82%, rgba(0,0,0,0.62)),
+      repeating-linear-gradient(180deg, rgba(255,226,180,0.1) 0 2px, rgba(0,0,0,0) 2px 6px, rgba(0,0,0,0.2) 6px 8px, rgba(0,0,0,0) 8px 13px),
+      linear-gradient(180deg, #6b4830, #4e311d 55%, #37220f);
+    box-shadow: 0 14px 22px rgba(0,0,0,0.65), 0 3px 5px rgba(0,0,0,0.7), inset 0 -2px 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,226,180,0.25);
+  }
+  .mw-shelf-jacket {
+    position: absolute; left: 6%; right: 6%; bottom: calc(var(--mw-plank-h) - 4px);
+    aspect-ratio: 1 / 1; border-radius: 3px; overflow: hidden; background: #26222a; z-index: 4;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), inset 7px 0 9px -8px rgba(0,0,0,0.95), 4px 5px 10px rgba(0,0,0,0.6);
+    transform-origin: bottom center;
+    transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
+    will-change: transform;
+  }
+  .mw-shelf-jacket svg { width: 100%; height: 100%; display: block; }
+  .mw-shelf-card:hover .mw-shelf-jacket {
+    transform: translateY(calc(var(--mw-pull-up) * -1)) scale(var(--mw-pull-scale));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 -10px 44px rgba(255,214,140,0.2), 0 26px 34px rgba(0,0,0,0.65), 0 8px 12px rgba(0,0,0,0.5);
+  }
+
+  /* ============ Gatefold 开盒（复制自 shelf.css .mw-gf__*） ============ */
+  .mw-shelf-detail {
+    position: absolute; inset: 0; z-index: 20; display: grid; place-items: center;
+    perspective: var(--perspective); perspective-origin: 50% 42%; visibility: hidden;
+  }
+  .mw-shelf-detail.is-shown { visibility: visible; }
+  .mw-gf__scrim {
+    position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease;
+    background:
+      radial-gradient(120% 90% at 50% 40%, rgba(10,7,4,0.62), rgba(6,4,2,0.9) 82%),
+      linear-gradient(180deg, #1a1410, #0e0a06);
+  }
+  .mw-shelf-detail.is-shown .mw-gf__scrim { opacity: 1; }
+
+  .mw-gf__book {
+    position: relative; width: min(92cqw, 176cqh, 1480px); aspect-ratio: 2 / 1;
+    transform-style: preserve-3d; pointer-events: auto;
+    filter: drop-shadow(0 30px 44px rgba(0, 0, 0, 0.7));
+  }
+  .mw-gf__panel { position: absolute; top: 0; bottom: 0; width: 50%; transform-style: preserve-3d; }
+  .mw-gf__panel--left { left: 0; transform-origin: right center; transform: rotateY(180deg); }
+  .mw-gf__panel--right { right: 0; transform-origin: left center; transform: rotateY(0deg); }
+  .mw-shelf-detail.is-open .mw-gf__panel--left { transform: rotateY(7deg); }
+  .mw-shelf-detail.is-open .mw-gf__panel--right { transform: rotateY(-6deg); }
+
+  .mw-gf__face {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border-radius: 4px; overflow: hidden;
+  }
+  .mw-gf__face--cover, .mw-gf__face--back { transform: rotateY(180deg); }
+
+  /* 封面页（闭合态外观） */
+  .mw-gf__face--cover {
+    background: #26222a; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), inset 7px 0 9px -8px rgba(0,0,0,0.95);
+  }
+  .mw-gf__face--cover svg { width: 100%; height: 100%; display: block; }
+
+  /* 封底（纸纹 + 书脊折光） */
+  .mw-gf__face--back {
+    background:
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0 14px, rgba(0,0,0,0) 14px 28px),
+      linear-gradient(180deg, #241c15, #17100a);
+    box-shadow: inset 0 0 0 1px rgba(255,226,180,0.06);
+  }
+
+  /* ---- 左页信息面 ---- */
+  .mw-gf__face--info {
+    display: flex; flex-direction: column; min-height: 0; padding: clamp(12px, 3.4cqw, 30px);
+    color: #e6dcc9; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    background:
+      radial-gradient(130% 70% at 50% -8%, rgba(255,198,130,0.08), transparent 55%),
+      repeating-linear-gradient(90deg, rgba(255,226,180,0.02) 0 2px, rgba(0,0,0,0) 2px 7px),
+      linear-gradient(180deg, #221a13, #170f09);
+    box-shadow: inset -18px 0 26px -20px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(255,226,180,0.08);
+  }
+  .mw-gf__bar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .mw-gf__tool, .mw-gf__close {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; border: 1px solid transparent; background: transparent; color: #cfc4b2;
+    cursor: pointer; user-select: none; font-size: 15px;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .mw-gf__tool:hover, .mw-gf__close:hover { color: #fff; border-color: rgba(255,226,180,0.3); background: rgba(255,226,180,0.08); }
+  .mw-gf__tools { display: flex; gap: 4px; }
+  /* 原型用文字代替图标钮：放宽定宽防两字竖排（插件内为 SVG 图标，无此问题） */
+  .mw-gf__tools .mw-gf__tool { width: auto; min-width: 32px; padding: 0 8px; font-size: 12px; }
+  .mw-gf__tool--danger:hover { color: #ff97a2; border-color: rgba(233,72,88,0.45); background: rgba(233,72,88,0.14); }
+  .mw-gf__meta { margin-top: clamp(10px, 2.4cqw, 22px); flex-shrink: 0; min-width: 0; }
+  .mw-gf__name { font-size: clamp(1em, 2.4cqw, 1.6em); font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mw-gf__artist, .mw-gf__year { margin-top: 3px; font-size: clamp(0.78em, 1.6cqw, 0.95em); color: #c9b8a2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mw-gf__year { color: #a89a86; font-variant-numeric: tabular-nums; }
+  .mw-gf__tracks {
+    margin-top: clamp(10px, 2cqw, 18px); padding-top: clamp(8px, 1.6cqw, 12px);
+    border-top: 1px solid rgba(255,226,180,0.14); flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  .mw-gf__tracks::-webkit-scrollbar { width: 8px; }
+  .mw-gf__tracks::-webkit-scrollbar-thumb { background: rgba(255,226,180,0.18); border-radius: 4px; }
+  .mw-gf__track {
+    display: flex; align-items: baseline; gap: 12px; padding: 6px;
+    border-bottom: 1px solid rgba(255,226,180,0.07); font-size: clamp(0.72em, 1.5cqw, 0.88em);
+  }
+  .mw-gf__track:hover { background: rgba(255,226,180,0.06); }
+  .mw-gf__trackNo { flex: 0 0 auto; color: #a89a86; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+  .mw-gf__trackName { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mw-gf__trackDur { flex: 0 0 auto; color: #a89a86; font-variant-numeric: tabular-nums; }
+
+  /* 内容错峰淡入：动画起始隐藏，JS 用 WAAPI 逐项显示 */
+  .mw-gf__stagger { opacity: 0; }
+
+  /* ---- 右页盘托面 ---- */
+  .mw-gf__face--tray {
+    display: block;
+    background:
+      radial-gradient(120% 70% at 50% -8%, rgba(255,198,130,0.07), transparent 55%),
+      linear-gradient(180deg, #241b13, #150e08);
+    box-shadow: inset 18px 0 26px -20px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(255,226,180,0.08);
+    overflow: visible;
+  }
+  .mw-gf__face--tray::before {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 84%; aspect-ratio: 1 / 1;
+    transform: translate(-50%, -52%); border-radius: 50%;
+    background: radial-gradient(circle at 50% 42%, #120c07, #1d150e 70%, #241a11);
+    box-shadow: inset 0 6px 16px rgba(0,0,0,0.85), inset 0 -2px 0 rgba(255,226,180,0.07), 0 0 0 2px rgba(0,0,0,0.4);
+  }
+  .mw-gf__discwrap { position: absolute; top: 50%; left: 50%; width: 78%; aspect-ratio: 1 / 1; transform: translate(-50%, -52%); cursor: pointer; }
+  .mw-gf__discface { position: absolute; inset: 0; transition: transform 0.3s var(--ease), opacity 0.2s; will-change: transform; }
+  .mw-gf__discface.is-hidden { opacity: 0; transform: rotateY(90deg); pointer-events: none; }
+  .mw-gf__discwrap:hover .mw-gf__discface:not(.is-hidden) { transform: translateX(20%) rotate(-4deg); }
+
+  /* 盘片（近似 vinyl.css / cd.css） */
+  .discplate { position: absolute; inset: 0; border-radius: 50%; }
+  .discplate .label { position: absolute; border-radius: 50%; overflow: hidden; }
+  .discplate .hole { position: absolute; top: 50%; left: 50%; border-radius: 50%; background: #0e0e0e; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px rgba(255,255,255,0.12), inset 0 0 4px rgba(0,0,0,0.9); }
+  .discplate--vinyl {
+    background:
+      conic-gradient(from 210deg, rgba(255,255,255,0.16) 0deg, transparent 26deg 152deg, rgba(255,255,255,0.12) 180deg, transparent 208deg 332deg, rgba(255,255,255,0.16) 360deg),
+      repeating-radial-gradient(circle at 50% 50%, #141414 0px, #1f1f1f 1.5px, #0b0b0b 2.6px, #1a1a1a 3.4px);
+    box-shadow: 0 10px 26px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(255,255,255,0.07), inset 0 0 40px rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .discplate--vinyl .label { width: 46%; height: 46%; box-shadow: 0 0 0 3px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.08); }
+  .discplate--vinyl .hole { width: 4.5%; height: 4.5%; }
+  .discplate--cd {
+    background:
+      conic-gradient(from 40deg, rgba(255,130,170,0.5), rgba(150,190,255,0.5), rgba(150,255,200,0.5), rgba(255,235,150,0.5), rgba(255,130,170,0.5)),
+      repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.28) 0 1px, rgba(120,125,140,0.16) 1px 2.6px),
+      radial-gradient(circle at 50% 50%, #fbfbfd 0 30%, #d6d9df 44%, #eef0f4 58%, #c3c7d1 74%, #dfe2e8 88%, #a9adba 100%);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.65), inset 0 0 30px rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .discplate--cd .label { width: 62%; height: 62%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); }
+  .discplate--cd .hole { width: 12%; height: 12%; box-shadow: 0 0 0 3px rgba(255,255,255,0.75), inset 0 0 4px rgba(0,0,0,0.85); }
+  .mw-gf__discwrap:hover .discplate { animation: mw-spin 4.5s linear infinite; }
+  .mw-gf__discwrap:hover .discplate--cd { animation-duration: 6.5s; }
+  @keyframes mw-spin { to { transform: rotate(360deg); } }
+
+  /* 盘片样式切换钮 */
+  .mw-gf__swap {
+    position: absolute; left: 50%; bottom: 4%; transform: translateX(-50%); display: flex; gap: 2px;
+    padding: 2px; border-radius: 999px; border: 1px solid rgba(255,226,180,0.22); background: rgba(18,12,7,0.72); z-index: 2;
+  }
+  .mw-gf__swap button { padding: 2px 12px; border: 0; border-radius: 999px; background: transparent; color: #a89a86; font-size: 0.72em; cursor: pointer; }
+  .mw-gf__swap button.is-active { background: rgba(255,214,140,0.16); color: #fff2dc; }
+
+  /* ---- 窄容器：禁用 3D，上下堆叠 ---- */
+  @container mw-stage (max-width: 640px) {
+    .mw-shelf-detail { perspective: none; }
+    .mw-gf__book { width: 92cqw; height: 92cqh; aspect-ratio: auto; display: flex; flex-direction: column; gap: 10px; filter: none; }
+    .mw-gf__panel { position: relative; inset: auto; width: auto; transform: none !important; }
+    .mw-gf__panel--left { flex: 1 1 auto; min-height: 0; }
+    .mw-gf__panel--right { flex: 0 0 auto; width: 100%; max-height: 46%; aspect-ratio: 1 / 1; align-self: center; }
+    .mw-gf__panel--right .mw-gf__face { position: absolute; }
+    .mw-gf__face--cover, .mw-gf__face--back { display: none; }
+    .mw-gf__face--info { box-shadow: inset 0 0 0 1px rgba(255,226,180,0.12); }
+  }
+
+  /* ---- 减少动效 ---- */
+  @media (prefers-reduced-motion: reduce) {
+    .mw-gf__scrim, .mw-gf__discface { transition: none; }
+    .mw-gf__discwrap:hover .mw-gf__discface:not(.is-hidden) { transform: none; }
+    .mw-gf__discwrap:hover .discplate { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <label>perspective <input id="pPersp" type="number" value="1700" step="100"></label>
+    <label>推镜 ms <input id="pPush" type="number" value="460" step="20"></label>
+    <label>开盒 ms <input id="pOpen" type="number" value="640" step="20"></label>
+    <label>入戏倾角 ° <input id="pTilt" type="number" value="-14" step="1"></label>
+    <span class="hint">点唱片 → 完整时间线；✕ / Esc / 点背板 → 反向收盒回位。头部带 #auto 可直出终态截图。</span>
+  </div>
+
+  <div class="mw-stage">
+    <div class="mw-grid--shelf" id="grid"><!-- JS 填充唱片卡 --></div>
+
+    <!-- ---- 开盒详情 overlay ---- -->
+    <div class="mw-shelf-detail" id="detail">
+      <div class="mw-gf__scrim" data-close></div>
+      <div class="mw-gf__book" id="book">
+        <!-- 左页：正面信息页 / 背面封面 -->
+        <div class="mw-gf__panel mw-gf__panel--left" id="panelL">
+          <div class="mw-gf__face mw-gf__face--info" id="faceInfo">
+            <div class="mw-gf__bar mw-gf__stagger">
+              <button class="mw-gf__close" data-close title="关闭">✕</button>
+              <div class="mw-gf__tools">
+                <button class="mw-gf__tool" data-act="link" title="复制链接">链接</button>
+                <button class="mw-gf__tool" data-act="move" title="迁移">迁移</button>
+                <button class="mw-gf__tool mw-gf__tool--danger" data-act="del" title="删除">删除</button>
+              </div>
+            </div>
+            <div class="mw-gf__meta mw-gf__stagger">
+              <div class="mw-gf__name" id="gName">范特西</div>
+              <div class="mw-gf__artist" id="gArtist">周杰伦</div>
+              <div class="mw-gf__year" id="gYear">2001</div>
+            </div>
+            <div class="mw-gf__tracks mw-gf__stagger" id="gTracks"><!-- JS --></div>
+          </div>
+          <div class="mw-gf__face mw-gf__face--cover" id="faceCover"><!-- JS 注入封面 SVG --></div>
+        </div>
+        <!-- 右页：正面盘托 / 背面封底 -->
+        <div class="mw-gf__panel mw-gf__panel--right" id="panelR">
+          <div class="mw-gf__face mw-gf__face--tray">
+            <div class="mw-gf__discwrap" id="discwrap">
+              <div class="mw-gf__discface" data-kind="vinyl"><div class="discplate discplate--vinyl"><div class="label"></div><div class="hole"></div></div></div>
+              <div class="mw-gf__discface is-hidden" data-kind="cd"><div class="discplate discplate--cd"><div class="label"></div><div class="hole"></div></div></div>
+            </div>
+            <div class="mw-gf__swap"><button data-kind="vinyl" class="is-active">黑胶</button><button data-kind="cd">CD</button></div>
+          </div>
+          <div class="mw-gf__face mw-gf__face--back"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+  // ---- 内联 SVG 封面占位（不引外部资源）----
+  function coverSVG(i) {
+    const hues = [[42, 96], [300, 70], [160, 60], [12, 80], [210, 65], [58, 85], [270, 55], [190, 70], [330, 60]];
+    const [h, s] = hues[i % hues.length];
+    const c1 = `hsl(${h} ${s}% 58%)`, c2 = `hsl(${(h + 40) % 360} ${s}% 26%)`;
+    const svg =
+      `<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">` +
+      `<defs><linearGradient id="g${i}" x1="0" y1="0" x2="1" y2="1">` +
+      `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>` +
+      `<rect width="100" height="100" fill="url(#g${i})"/>` +
+      `<circle cx="70" cy="32" r="16" fill="rgba(255,255,255,0.18)"/>` +
+      `<text x="8" y="92" font-family="system-ui" font-size="9" fill="rgba(255,255,255,0.85)">ALBUM ${String(i + 1).padStart(2, "0")}</text>` +
+      `</svg>`;
+    return svg;
+  }
+
+  const ALBUMS = [
+    { name: "范特西", artist: "周杰伦", year: "2001" },
+    { name: "七里香", artist: "周杰伦", year: "2004" },
+    { name: "叶惠美", artist: "周杰伦", year: "2003" },
+    { name: "Jay", artist: "周杰伦", year: "2000" },
+    { name: "八度空间", artist: "周杰伦", year: "2005" },
+    { name: "跨时代", artist: "周杰伦", year: "2010" },
+    { name: "惊叹号", artist: "周杰伦", year: "2011" },
+    { name: "哎呦不错哦", artist: "周杰伦", year: "2014" },
+    { name: "最伟大的作品", artist: "周杰伦", year: "2022" },
+  ];
+
+  // ---- 建卡（3×3，纵向滚动演示居中/回位）----
+  const grid = $("#grid");
+  ALBUMS.forEach((a, i) => {
+    const card = document.createElement("div");
+    card.className = "mw-shelf-card";
+    card.dataset.index = i;
+    card.innerHTML = `<div class="mw-shelf-slot"><div class="mw-shelf-jacket">${coverSVG(i)}</div></div>`;
+    card.addEventListener("click", () => openGatefold(i, card));
+    grid.appendChild(card);
+  });
+
+  const detail = $("#detail"), book = $("#book"),
+        panelL = $("#panelL"), panelR = $("#panelR"),
+        faceCover = $("#faceCover");
+  let busy = false, seq = 0, savedScroll = 0, activeCard = null;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const P = { persp: 1700, push: 460, open: 640, tilt: -14 };
+
+  function readParams() {
+    P.persp = +$("#pPersp").value || 1700;
+    P.push = +$("#pPush").value || 460;
+    P.open = +$("#pOpen").value || 640;
+    P.tilt = +$("#pTilt").value;
+    detail.style.setProperty("--perspective", P.persp + "px");
+  }
+  $$(".panel input").forEach(inp => inp.addEventListener("input", readParams));
+  readParams();
+
+  function fillAlbum(i) {
+    const a = ALBUMS[i];
+    $("#gName").textContent = a.name;
+    $("#gArtist").textContent = a.artist;
+    $("#gYear").textContent = a.year;
+    faceCover.innerHTML = coverSVG(i);
+    $$(".discplate .label").forEach(l => { l.innerHTML = coverSVG(i); });
+    const tracks = $("#gTracks");
+    tracks.innerHTML = "";
+    for (let t = 1; t <= 8; t++) {
+      const dur = `${3 + (i % 3)}:${String((t * 7 + i * 3) % 60).padStart(2, "0")}`;
+      const row = document.createElement("div");
+      row.className = "mw-gf__track";
+      row.innerHTML =
+        `<span class="mw-gf__trackNo">Track-${String(t).padStart(2, "0")}</span>` +
+        `<span class="mw-gf__trackName">${a.name} · 第 ${t} 首</span>` +
+        `<span class="mw-gf__trackDur">${dur}</span>`;
+      tracks.appendChild(row);
+    }
+  }
+
+  // FLIP：从卡片矩形（First）反推到 book 终态（Last）
+  function flipFrom(card) {
+    const first = card.querySelector(".mw-shelf-jacket").getBoundingClientRect();
+    book.style.transform = "none";
+    const last = book.getBoundingClientRect();
+    const coverW = last.width / 2, coverH = last.height;
+    const coverCx = last.left + coverW * 1.5, coverCy = last.top + coverH / 2;
+    const sx = first.width / coverW, sy = first.height / coverH;
+    const tx = first.left + first.width / 2 - coverCx;
+    const ty = first.top + first.height / 2 - coverCy;
+    book.style.transformOrigin = "75% 50%";
+    return { transform: `translate(${tx}px, ${ty}px) scale(${sx}, ${sy}) rotateY(0deg)` };
+  }
+
+  function setStaggerVisible(on) {
+    $$(".mw-gf__stagger").forEach(el => { el.style.opacity = on ? "1" : ""; });
+  }
+
+  // ---- 打开时间线 ----
+  async function openGatefold(i, card) {
+    if (busy) return; busy = true;
+    const my = ++seq;
+    activeCard = card;
+    savedScroll = grid.scrollTop;
+    fillAlbum(i);
+
+    if (reduced) {
+      card.scrollIntoView({ block: "center" });
+      setStaggerVisible(true);
+      detail.classList.add("is-shown", "is-open");
+      book.style.transform = "none";
+      busy = false; return;
+    }
+
+    // ① 平移 + scrim 淡入
+    detail.classList.add("is-shown");
+    setStaggerVisible(false);
+    grid.scrollTo({ top: card.offsetTop + card.offsetHeight / 2 - grid.clientHeight / 2, behavior: "smooth" });
+    await wait(220);
+    if (my !== seq) { busy = false; return; }
+
+    // ② 推镜 FLIP（闭合盒：卡片矩形 → 中央 + 入戏倾角）
+    const inv = flipFrom(card);
+    const pushAnim = book.animate(
+      [{ transform: inv.transform }, { transform: `translate(0px,0px) scale(1,1) rotateY(${P.tilt}deg)` }],
+      { duration: P.push, easing: "cubic-bezier(0.22,1,0.36,1)", fill: "forwards" }
+    );
+    await pushAnim.finished;
+    if (my !== seq) { busy = false; return; }
+    book.style.transform = "";
+    book.style.transformOrigin = "";
+
+    // ③ 开盒（左 180→7，右 0→-6，书脊为轴；盘片从封套底部抽出）
+    detail.classList.add("is-open");
+    const ease = "cubic-bezier(0.22,1,0.36,1)";
+    const bookAnim = book.animate([{ transform: `rotateY(${P.tilt}deg)` }, { transform: "rotateY(0deg)" }], { duration: P.open, easing: ease, fill: "none" });
+    const leftAnim = panelL.animate([{ transform: "rotateY(180deg)" }, { transform: "rotateY(7deg)" }], { duration: P.open, easing: ease, fill: "none" });
+    const rightAnim = panelR.animate([{ transform: "rotateY(0deg)" }, { transform: "rotateY(-6deg)" }], { duration: P.open, easing: ease, fill: "none" });
+    const staggerEls = $$(".mw-gf__stagger");
+    staggerEls.forEach((el, k) => {
+      el.style.opacity = "1";
+      el.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "translateY(0px)" }],
+        { duration: 360, delay: 240 + k * 90, easing: ease, fill: "backwards" });
+    });
+    await Promise.all([bookAnim.finished, leftAnim.finished, rightAnim.finished]);
+    if (my === seq) busy = false;
+  }
+
+  // ---- 收盒时间线（反向） ----
+  async function closeGatefold() {
+    if (busy || !detail.classList.contains("is-shown")) return;
+    busy = true;
+    const my = ++seq;
+    const ease = "cubic-bezier(0.22,1,0.36,1)";
+
+    if (reduced) {
+      detail.classList.remove("is-open", "is-shown");
+      setStaggerVisible(true);
+      if (activeCard) activeCard.scrollIntoView({ block: "center" });
+      grid.scrollTop = savedScroll;
+      busy = false; return;
+    }
+
+    // 收盒：右→左页关 + 书脊立起
+    const bookAnim = book.animate([{ transform: "rotateY(0deg)" }, { transform: `rotateY(${P.tilt}deg)` }], { duration: P.open, easing: ease, fill: "forwards" });
+    const leftAnim = panelL.animate([{ transform: "rotateY(7deg)" }, { transform: "rotateY(180deg)" }], { duration: P.open, easing: ease, fill: "forwards" });
+    const rightAnim = panelR.animate([{ transform: "rotateY(-6deg)" }, { transform: "rotateY(0deg)" }], { duration: P.open, easing: ease, fill: "forwards" });
+    await Promise.all([leftAnim.finished, rightAnim.finished]);
+    if (my !== seq) { busy = false; return; }
+    [bookAnim, leftAnim, rightAnim].forEach(a => a.cancel());
+    detail.classList.remove("is-open");
+    setStaggerVisible(true);
+
+    // 回撤 FLIP：中央盒 → 卡片矩形
+    if (activeCard) {
+      const inv = flipFrom(activeCard);
+      const retreat = book.animate([{ transform: `translate(0px,0px) scale(1,1) rotateY(${P.tilt}deg)` }, { transform: inv.transform }], { duration: P.push, easing: ease, fill: "none" });
+      await retreat.finished;
+      if (my !== seq) { busy = false; return; }
+    }
+    book.style.transform = ""; book.style.transformOrigin = "";
+
+    // ④ 恢复进入前 scrollTop + 相机回撤
+    detail.classList.remove("is-shown");
+    grid.scrollTo({ top: savedScroll, behavior: "smooth" });
+    activeCard = null;
+    await wait(260);
+    if (my === seq) busy = false;
+  }
+
+  // ---- 交互接线 ----
+  $$("[data-close]").forEach(el => el.addEventListener("click", closeGatefold));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeGatefold(); });
+  $$(".mw-gf__tool").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    const map = { link: "复制链接", move: "迁移", del: "删除（原型仅提示）" };
+    console.log("[gatefold-proto] tool:", b.dataset.act, "→", map[b.dataset.act]);
+    if (b.dataset.act === "del" || b.dataset.act === "move") closeGatefold(); // 模拟：动作后自动退出，验证重进不卡死
+  }));
+  $("#discwrap").addEventListener("click", () => console.log("[gatefold-proto] playAlbum(整张)"));
+  $$(".mw-gf__swap button").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    const kind = b.dataset.kind;
+    $$(".mw-gf__swap button").forEach(x => x.classList.toggle("is-active", x === b));
+    $$(".mw-gf__discface").forEach(f => f.classList.toggle("is-hidden", f.dataset.kind !== kind));
+  }));
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ---- #auto：直出开盒终态供无头截图 ----
+  if (location.hash.includes("auto")) {
+    const card = grid.children[1];
+    fillAlbum(1);
+    setStaggerVisible(true);
+    detail.classList.add("is-shown", "is-open");
+    book.style.transform = "none";
+    // 让 FLIP/倾角终态与 CSS 对齐：面板由 is-open 决定 7/-6
+    activeCard = card; savedScroll = 0; busy = false;
+  }
+})();
+</script>
+</body>
+</html>

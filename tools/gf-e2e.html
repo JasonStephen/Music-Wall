@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>gf-e2e</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: #211c18; }
+  /* 固定舞台：520px 高保证架子可滚动（相机平移/回位可测） */
+  #mount { width: 1180px; height: 520px; margin: 0 auto; }
+  #mount .mw-view { height: 100%; }
+  /* 模拟 Obsidian/主题对裸 <button> 的默认样式（类级特异性，与真实主题一致）：
+     插件的图标钮重置必须压过它 */
+  .mw-view button {
+    background-color: #eef0f4;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.25);
+    border: 1px solid #d8dbe2;
+    padding: 6px 14px;
+    border-radius: 6px;
+    min-height: 30px;
+    color: #222;
+  }
+  #result {
+    position: fixed; right: 8px; top: 8px; z-index: 99999;
+    background: #14100c; color: #eee; font: 15px/1.8 Consolas, monospace;
+    padding: 10px 12px; max-width: 640px; max-height: 80vh; overflow: auto;
+    border: 2px solid #666; border-radius: 8px;
+  }
+  #result .ok { color: #8fd98f; }
+  #result .bad { color: #ff9090; }
+</style>
+</head>
+<body>
+<div id="mount"></div>
+<div id="result">running…</div>
+<script src="./gf-e2e.bundle.js"></script>
+</body>
+</html>

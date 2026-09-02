@@ -1,6 +1,7 @@
 ﻿// 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
 // FileView 基类负责 file 绑定/切换/重命名刷标题/导航历史，本类只管加载与渲染；
-// 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + ⋯ 菜单 + 外部修改自动刷新。
+// 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + ⋯ 菜单 + 外部修改自动刷新；
+// 展示架布局点唱片 = 推镜 + 3D 开盒（gatefold）详情。
 
 import {
   FileView,
@@ -10,6 +11,7 @@ import {
   TFile,
   WorkspaceLeaf,
   normalizePath,
+  setIcon,
 } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
@@ -57,6 +59,100 @@ function decadeOf(y?: string): string {
 function fmtDur(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** 数值防御：mock 环境 rect/滚动量可能不是数字 */
+function num(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** DOMRect 中心点；非真实 rect（mock 代理等）返回 null */
+function rectCenter(r: DOMRect | null | undefined): { x: number; y: number; w: number } | null {
+  if (!r) return null;
+  const a = (r as { left?: unknown }).left;
+  const w = (r as { width?: unknown }).width;
+  const h = (r as { height?: unknown }).height;
+  if (typeof a !== "number" || typeof w !== "number" || typeof h !== "number") return null;
+  return { x: r.left + w / 2, y: r.top + h / 2, w };
+}
+
+/** 开盒/收盒统一缓动（WAAPI 字符串 + JS 补间共用同一组参数） */
+const GF_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const GF_NEUTRAL = "translate(0px, 0px) scale(1) rotateY(0deg)";
+
+/** cubic-bezier 求值（标准 Newton 迭代），供 scrollTop 补间与 WAAPI 对拍 */
+function gfBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const sx = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const sy = (t: number) => ((ay * t + by) * t + cy) * t;
+  return (x: number) => {
+    const clamped = Math.min(1, Math.max(0, x));
+    let t = clamped;
+    for (let i = 0; i < 6; i++) {
+      const dx = (3 * ax * t + 2 * bx) * t + cx;
+      if (Math.abs(dx) < 1e-6) break;
+      t -= (sx(t) - clamped) / dx;
+    }
+    return sy(t);
+  };
+}
+const gfEase = gfBezier(0.22, 1, 0.36, 1);
+
+function gfPoseStr(p: { dx: number; dy: number; s: number }, tilt = -14): string {
+  return `translate(${p.dx}px, ${p.dy}px) scale(${p.s}) rotateY(${tilt}deg)`;
+}
+
+/** 使卡片居中所需的目标 scrollTop（含边界钳制） */
+function gfCenterScrollTop(grid: HTMLElement, card: HTMLElement): number {
+  const ch = num((grid as unknown as { clientHeight?: unknown }).clientHeight);
+  const sh = num((grid as unknown as { scrollHeight?: unknown }).scrollHeight);
+  const gridTop = num(grid.getBoundingClientRect?.()?.top);
+  const r = card.getBoundingClientRect?.();
+  const cardCenter = num(r?.top) + num(r?.height) / 2 - gridTop;
+  const delta = cardCenter - ch / 2;
+  const max = Math.max(0, sh - ch);
+  return Math.min(max, Math.max(0, num(grid.scrollTop) + delta));
+}
+
+/** scrollTop 补间：与盒子飞回同缓动同时长（相机回撤对拍）。
+ *  用 16ms 定时器而非 rAF 驱动：rAF 在无头/后台页不产帧时永不触发 */
+function panScrollTo(
+  el: HTMLElement,
+  to: number,
+  duration: number
+): { done: Promise<void>; cancel: () => void } {
+  const from = num(el.scrollTop);
+  let timer = 0;
+  let resolveDone!: () => void;
+  const done = new Promise<void>((r) => (resolveDone = r));
+  const cancel = () => {
+    window.clearTimeout(timer);
+    resolveDone();
+  };
+  if (
+    Number.isFinite(from) &&
+    Number.isFinite(to) &&
+    Math.abs(to - from) >= 0.5 &&
+    duration > 0
+  ) {
+    const t0 = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - t0) / duration);
+      el.scrollTop = Math.round(from + (to - from) * gfEase(t));
+      if (t < 1) timer = window.setTimeout(step, 16);
+      else resolveDone();
+    };
+    timer = window.setTimeout(step, 16);
+  } else {
+    el.scrollTop = to;
+    resolveDone();
+  }
+  return { done, cancel };
 }
 
 export class MusicWallView extends FileView implements WallHost {
@@ -118,7 +214,7 @@ export class MusicWallView extends FileView implements WallHost {
         }
       })
     );
-    // 展示架场景内详情：Esc 返回展示架
+    // 开盒详情内：Esc 返回展示架
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
       if (e.key === "Escape") this.closeShelfDetail();
     });
@@ -241,6 +337,8 @@ export class MusicWallView extends FileView implements WallHost {
 
   private async render(): Promise<void> {
     const root = this.contentEl;
+    // 场景动画句柄随 root 重建失效：先令牌失效 + cancel + 复位状态机
+    this.resetDetailState();
     // 重建会丢滚动位置（迁移/删除/样式切换等），先记后还
     const prevScroll = root.querySelector<HTMLElement>(".mw-grid")?.scrollTop ?? 0;
     root.empty();
@@ -263,7 +361,7 @@ export class MusicWallView extends FileView implements WallHost {
     this.renderGrid(grid);
     grid.scrollTop = prevScroll;
     if (layout === "shelf") {
-      // 场景内详情面板（懒填充）：点唱片从右滑入，整架左滑退场
+      // 开盒详情 overlay（懒填充）：点唱片推镜放大后绕书脊 3D 翻开
       stage.createDiv({ cls: "mw-shelf-detail" });
     }
   }
@@ -568,6 +666,7 @@ export class MusicWallView extends FileView implements WallHost {
   private buildShelfCard(item: WallItem): HTMLElement {
     const card = document.createElement("div");
     card.className = "mw-card mw-shelf-card";
+    card.dataset.mwAlbum = String(item.albumId);
 
     const slot = document.createElement("div");
     slot.className = "mw-shelf-slot";
@@ -771,160 +870,539 @@ export class MusicWallView extends FileView implements WallHost {
     }).open();
   }
 
-  // ---- 展示架：场景内详情（替代播放模态，仅 shelf 布局） ----
+  // ---- 展示架：开盒详情（推镜 + 3D gatefold，仅 shelf 布局，替代播放模态） ----
 
-  /** 场景切换动画句柄与防重入标志 */
+  /** 场景动画句柄（含 scrim/book/翻页/淡入/飞回），统一 cancel 用 */
   private detailAnims: Animation[] = [];
   private detailBusy = false;
+  /** 异步时序令牌：render 重建/中止时自增，使陈旧回调失效 */
+  private detailSeq = 0;
+  /** 进入详情前的架子滚动位（关闭时相机回撤目标） */
+  private detailPrevScroll = 0;
+  private detailOpen = false;
+  /** 会话级盘片面选择：null = 跟随墙级样式（cd 墙用 CD 面，其余黑胶面） */
+  private gfDisc: "vinyl" | "cd" | null = null;
+  /** 推镜位姿：封面页与架上封套的对齐参数（关闭时飞回的基准） */
+  private detailPose: { dx: number; dy: number; s: number } | null = null;
+  /** 开盒状态机：idle → preparing(滚动/建盒/测距) → animating(时间线) → open */
+  private gfPhase: "idle" | "preparing" | "animating" | "open" = "idle";
+  private gfTarget: "open" | "closed" = "closed";
+  /** 动画中点击其他唱片：排队，收完再开 */
+  private gfQueue: WallItem | null = null;
+  private gfClosing = false;
+  private gfBookAnim: Animation | null = null;
+  /** 翻页动画（无 delay，reverse 可从任意中间姿态平滑倒放） */
+  private gfPageAnims: Animation[] = [];
+  private gfPan: { done: Promise<void>; cancel: () => void } | null = null;
 
   private openShelfDetail(item: WallItem): void {
-    const stage = this.contentEl.querySelector(".mw-stage");
-    const detail = this.contentEl.querySelector(".mw-shelf-detail");
-    if (!stage || !detail || this.detailBusy) return;
-    if (detail.hasClass("is-open")) return;
-    this.retractAllShelf();
-    this.buildShelfDetail(detail as HTMLElement, item);
-    (detail as HTMLElement).addClass("is-open");
-    (stage as HTMLElement).addClass("is-detail");
-    this.runDetailTransition(stage as HTMLElement, detail as HTMLElement, true);
+    this.requestOpen(item);
   }
 
   private closeShelfDetail(): void {
-    const stage = this.contentEl.querySelector(".mw-stage");
-    const detail = this.contentEl.querySelector(".mw-shelf-detail");
-    if (!stage || !detail || this.detailBusy) return;
-    if (!detail.hasClass("is-open")) return;
-    this.runDetailTransition(stage as HTMLElement, detail as HTMLElement, false);
+    this.requestClose();
+  }
+
+  /** gfTarget 的读法走 getter：TS 无法跨方法追踪字段变更，直读会被收窄成常量 */
+  private get targetClosed(): boolean {
+    return this.gfTarget === "closed";
+  }
+
+  /** 点唱片：空闲即开；动画中/已开则排队，收完自动开新唱片 */
+  private requestOpen(item: WallItem): void {
+    if (this.gfPhase === "idle" && !this.gfClosing) {
+      void this.openSequence(item);
+      return;
+    }
+    this.gfQueue = item;
+    if (this.gfPhase === "open" && !this.gfClosing) void this.driveClose();
+  }
+
+  /** ✕/Esc/点空白：任意时刻可打断——从当前姿态平滑反向收盒，不硬切 */
+  private requestClose(): void {
+    if (this.gfPhase === "idle" || this.gfClosing) return;
+    this.gfTarget = "closed";
+    if (this.gfPhase === "preparing") return; // open 序列检查点自行中止
+    void this.driveClose();
   }
 
   /**
-   * 场景滑动切换：架子 ↔ 详情（WAAPI 强制驱动，不依赖 CSS transition，
-   * 避免 reduce-motion/主题导致硬切）；无 WAAPI 环境直接切状态。
+   * 开盒：卡片居中落位（自有补间）→ 建盒测距（基态闭合位姿）→
+   * scrim/推镜动画 + is-booting 钉住闭合 → 翻页动画（无 delay，支持 reverse 打断）
+   * → 内容错峰淡入。终态姿态由 CSS is-open 持有，动画保留到收盒时 reverse。
    */
-  private runDetailTransition(
-    stage: HTMLElement,
-    detail: HTMLElement,
-    opening: boolean
-  ): void {
-    const grid = stage.querySelector(".mw-grid--shelf") as HTMLElement | null;
-    if (!grid || typeof grid.animate !== "function") {
-      if (!opening) {
-        detail.removeClass("is-open");
-        stage.removeClass("is-detail");
-      }
+  private async openSequence(item: WallItem): Promise<void> {
+    const stage = this.contentEl.querySelector(".mw-stage") as HTMLElement | null;
+    const detail = this.contentEl.querySelector<HTMLElement>(".mw-shelf-detail");
+    if (!stage || !detail) return;
+    const seq = ++this.detailSeq;
+    this.gfPhase = "preparing";
+    this.gfTarget = "open";
+    this.gfQueue = null;
+    this.detailBusy = true;
+    this.detailOpen = false;
+    const live = () => seq === this.detailSeq;
+    this.retractAllShelf();
+    const grid = stage.querySelector<HTMLElement>(".mw-grid");
+    const card = this.contentEl.querySelector<HTMLElement>(
+      '.mw-shelf-card[data-mw-album="' + String(item.albumId) + '"]'
+    );
+    const jacket = card?.querySelector<HTMLElement>(".mw-shelf-jacket") ?? null;
+    this.detailPrevScroll = num(grid?.scrollTop);
+    // 相机平移：自有补间（与收盒回撤同一缓动系统），不依赖原生 smooth scrollIntoView
+    let pan: { done: Promise<void>; cancel: () => void } | null = null;
+    if (grid && card) {
+      const target = gfCenterScrollTop(grid, card);
+      pan = panScrollTo(grid, target, 380);
+      this.gfPan = pan;
+    }
+    if (pan) await pan.done.catch(() => undefined);
+    if (!live()) return;
+    if (this.targetClosed) {
+      this.abortOpen(detail, grid);
       return;
     }
-    this.detailBusy = true;
-    const ease = "cubic-bezier(0.22, 1, 0.36, 1)";
-    const D = 420;
-    const a1 = grid.animate(
-      [
-        { transform: opening ? "translateX(0%)" : "translateX(-100%)" },
-        { transform: opening ? "translateX(-100%)" : "translateX(0%)" },
-      ],
-      { duration: D, easing: ease, fill: "forwards" }
+    const built = this.buildGatefold(detail, item);
+    if (!live() || !built) {
+      if (live()) this.abortOpen(detail, grid);
+      return;
+    }
+    const narrow = num(stage.clientWidth) > 0 && num(stage.clientWidth) <= 640;
+    const instant = this.gatefoldInstant();
+    // 推镜测距：此刻未挂 is-open，面板处于 CSS 闭合位姿，封面页 rect 即屏幕上的封面。
+    // 封套 rect 须量"静置位姿"——点击时卡片处于 hover 抽出态（上浮+放大 6%），
+    // 直接量会把收盒落点带偏，故临时挂 mw-measure 钉回原位。
+    // 位移反解必须考虑 scale 以 book 中心为原点：封面中心偏在 book 右半（+W/4），
+    // 缩放会把封面中心拽回 (1−s)·W/4——不补偿则推镜起点与收盒落点都系统性左偏。
+    const pose: { dx: number; dy: number; s: number } | null = (() => {
+      const cover = built.book.querySelector<HTMLElement>(".mw-gf__face--cover");
+      const bc = rectCenter(built.book.getBoundingClientRect?.());
+      const cr = rectCenter(cover?.getBoundingClientRect?.());
+      card?.addClass("mw-measure");
+      const jr = rectCenter(jacket?.getBoundingClientRect?.());
+      card?.removeClass("mw-measure");
+      if (!bc || !cr || !jr || cr.w <= 0) return null;
+      const s = jr.w / cr.w;
+      return {
+        dx: jr.x - bc.x - s * (cr.x - bc.x),
+        dy: jr.y - bc.y - s * (cr.y - bc.y),
+        s,
+      };
+    })();
+    this.detailPose = pose;
+    const full = !instant && !narrow;
+    const anims: Animation[] = [];
+    let bootAnim: Animation | null = null;
+    // scrim 渐暗贯穿推镜+开盒全程，推镜期间架子保持可见
+    anims.push(
+      built.scrim.animate(
+        full ? [{ opacity: 0 }, { opacity: 0.55, offset: 0.42 }, { opacity: 1 }] : [{ opacity: 0 }, { opacity: 1 }],
+        { duration: full ? 1100 : 240, fill: "both" }
+      )
     );
-    const a2 = detail.animate(
-      [
-        { transform: opening ? "translateX(100%)" : "translateX(0%)" },
-        { transform: opening ? "translateX(0%)" : "translateX(100%)" },
-      ],
-      { duration: D, easing: ease, fill: "forwards" }
-    );
-    const old = this.detailAnims;
-    this.detailAnims = [a1, a2];
-    a2.addEventListener("finish", () => {
-      for (const a of old) a.cancel();
-      a1.cancel();
-      a2.cancel();
-      this.detailAnims = [];
-      this.detailBusy = false;
-      if (!opening) {
-        detail.removeClass("is-open");
-        stage.removeClass("is-detail");
+    if (full && pose) {
+      // 首帧先压到架上封套位姿，避免全尺寸盒子闪现；fill:both 结束后保持终点
+      built.book.style.transform = gfPoseStr(pose);
+      bootAnim = built.book.animate(
+        [{ transform: gfPoseStr(pose) }, { transform: GF_NEUTRAL }],
+        { duration: 460, easing: GF_EASE, fill: "both" }
+      );
+      anims.push(bootAnim);
+      this.gfBookAnim = bootAnim;
+    }
+    this.detailAnims = anims;
+    // Obsidian 的 addClass 不接受空格分隔多类字符串（整串当作一个 token 会抛
+    // InvalidCharacterError），必须逐个调用
+    detail.addClass("is-open");
+    if (full) detail.addClass("is-booting");
+    this.gfPhase = "animating";
+    if (bootAnim) await this.animWrap(bootAnim);
+    if (!live()) return;
+    if (this.targetClosed || this.gfQueue) {
+      await this.driveClose();
+      return;
+    }
+    // 推镜落位：摘 is-booting 同帧建翻页动画（首帧=闭合位姿，无缝衔接）
+    detail.removeClass("is-booting");
+    built.book.style.transform = "";
+    const pageAnims: Animation[] = [];
+    if (full) {
+      // 翻开：左页绕书脊 180°→0°（落定平面，保证旋转面内子元素可命中）；右页保持 0°
+      if (built.panelL) {
+        pageAnims.push(
+          built.panelL.animate([{ transform: "rotateY(180deg)" }, { transform: "rotateY(0deg)" }], {
+            duration: 640,
+            easing: GF_EASE,
+            fill: "both",
+          })
+        );
       }
+      const delays = [120, 240, 200, 320];
+      built.targets.forEach((el, k) => {
+        pageAnims.push(
+          el.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: 300,
+            delay: delays[k],
+            fill: "both",
+          })
+        );
+      });
+    }
+    this.gfPageAnims = pageAnims;
+    anims.push(...pageAnims);
+    await Promise.all(pageAnims.map((a) => this.animWrap(a))).catch(() => undefined);
+    if (!live()) return;
+    if (this.targetClosed || this.gfQueue) {
+      await this.driveClose();
+      return;
+    }
+    this.gfPhase = "open";
+    this.detailBusy = false;
+    this.detailOpen = true;
+  }
+
+  /**
+   * 收盒（串行可打断）：①合页——翻页动画 reverse() 从任意中间姿态平滑倒放，
+   * 内容/scrim 同步淡出；②缩小 + 相机回撤并行——盒子从当前位姿飞回架上封套
+   * （目标按滚回 prevScroll 后卡片应在的视口位修正），scrollTop 同缓动补间，
+   * 盒子精确落回原唱片。完成后按队列自动开下一张。
+   */
+  private async driveClose(): Promise<void> {
+    if (this.gfClosing) return;
+    this.gfClosing = true;
+    const seq = this.detailSeq;
+    const stage = this.contentEl.querySelector(".mw-stage") as HTMLElement | null;
+    const detail = this.contentEl.querySelector<HTMLElement>(".mw-shelf-detail");
+    const grid = stage?.querySelector<HTMLElement>(".mw-grid") ?? null;
+    const finish = () => {
+      this.gfClosing = false;
+    };
+    if (!stage || !detail || !grid) {
+      this.resetDetailState();
+      finish();
+      return;
+    }
+    const narrow = num(stage.clientWidth) > 0 && num(stage.clientWidth) <= 640;
+    if (this.gatefoldInstant()) {
+      this.snapShut(detail, grid);
+      finish();
+      return;
+    }
+    this.detailOpen = false;
+    this.detailBusy = true;
+    // ① 合页（推镜阶段翻页动画尚未创建，面板仍被 is-booting 钉在闭合姿态，直接跳到缩小）。
+    // 不用 reverse()：从当前姿态快照新建闭合动画——跨引擎行为一致，中途打断同样平滑。
+    if (this.gfPageAnims.length) {
+      const closers: Promise<unknown>[] = [];
+      const panelL = detail.querySelector<HTMLElement>(".mw-gf__panel--left");
+      if (panelL?.animate) {
+        const from =
+          typeof getComputedStyle === "function" ? getComputedStyle(panelL).transform : "none";
+        closers.push(
+          this.animWrap(
+            panelL.animate(
+              [{ transform: from === "none" ? "rotateY(180deg)" : from }, { transform: "rotateY(180deg)" }],
+              { duration: 420, easing: GF_EASE, fill: "forwards" }
+            )
+          )
+        );
+      }
+      const scrim = detail.querySelector<HTMLElement>(".mw-gf__scrim");
+      if (scrim?.animate) {
+        const from =
+          typeof getComputedStyle === "function" ? getComputedStyle(scrim).opacity : "1";
+        closers.push(
+          this.animWrap(
+            scrim.animate([{ opacity: from }, { opacity: 0 }], { duration: 280, fill: "forwards" })
+          )
+        );
+      }
+      for (const el of Array.from(
+        detail.querySelectorAll<HTMLElement>(
+          ".mw-gf__meta, .mw-gf__tracks, .mw-gf__discwrap, .mw-gf__swap"
+        )
+      )) {
+        closers.push(
+          this.animWrap(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: "forwards" }))
+        );
+      }
+      await Promise.all(closers).catch(() => undefined);
+      if (seq !== this.detailSeq) return finish();
+    }
+    // ② 缩小飞回 + 相机回撤（并行）
+    const book = detail.querySelector<HTMLElement>(".mw-gf__book");
+    if (narrow || !book?.animate) {
+      this.cancelAllDetailAnims();
+      detail.removeClass("is-open", "is-booting", "is-shutting");
+      detail.empty();
+      this.scrollGridBack(grid, "instant");
+      this.detailPose = null;
+      this.gfPhase = "idle";
+      this.detailBusy = false;
+      finish();
+    } else {
+      // 快照要在 cancel 之前：cancel 会让 computed 立刻回落到内联起始位姿
+      const from =
+        typeof getComputedStyle === "function" ? getComputedStyle(book).transform : "none";
+      try {
+        this.gfBookAnim?.cancel();
+      } catch {
+        /* 忽略 */
+      }
+      this.gfBookAnim = null;
+      const shrink = this.shrinkBack(grid, book, from);
+      this.detailAnims.push(shrink.anim);
+      this.gfPan = shrink.pan;
+      await Promise.all([this.animWrap(shrink.anim), shrink.pan.done]).catch(() => undefined);
+      if (seq !== this.detailSeq) return finish();
+      this.cancelAllDetailAnims();
+      detail.removeClass("is-open", "is-booting", "is-shutting");
+      this.clearGatefoldPose(detail);
+      detail.empty();
+      this.detailPose = null;
+      this.gfPhase = "idle";
+      this.detailBusy = false;
+      finish();
+    }
+    const next = this.gfQueue;
+    this.gfQueue = null;
+    if (next) void this.openSequence(next);
+  }
+
+  /** 盒子飞回架上封套位姿（420ms）+ scrollTop 同缓动补间（并行） */
+  private shrinkBack(
+    grid: HTMLElement,
+    book: HTMLElement,
+    from: string
+  ): { anim: Animation; pan: { done: Promise<void>; cancel: () => void } } {
+    const pose = this.detailPose ?? { dx: 0, dy: 0, s: 1 };
+    const s2 = num(grid.scrollTop);
+    // 目标 = 滚回 prevScroll 后封套应在的视口位（横移不变，纵移叠加滚动差）
+    const target = { dx: pose.dx, dy: pose.dy + (s2 - this.detailPrevScroll), s: pose.s };
+    const anim = book.animate(
+      // 落定姿态取 0° 倾角：-14° 入戏倾斜经透视投影会带来几像素落点偏差，落地须正
+      [{ transform: from === "none" ? GF_NEUTRAL : from }, { transform: gfPoseStr(target, 0) }],
+      { duration: 420, easing: GF_EASE, fill: "forwards" }
+    );
+    const pan = panScrollTo(grid, this.detailPrevScroll, 420);
+    return { anim, pan };
+  }
+
+  /** 开盒中止（滚动阶段被关闭）：静默复位到架子 */
+  private abortOpen(detail: HTMLElement, grid: HTMLElement | null): void {
+    this.cancelAllDetailAnims();
+    detail.removeClass("is-open", "is-booting", "is-shutting");
+    detail.empty();
+    this.clearGatefoldPose(detail);
+    this.scrollGridBack(grid, "instant");
+    this.detailPose = null;
+    this.gfPhase = "idle";
+    this.detailBusy = false;
+    this.detailOpen = false;
+  }
+
+  /** render 重建前的全套复位（动画句柄随旧 DOM 失效） */
+  private resetDetailState(): void {
+    this.detailSeq++;
+    this.cancelAllDetailAnims();
+    this.detailPose = null;
+    this.gfPhase = "idle";
+    this.gfTarget = "closed";
+    this.gfQueue = null;
+    this.gfClosing = false;
+    this.detailBusy = false;
+    this.detailOpen = false;
+  }
+
+  /** reduce-motion 或缺乏 WAAPI/几何可测环境：直接切状态 */
+  private gatefoldInstant(): boolean {
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const probe = this.contentEl;
+    return reduce || typeof probe.animate !== "function" || typeof probe.getBoundingClientRect !== "function";
+  }
+
+  /** 硬切关闭：无动画直接回到闭合骨架 */
+  private snapShut(detail: HTMLElement, grid: HTMLElement | null): void {
+    this.detailSeq++;
+    this.cancelAllDetailAnims();
+    detail.removeClass("is-open", "is-booting", "is-shutting");
+    detail.empty();
+    this.clearGatefoldPose(detail);
+    this.scrollGridBack(grid, "instant");
+    this.detailPose = null;
+    this.gfPhase = "idle";
+    this.gfTarget = "closed";
+    this.detailBusy = false;
+    this.detailOpen = false;
+  }
+
+  /** cancel 全部场景动画句柄（fill 终态随之释放，回落到 CSS 规则） */
+  private cancelAllDetailAnims(): void {
+    for (const a of this.detailAnims) {
+      try {
+        a.cancel();
+      } catch {
+        /* mock 环境句柄形状不定：忽略 */
+      }
+    }
+    this.detailAnims = [];
+    this.gfBookAnim = null;
+    this.gfPageAnims = [];
+    if (this.gfPan) {
+      this.gfPan.cancel();
+      this.gfPan = null;
+    }
+  }
+
+  /** 清掉盒子上的内联推镜 transform */
+  private clearGatefoldPose(detail: HTMLElement): void {
+    const book = detail.querySelector<HTMLElement>(".mw-gf__book");
+    if (book) book.style.transform = "";
+  }
+
+  /** 相机回撤：恢复进详情前的架子滚动位（snap/instant 路径用） */
+  private scrollGridBack(grid: HTMLElement | null, behavior: ScrollBehavior): void {
+    if (!grid) return;
+    try {
+      if (typeof grid.scrollTo === "function") {
+        grid.scrollTo({ top: this.detailPrevScroll, behavior });
+      } else {
+        grid.scrollTop = this.detailPrevScroll;
+      }
+    } catch {
+      grid.scrollTop = this.detailPrevScroll;
+    }
+  }
+
+  /** 动画完成等待：finished 优先；mock 代理缺 Promise 时回退 finish 事件；两路都无则立即完成 */
+  private animWrap(anim: Animation): Promise<unknown> {
+    return new Promise((resolve) => {
+      let done = false;
+      const fin = () => {
+        if (!done) {
+          done = true;
+          resolve(undefined);
+        }
+      };
+      const f = anim.finished as Promise<unknown> | undefined;
+      if (f && typeof f.then === "function") f.then(fin, fin);
+      try {
+        if (typeof anim.addEventListener === "function") {
+          anim.addEventListener("finish", fin, { once: true } as EventListenerOptions);
+        }
+      } catch {
+        /* mock 形状不兼容：靠 finished 或直落 */
+      }
+      if (!f || typeof f.then !== "function") fin();
     });
   }
 
-  private buildShelfDetail(detail: HTMLElement, item: WallItem): void {
+  /** 构建 gatefold 骨架（scrim + book + 左右双面板各双面），供推镜测距与动画取元素 */
+  private buildGatefold(
+    detail: HTMLElement,
+    item: WallItem
+  ): {
+    book: HTMLElement;
+    panelL: HTMLElement;
+    panelR: HTMLElement;
+    scrim: HTMLElement;
+    faces: HTMLElement[];
+    targets: HTMLElement[];
+  } | null {
     detail.empty();
     const meta = item.meta;
+    const scrim = detail.createDiv({ cls: "mw-gf__scrim" });
+    scrim.addEventListener("click", () => this.closeShelfDetail());
+    const book = detail.createDiv({ cls: "mw-gf__book" });
 
-    const back = detail.createDiv({ cls: "mw-shelf-detail__back", text: "←" });
-    back.setAttr("title", "返回展示架 (Esc)");
-    back.addEventListener("click", () => this.closeShelfDetail());
+    // 右页必须先建：闭合态左右两页共面，共面时后建者绘制在上，封面页（左页）要压住盘托
+    const panelR = book.createDiv({ cls: "mw-gf__panel mw-gf__panel--right" });
+    const panelL = book.createDiv({ cls: "mw-gf__panel mw-gf__panel--left" });
 
-    // 左：封面封套（与架子同款），vinyl 样式悬停时盘片从封套下向上抽出
-    const left = detail.createDiv({ cls: "mw-shelf-detail__left" });
-    const sleeve = left.createDiv({ cls: "mw-shelf-detail__sleeve" });
-    if (this.data!.style === "vinyl") {
-      const vinyl = sleeve.createDiv({ cls: "mw-shelf-vinyl mw-shelf-detail__vinyl" });
-      vinyl.appendChild(buildDiscElement(item, "vinyl", { coverSize: 500 }));
-    }
-    const jacket = sleeve.createDiv({ cls: "mw-shelf-jacket mw-shelf-detail__jacket" });
-    jacket.appendChild(makeCoverImg(sizedCover(meta.cover, 500), meta.name));
-
-    const right = detail.createDiv({ cls: "mw-shelf-detail__right" });
-    right.createDiv({ cls: "mw-shelf-detail__name", text: meta.name });
-    right.createDiv({
-      cls: "mw-shelf-detail__artist",
-      text: meta.artist || "未知艺术家",
-    });
-    if (meta.year) {
-      right.createDiv({ cls: "mw-shelf-detail__year", text: `发行于 ${meta.year}` });
-    }
-    if (meta.tags?.length) {
-      const tags = right.createDiv({ cls: "mw-shelf-detail__tags" });
-      for (const t of meta.tags) {
-        const tag = tags.createSpan({ cls: "mw-shelf-detail__tag", text: t });
-        tag.title = t;
-      }
-    }
-
-    const actions = right.createDiv({ cls: "mw-shelf-detail__actions" });
-    actions
-      .createEl("button", { cls: "mw-btn mw-btn--primary mw-shelf-detail__play", text: "播放整张" })
-      .addEventListener("click", () =>
-        void playAlbum(item.meta, this.plugin.getPlaybackDeps())
-      );
-    if (!item.locked) {
-      actions
-        .createEl("button", { cls: "mw-btn", text: "编辑" })
-        .addEventListener("click", () => this.editItemMeta(item, true));
-    }
-    actions
-      .createEl("button", { cls: "mw-btn", text: "迁移" })
-      .addEventListener("click", () => this.migrateCard(item));
-    actions
-      .createEl("button", { cls: "mw-btn", text: "复制链接" })
-      .addEventListener("click", async () => {
-        await navigator.clipboard.writeText(
-          `https://music.163.com/album?id=${item.albumId}`
-        );
-        new Notice("已复制");
+    const info = panelL.createDiv({ cls: "mw-gf__face mw-gf__face--info" });
+    const bar = info.createDiv({ cls: "mw-gf__bar" });
+    const closeBtn = bar.createEl("button", { cls: "mw-gf__close" });
+    setIcon(closeBtn, "x");
+    closeBtn.setAttr("title", "关闭 (Esc)");
+    closeBtn.addEventListener("click", () => this.closeShelfDetail());
+    const tools = bar.createDiv({ cls: "mw-gf__tools" });
+    const mkTool = (icon: string, title: string, danger: boolean, fn: () => void) => {
+      const b = tools.createEl("button", {
+        cls: danger ? "mw-gf__tool mw-gf__tool--danger" : "mw-gf__tool",
       });
-    actions
-      .createEl("button", { cls: "mw-btn", text: "删除" })
-      .addEventListener("click", () => this.confirmDelete(item));
+      setIcon(b, icon);
+      b.setAttr("title", title);
+      b.addEventListener("click", fn);
+    };
+    mkTool("link", "复制专辑链接", false, async () => {
+      await navigator.clipboard.writeText(`https://music.163.com/album?id=${item.albumId}`);
+      new Notice("已复制");
+    });
+    mkTool("arrow-right", "迁移到其他墙", false, () => this.migrateCard(item));
+    mkTool("trash", "移出音乐墙", true, () => this.confirmDelete(item));
 
-    if (meta.description) {
-      const desc = right.createDiv({ cls: "mw-shelf-detail__desc", text: meta.description });
-      desc.title = "专辑简介";
+    const metaBox = info.createDiv({ cls: "mw-gf__meta" });
+    const nameEl = metaBox.createDiv({ cls: "mw-gf__name", text: meta.name });
+    nameEl.title = meta.name;
+    metaBox.createDiv({ cls: "mw-gf__artist", text: meta.artist || "未知艺术家" });
+    if (meta.year) {
+      metaBox.createDiv({ cls: "mw-gf__year", text: `发行于 ${meta.year}` });
     }
-
-    const tracks = right.createDiv({ cls: "mw-shelf-detail__tracks" });
+    const tracks = info.createDiv({ cls: "mw-gf__tracks" });
     const list = meta.tracks ?? [];
     if (!list.length) {
-      tracks.createDiv({ cls: "mw-shelf-detail__noTrack", text: "无曲目快照" });
-      return;
+      tracks.createDiv({ cls: "mw-gf__noTrack", text: "无曲目快照" });
+    } else {
+      list.forEach((t, i) => {
+        const row = tracks.createDiv({ cls: "mw-gf__track" });
+        row.createSpan({ cls: "mw-gf__trackNo", text: `Track-${String(i + 1).padStart(2, "0")}` });
+        const nm = row.createSpan({ cls: "mw-gf__trackName", text: t.name });
+        nm.title = t.name;
+        row.createSpan({ cls: "mw-gf__trackDur", text: fmtDur(t.duration) });
+      });
     }
-    list.forEach((t, i) => {
-      const row = tracks.createDiv({ cls: "mw-shelf-detail__track" });
-      row.createSpan({ cls: "mw-shelf-detail__trackNo", text: String(i + 1) });
-      const name = row.createSpan({ cls: "mw-shelf-detail__trackName", text: t.name });
-      name.title = t.name;
-      row.createSpan({ cls: "mw-shelf-detail__trackDur", text: fmtDur(t.duration) });
+    const coverFace = panelL.createDiv({ cls: "mw-gf__face mw-gf__face--cover" });
+    coverFace.appendChild(makeCoverImg(sizedCover(meta.cover, 500), meta.name));
+
+    const tray = panelR.createDiv({ cls: "mw-gf__face mw-gf__face--tray" });
+    const discWrap = tray.createDiv({ cls: "mw-gf__discwrap" });
+    discWrap.addEventListener("click", () => {
+      void playAlbum(item.meta, this.plugin.getPlaybackDeps());
     });
+    const vinylFace = discWrap.createDiv({ cls: "mw-gf__discface" });
+    vinylFace.appendChild(buildDiscElement(item, "vinyl", { coverSize: 500 }));
+    const cdFace = discWrap.createDiv({ cls: "mw-gf__discface is-hidden" });
+    cdFace.appendChild(buildDiscElement(item, "cd", { coverSize: 500 }));
+    const swap = tray.createDiv({ cls: "mw-gf__swap" });
+    const btnVinyl = swap.createEl("button", { text: "黑胶" });
+    const btnCd = swap.createEl("button", { text: "CD" });
+    const applySwap = (which: "vinyl" | "cd") => {
+      vinylFace.toggleClass("is-hidden", which !== "vinyl");
+      cdFace.toggleClass("is-hidden", which !== "cd");
+      btnVinyl.toggleClass("is-active", which === "vinyl");
+      btnCd.toggleClass("is-active", which === "cd");
+    };
+    btnVinyl.addEventListener("click", () => {
+      this.gfDisc = "vinyl";
+      applySwap("vinyl");
+    });
+    btnCd.addEventListener("click", () => {
+      this.gfDisc = "cd";
+      applySwap("cd");
+    });
+    applySwap(this.gfDisc ?? (this.data!.style === "cd" ? "cd" : "vinyl"));
+    const back = panelR.createDiv({ cls: "mw-gf__face mw-gf__face--back" });
+
+    return {
+      book,
+      panelL,
+      panelR,
+      scrim,
+      faces: [info, coverFace, tray, back],
+      targets: [metaBox, tracks, discWrap, swap],
+    };
   }
 
   private openCardMenu(evt: MouseEvent, item: WallItem): void {

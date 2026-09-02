@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "music-wall",
   "version": "0.1.0",
   "description": "Obsidian 音乐墙插件（网易云专辑 · 唱片墙可视化）",
@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit && node esbuild.config.mjs production",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync": "node tools/deploy.cjs"
   },
   "keywords": [
     "obsidian",

@@ -1,4 +1,4 @@
-/* ===== 展示架 Shelf（布局） =====
+﻿/* ===== 展示架 Shelf（布局） =====
    深色暖调背板 + 每卡自带木横板段（列距 0 拼成整行）；
    封套伪随机倾角靠板，悬停/触屏抽出，vinyl 样式盘片向右滑出半张。
    木纹为双层 feTurbulence SVG（解码为位图平铺，非实时滤镜）。 */
@@ -187,6 +187,13 @@
   filter: brightness(0.72);
 }
 
+/* 推镜测距专用：临时解除 hover/is-pulled 抽出位移，量取封套静置位姿，
+   否则收盒会飞向"悬停抬高+放大 6%"的幽灵落点 */
+.mw-shelf-card.mw-measure .mw-shelf-jacket {
+  transform: none !important;
+  transition: none !important;
+}
+
 /* ---- 文字三档（档位类挂在 .mw-view 根上，全局设置驱动） ---- */
 .mw-shelf-cap {
   position: absolute;
@@ -225,8 +232,8 @@
   display: none;
 }
 
-/* ---- 场景容器与场景内详情（仅 shelf 布局；工具栏独立保留）
-   切换动画由视图层 WAAPI 驱动，这里只定义静态两端状态 ---- */
+/* ---- 场景容器（仅 shelf 布局；工具栏独立保留）。
+   容器查询锚：开盒详情按 pane 实际宽度（而非视口）做窄屏降级 ---- */
 .mw-stage {
   position: relative;
   flex: 1;
@@ -234,234 +241,492 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  container: mw-stage / size;
 }
-.mw-stage.is-detail .mw-grid--shelf {
-  transform: translateX(-100%);
-}
+
+/* ===== 场景内详情：Gatefold 3D 开盒（推镜后绕书脊翻开） =====
+   终态由 is-open 类定义；入场/开盒/收盒过程动画全部由视图层 WAAPI 驱动。
+   结构：detail(overlay, perspective) > scrim + book(2:1, preserve-3d)
+         > panel--left(绕右缘=书脊翻转: 正面封面/背面信息页) + panel--right(正面盘托/背面封底) */
 
 .mw-shelf-detail {
   position: absolute;
   inset: 0;
   z-index: 20;
-  display: flex;
-  align-items: stretch;
-  gap: 24px;
-  padding: 34px clamp(20px, 4vw, 56px) 40px;
-  /* 详情不在 .mw-grid--shelf 内，需自带动效变量，否则 transition 失效硬切 */
-  --mw-shelf-dur: 0.35s;
-  --mw-shelf-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  display: grid;
+  place-items: center;
+  perspective: 1700px;
+  perspective-origin: 50% 42%;
+  visibility: hidden;
+}
+/* is-shutting：收盒动画期间保持可见（is-open 已摘除，面板回落到闭合 CSS） */
+.mw-shelf-detail.is-open,
+.mw-shelf-detail.is-shutting {
+  visibility: visible;
+}
+
+/* 背板遮罩：压暗架子突出盒子，点击=关闭。
+   淡入由视图层 WAAPI 随整条时间线驱动（推镜期间架子保持可见、渐暗）；
+   is-open → opacity 1 仅作 reduced-motion/窄容器的直出兜底。 */
+.mw-gf__scrim {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
   background:
-    radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
+    radial-gradient(120% 90% at 50% 40%, rgba(10, 7, 4, 0.62), rgba(6, 4, 2, 0.9) 82%),
+    linear-gradient(180deg, #1a1410, #0e0a06);
+}
+.mw-shelf-detail.is-open .mw-gf__scrim {
+  opacity: 1;
+}
+
+.mw-gf__book {
+  position: relative;
+  width: min(92cqw, 176cqh, 1480px);
+  aspect-ratio: 2 / 1;
+  transform-style: preserve-3d;
+  pointer-events: auto;
+  /* 阴影必须挂在各 face 的 box-shadow：filter 会把 preserve-3d 拍扁 */
+}
+
+.mw-gf__panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  transform-style: preserve-3d;
+}
+/* 闭合态：左页翻叠在右页上（封面朝观众）；is-open 终态见下 */
+.mw-gf__panel--left {
+  left: 0;
+  transform-origin: right center;
+  transform: rotateY(180deg);
+}
+.mw-gf__panel--right {
+  right: 0;
+  transform-origin: left center;
+  transform: rotateY(0deg);
+}
+.mw-shelf-detail.is-open .mw-gf__panel--left {
+  transform: rotateY(0deg);
+}
+.mw-shelf-detail.is-open .mw-gf__panel--right {
+  transform: rotateY(0deg);
+}
+/* 开盒终态取平面（V 形倾斜会让 Chromium 的 elementFromPoint 对旋转面内
+   扁平化子元素失效——盘片/切换钮/顶栏钮点击全部落到旋转父级上）；
+   3D 感由翻开翻转过程 + perspective + 盘片抽出承担 */
+/* is-booting：推镜未落位时把面板钉回闭合姿态（开盒动画创建后同帧摘除） */
+.mw-shelf-detail.is-booting .mw-gf__panel--left {
+  transform: rotateY(180deg);
+}
+.mw-shelf-detail.is-booting .mw-gf__panel--right {
+  transform: rotateY(0deg);
+}
+
+.mw-gf__face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mw-gf__face--back {
+  transform: rotateY(180deg);
+}
+
+/* 封面页（闭合态外观，与架上封套同款质感）。
+   translateZ(1px)：闭合态左右两页共面，preserve-3d 的共面绘制顺序回退树序，
+   会把后创建的盘托页画在封面之上（推镜时露出光盘页）——抬升 1px 强制封面在上；
+   不设 pointer-events:none：封面要吸收闭合态的点击（防止穿透点到底下盘片） */
+.mw-gf__face--cover {
+  transform: rotateY(180deg) translateZ(1px);
+  background: #26222a;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 7px 0 9px -8px rgba(0, 0, 0, 0.95),
+    0 22px 40px rgba(0, 0, 0, 0.6),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.mw-gf__face--cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mw-gf__face--cover.mw-cover-broken {
+  background: linear-gradient(135deg, #4a4a58, #1c1c24);
+}
+
+/* 封底（纸纹 + 书脊折光） */
+.mw-gf__face--back {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.015) 0 14px,
+      rgba(0, 0, 0, 0) 14px 28px
+    ),
+    linear-gradient(180deg, #241c15, #17100a);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 180, 0.06);
+}
+
+/* ---- 左页信息面 ---- */
+.mw-gf__face--info {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: clamp(12px, 3.4cqw, 30px);
+  color: #e6dcc9;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  background:
+    radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.08), transparent 55%),
     repeating-linear-gradient(
       90deg,
       rgba(255, 226, 180, 0.02) 0 2px,
       rgba(0, 0, 0, 0) 2px 7px
     ),
-    repeating-linear-gradient(
-      45deg,
-      rgba(255, 255, 255, 0.012) 0 14px,
-      rgba(0, 0, 0, 0) 14px 28px
-    ),
-    linear-gradient(180deg, #1a1410, #221a13 45%, #0e0a06);
-  transform: translateX(100%);
-  visibility: hidden;
-}
-.mw-shelf-detail.is-open {
-  transform: translateX(0);
-  visibility: visible;
+    linear-gradient(180deg, #221a13, #170f09);
+  /* 内侧书脊折光 + 外缘高光 + 离地投影（禁 filter，投影走 box-shadow） */
+  box-shadow:
+    inset -18px 0 26px -20px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(255, 226, 180, 0.08),
+    0 22px 40px rgba(0, 0, 0, 0.6),
+    0 6px 14px rgba(0, 0, 0, 0.5);
 }
 
-.mw-shelf-detail__back {
-  position: absolute;
-  top: 16px;
-  left: 16px;
+/* 顶栏：左关闭，右复制/迁移/删除 */
+.mw-gf__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.mw-gf__bar .mw-gf__tool,
+.mw-gf__bar .mw-gf__close {
+  /* 硬重置：Obsidian/主题对裸 button 的浅底、内阴影、padding 一律不继承。
+     双类选择器压过主题的 `.theme-x button` 级规则 */
+  appearance: none;
+  -webkit-appearance: none;
   width: 34px;
   height: 34px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 226, 180, 0.25);
-  background: rgba(30, 20, 12, 0.65);
-  color: #e6dcc9;
-  font-size: 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: #cfc4b2;
   cursor: pointer;
   user-select: none;
-  transition: border-color 0.2s, color 0.2s;
+  font-size: 0;
+  line-height: 1;
+  transition: color 0.15s;
 }
-.mw-shelf-detail__back:hover {
-  border-color: rgba(255, 226, 180, 0.6);
+.mw-gf__bar .mw-gf__tool svg,
+.mw-gf__bar .mw-gf__close svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+.mw-gf__bar .mw-gf__tool:hover,
+.mw-gf__bar .mw-gf__close:hover {
   color: #fff;
 }
-
-/* 左侧：封面封套（与展示架同款视觉），vinyl 样式悬停时盘片从封套下方向上抽出 */
-.mw-shelf-detail__left {
-  flex: 0 0 40%;
+.mw-gf__tools {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  gap: 6px;
+}
+.mw-gf__bar .mw-gf__tool--danger:hover {
+  color: #ff97a2;
+}
+
+/* 三行歌曲信息 */
+.mw-gf__meta {
+  margin-top: clamp(10px, 2.4cqw, 22px);
+  flex-shrink: 0;
   min-width: 0;
 }
-.mw-shelf-detail__sleeve {
-  position: relative;
-  width: min(100%, 460px);
-  aspect-ratio: 1 / 1;
+.mw-gf__name {
+  font-size: clamp(1em, 2.4cqw, 1.6em);
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.mw-shelf-detail__jacket {
-  left: 0;
-  right: 0;
-  bottom: 0;
+.mw-gf__artist,
+.mw-gf__year {
+  margin-top: 3px;
+  font-size: clamp(0.78em, 1.6cqw, 0.95em);
+  color: #c9b8a2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.mw-shelf-detail__vinyl {
-  left: 0;
-  bottom: 0;
-  width: 100%;
-}
-.mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl {
-  transform: translateY(38%);
-}
-.mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl .mw-record__plate {
-  animation: mw-spin 4.5s linear infinite;
-}
-.mw-shelf-detail__sleeve:hover .mw-shelf-detail__jacket {
-  transform: translateY(-6px);
+.mw-gf__year {
+  color: #a89a86;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 右侧：信息固定，曲目列表独立滚动 */
-.mw-shelf-detail__right {
+/* 曲目列表：独立 scroller */
+.mw-gf__tracks {
+  margin-top: clamp(10px, 2cqw, 18px);
+  padding-top: clamp(8px, 1.6cqw, 12px);
+  border-top: 1px solid rgba(255, 226, 180, 0.14);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mw-gf__tracks::-webkit-scrollbar {
+  width: 8px;
+}
+.mw-gf__tracks::-webkit-scrollbar-thumb {
+  background: rgba(255, 226, 180, 0.18);
+  border-radius: 4px;
+}
+.mw-gf__tracks::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mw-gf__track {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 6px;
+  border-bottom: 1px solid rgba(255, 226, 180, 0.07);
+  font-size: clamp(0.72em, 1.5cqw, 0.88em);
+}
+.mw-gf__track:hover {
+  background: rgba(255, 226, 180, 0.06);
+}
+.mw-gf__trackNo {
+  flex: 0 0 auto;
+  color: #a89a86;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.mw-gf__trackName {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  white-space: nowrap;
   overflow: hidden;
-  color: #e6dcc9;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  text-overflow: ellipsis;
 }
-/* 展示架场景内按钮与主题解耦：自有木风样式（架子空态 + 详情页共用） */
-.mw-grid--shelf .mw-btn,
-.mw-shelf-detail__right .mw-btn {
+.mw-gf__trackDur {
+  flex: 0 0 auto;
+  color: #a89a86;
+  font-variant-numeric: tabular-nums;
+}
+.mw-gf__noTrack {
+  padding: 12px 6px;
+  font-size: 0.85em;
+  color: #a89a86;
+}
+
+/* ---- 右页盘托面 ---- */
+.mw-gf__face--tray {
+  display: block;
+  /* 关键：旋转面内的扁平化子树在 Chromium 3D 命中测试中有缺陷
+     （elementFromPoint 命中旋转父级而非子级 → 盘片/切换钮点击失效），
+     preserve-3d 让子元素以真实 3D 平面参与命中 */
+  transform-style: preserve-3d;
+  background:
+    radial-gradient(120% 70% at 50% -8%, rgba(255, 198, 130, 0.07), transparent 55%),
+    linear-gradient(180deg, #241b13, #150e08);
+  box-shadow:
+    inset 18px 0 26px -20px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(255, 226, 180, 0.08),
+    0 22px 40px rgba(0, 0, 0, 0.6),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+  overflow: visible;
+}
+/* 圆形凹槽 */
+.mw-gf__face--tray::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 84%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -52%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, #120c07, #1d150e 70%, #241a11);
+  box-shadow:
+    inset 0 6px 16px rgba(0, 0, 0, 0.85),
+    inset 0 -2px 0 rgba(255, 226, 180, 0.07),
+    0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+.mw-gf__discwrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 78%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -52%);
+  cursor: pointer;
+}
+/* 盘面两面（黑胶/CD 可切换），换面走 rotateY 翻面 */
+.mw-gf__discface {
+  position: absolute;
+  inset: 0;
+  transition:
+    transform 0.3s var(--mw-shelf-ease, ease),
+    opacity 0.2s;
+}
+.mw-gf__discface .mw-disc {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.mw-gf__discface.is-hidden {
+  opacity: 0;
+  transform: rotateY(90deg);
+  pointer-events: none;
+}
+/* hover 抽出半张 + 慢转（触屏点按直接播放） */
+.mw-gf__discwrap:hover .mw-gf__discface:not(.is-hidden) {
+  transform: translateX(20%) rotate(-4deg);
+}
+.mw-gf__discwrap:hover .mw-disc--vinyl .mw-record__plate {
+  animation: mw-spin 4.5s linear infinite;
+}
+.mw-gf__discwrap:hover .mw-disc--cd .mw-record__plate {
+  animation: mw-spin-cd 6.5s linear infinite;
+}
+
+/* 盘片样式切换钮 */
+.mw-gf__swap {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 226, 180, 0.22);
+  background: rgba(18, 12, 7, 0.72);
+}
+.mw-gf__face--tray .mw-gf__swap button {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 2px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  min-height: 0;
+  height: auto;
+  color: #a89a86;
+  font-size: 0.72em;
+  cursor: pointer;
+}
+.mw-gf__face--tray .mw-gf__swap button.is-active {
+  background: rgba(255, 214, 140, 0.16);
+  color: #fff2dc;
+}
+
+/* ---- 架子空态按钮：木风样式（与主题解耦） ---- */
+.mw-grid--shelf .mw-btn {
   background: linear-gradient(180deg, #4a3423, #38261a);
   border: 1px solid rgba(255, 226, 180, 0.28);
   color: #e6dcc9;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
 }
-.mw-grid--shelf .mw-btn:hover,
-.mw-shelf-detail__right .mw-btn:hover {
+.mw-grid--shelf .mw-btn:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 226, 180, 0.55);
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
-.mw-grid--shelf .mw-btn--primary,
-.mw-shelf-detail__right .mw-btn--primary {
+.mw-grid--shelf .mw-btn--primary {
   background: linear-gradient(180deg, #a4703c, #7d5227);
   border-color: rgba(255, 220, 160, 0.5);
   color: #fff5e6;
 }
-.mw-shelf-detail__right > * {
-  flex-shrink: 0;
+
+/* ---- 窄容器（分屏/手机）：禁用 3D，上下堆叠 ---- */
+@container mw-stage (max-width: 640px) {
+  .mw-shelf-detail {
+    perspective: none;
+  }
+  .mw-gf__book {
+    width: 92cqw;
+    height: 92cqh;
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    filter: none;
+  }
+  .mw-gf__panel {
+    position: relative;
+    inset: auto;
+    width: auto;
+    transform: none;
+  }
+  /* 窄屏无 3D 姿态：开盒终态归零 */
+  .mw-shelf-detail.is-open .mw-gf__panel--left,
+  .mw-shelf-detail.is-open .mw-gf__panel--right {
+    transform: none;
+  }
+  .mw-gf__panel--left {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .mw-gf__panel--right {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 46%;
+    aspect-ratio: 1 / 1;
+    align-self: center;
+  }
+  .mw-gf__panel--right .mw-gf__face {
+    position: absolute;
+  }
+  .mw-gf__face--cover,
+  .mw-gf__face--back {
+    display: none;
+  }
+  .mw-gf__face--info {
+    box-shadow: inset 0 0 0 1px rgba(255, 226, 180, 0.12);
+  }
 }
-.mw-shelf-detail__name {
-  font-size: 1.7em;
-  font-weight: 700;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mw-shelf-detail__artist {
-  margin-top: 4px;
-  font-size: 1.05em;
-  color: #c9b8a2;
-}
-.mw-shelf-detail__year {
-  margin-top: 2px;
-  font-size: 0.85em;
-  color: #a89a86;
-  font-variant-numeric: tabular-nums;
-}
-.mw-shelf-detail__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-.mw-shelf-detail__tag {
-  padding: 1px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 226, 180, 0.22);
-  font-size: 0.75em;
-  color: #cfc4b2;
-}
-.mw-shelf-detail__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-.mw-shelf-detail__play {
-  font-size: 1em;
-  padding: 5px 18px;
-}
-.mw-shelf-detail__desc {
-  margin-top: 16px;
-  font-size: 0.85em;
-  line-height: 1.6;
-  color: #b3a794;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.mw-shelf-detail__tracks {
-  margin-top: 18px;
-  border-top: 1px solid rgba(255, 226, 180, 0.14);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}.mw-shelf-detail__tracks::-webkit-scrollbar {
-  width: 8px;
-}
-.mw-shelf-detail__tracks::-webkit-scrollbar-thumb {
-  background: rgba(255, 226, 180, 0.18);
-  border-radius: 4px;
-}
-.mw-shelf-detail__tracks::-webkit-scrollbar-track {
-  background: transparent;
-}
-.mw-shelf-detail__track {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 7px 8px;
-  border-bottom: 1px solid rgba(255, 226, 180, 0.07);
-  font-size: 0.88em;
-}
-.mw-shelf-detail__track:hover {
-  background: rgba(255, 226, 180, 0.06);
-}
-.mw-shelf-detail__trackNo {
-  flex: 0 0 2em;
-  text-align: right;
-  color: #a89a86;
-  font-variant-numeric: tabular-nums;
-}
-.mw-shelf-detail__trackName {
-  flex: 1 1 auto;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mw-shelf-detail__trackDur {
-  flex: 0 0 auto;
-  color: #a89a86;
-  font-variant-numeric: tabular-nums;
-}
-.mw-shelf-detail__noTrack {
-  padding: 14px 8px;
-  font-size: 0.85em;
-  color: #a89a86;
+
+/* ---- 无障碍：减少动效偏好，静止展示但不丢信息 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .mw-shelf-card:hover .mw-shelf-jacket,
+  .mw-shelf-card.is-pulled .mw-shelf-jacket {
+    transform: none;
+    transition: none;
+  }
+  .mw-shelf-card:hover .mw-disc--vinyl .mw-record__plate,
+  .mw-shelf-card.is-pulled .mw-disc--vinyl .mw-record__plate {
+    animation: none;
+  }
+  .mw-view.mw-shelfcap-hidden .mw-shelf-cap,
+  .mw-view.mw-shelfcap-pull .mw-shelf-cap {
+    opacity: 1;
+    transition: none;
+  }
+  .mw-gf__scrim {
+    transition: none;
+  }
+  .mw-gf__discface {
+    transition: none;
+  }
+  .mw-gf__discwrap:hover .mw-gf__discface:not(.is-hidden) {
+    transform: none;
+  }
+  .mw-gf__discwrap:hover .mw-disc--vinyl .mw-record__plate,
+  .mw-gf__discwrap:hover .mw-disc--cd .mw-record__plate {
+    animation: none;
+  }
 }
 
 /* ---- 自绘展示架风格菜单（右键 / 触屏长按） ---- */
@@ -511,27 +776,4 @@
 }
 .mw-shelf-menu__item.is-danger:hover {
   background: rgba(233, 72, 88, 0.18);
-}
-
-/* ---- 无障碍：减少动效偏好，静止展示但不丢信息 ---- */
-@media (prefers-reduced-motion: reduce) {
-  .mw-shelf-card:hover .mw-shelf-jacket,
-  .mw-shelf-card.is-pulled .mw-shelf-jacket {
-    transform: none;
-    transition: none;
-  }
-  .mw-shelf-card:hover .mw-disc--vinyl .mw-record__plate,
-  .mw-shelf-card.is-pulled .mw-disc--vinyl .mw-record__plate,
-  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl .mw-record__plate {
-    animation: none;
-  }
-  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl,
-  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__jacket {
-    transform: none;
-  }
-  .mw-view.mw-shelfcap-hidden .mw-shelf-cap,
-  .mw-view.mw-shelfcap-pull .mw-shelf-cap {
-    opacity: 1;
-    transition: none;
-  }
 }
