@@ -6,8 +6,6 @@
 <title>shelf proto · Music Wall</title>
 <style>
   :root {
-    --lean: 5deg;          /* 后仰 rotateX */
-    --tilt: 1.4deg;        /* 平面倾角基准 */
     --pull-up: 14%;        /* 抽出位移 */
     --pull-scale: 1.06;    /* 抽出缩放 */
     --dur: 0.35s;
@@ -59,7 +57,7 @@
     background:
       linear-gradient(rgba(255, 238, 208, 0.20), rgba(255, 200, 140, 0.04) 28%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.5) 82%, rgba(0, 0, 0, 0.62)),
       var(--wood);
-    background-size: auto, 240px 100%;
+    background-size: auto, 100% 100%;
     box-shadow:
       0 14px 22px rgba(0, 0, 0, 0.65),
       0 3px 5px rgba(0, 0, 0, 0.7),
@@ -107,13 +105,7 @@
     pointer-events: none;
   }
 
-  /* 伪随机姿态：靠板后仰 + 小幅侧倾 + 微差尺寸（6 循环，避免整排雷同） */
-  .card .jacket            { transform: rotateX(var(--lean)) rotate(var(--tilt)) scale(1); }
-  .card:nth-child(6n+2) .jacket { transform: rotateX(calc(var(--lean) * 0.55)) rotate(calc(var(--tilt) * -1.25)) scale(0.985); }
-  .card:nth-child(6n+3) .jacket { transform: rotateX(calc(var(--lean) * 1.3)) rotate(calc(var(--tilt) * 0.45)) translateY(1px); }
-  .card:nth-child(6n+4) .jacket { transform: rotateX(calc(var(--lean) * 0.75)) rotate(calc(var(--tilt) * -0.6)) scale(1.015); }
-  .card:nth-child(6n+5) .jacket { transform: rotateX(calc(var(--lean) * 1.05)) rotate(calc(var(--tilt) * 1.6)); }
-  .card:nth-child(6n) .jacket   { transform: rotateX(calc(var(--lean) * 0.4)) rotate(calc(var(--tilt) * -0.9)) scale(0.992); }
+  /* 平放姿态：封面直立居中靠板 */
 
   /* 黑胶（仅 vinyl 样式注入）：与封套同心藏于其后，抽出时随封套抬起并向右滑出 */
   .vinyl {
@@ -149,7 +141,7 @@
   /* 悬停抽出 */
   .card:hover, .card.is-pulled { z-index: 10; }
   .card:hover .jacket, .card.is-pulled .jacket {
-    transform: translateY(calc(var(--pull-up) * -1)) rotateX(0deg) rotate(0deg) scale(var(--pull-scale));
+    transform: translateY(calc(var(--pull-up) * -1)) scale(var(--pull-scale));
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.12),
       0 26px 34px rgba(0, 0, 0, 0.65),
@@ -182,8 +174,6 @@
   <label>文字
     <select id="capSel"><option value="hidden">隐藏</option><option value="pull" selected>抽出时显示</option><option value="always">常驻</option></select>
   </label>
-  <label>后仰 <input id="leanR" type="range" min="0" max="14" value="5"><output id="leanO"></output></label>
-  <label>侧倾 <input id="tiltR" type="range" min="0" max="30" value="14"><output id="tiltO"></output></label>
   <label>抽出 <input id="pullR" type="range" min="0" max="26" value="14"><output id="pullO"></output></label>
   <label>时长 <input id="durR" type="range" min="10" max="90" value="35"><output id="durO"></output></label>
   <label>缓动
@@ -266,8 +256,6 @@ const bind = (id, out, prop, fmt) => {
   const upd = () => { document.documentElement.style.setProperty(prop, fmt(r.value)); o.textContent = fmt(r.value); };
   r.oninput = upd; upd();
 };
-bind("leanR", "leanO", "--lean", (v) => v + "deg");
-bind("tiltR", "tiltO", "--tilt", (v) => (v / 10).toFixed(1) + "deg");
 bind("pullR", "pullO", "--pull-up", (v) => v + "%");
 bind("durR", "durO", "--dur", (v) => (v / 100).toFixed(2) + "s");
 document.getElementById("easeSel").onchange = (e) =>
