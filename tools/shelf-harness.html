@@ -49,19 +49,25 @@ function openDetail(n, i){
   const d = document.getElementById("detail");
   d.innerHTML = `
     <div class="mw-shelf-detail__back">←</div>
-    <div class="mw-shelf-detail__left">${disc(i)}</div>
+    <div class="mw-shelf-detail__left">
+      <div class="mw-shelf-detail__sleeve">
+        <div class="mw-shelf-vinyl mw-shelf-detail__vinyl">${disc(i)}</div>
+        <div class="mw-shelf-jacket mw-shelf-detail__jacket"><img src="${cover(i,n)}" alt="${n}"></div>
+      </div>
+    </div>
     <div class="mw-shelf-detail__right">
       <div class="mw-shelf-detail__name">${n}</div>
       <div class="mw-shelf-detail__artist">艺术家 ${i+1}</div>
       <div class="mw-shelf-detail__year">发行于 202${i%6}</div>
       <div class="mw-shelf-detail__tags"><span class="mw-shelf-detail__tag">史诗</span><span class="mw-shelf-detail__tag">器乐</span></div>
       <div class="mw-shelf-detail__actions">
-        <button class="mw-btn mw-btn--primary mw-shelf-detail__play">▶ 播放整张</button>
+        <button class="mw-btn mw-btn--primary mw-shelf-detail__play">播放整张</button>
         <button class="mw-btn">编辑</button><button class="mw-btn">迁移</button>
         <button class="mw-btn">复制链接</button><button class="mw-btn">删除</button>
       </div>
+      <div class="mw-shelf-detail__desc">Life 是一部令人惊叹的音乐作品集，既全面而内敛，精致同时感性，由布拉格管弦乐团和合唱团现场录制，如同其名，充满了奇迹、美丽、痛苦和胜利。</div>
       <div class="mw-shelf-detail__tracks">
-        ${[1,2,3,4,5,6].map(t=>`<div class="mw-shelf-detail__track"><span class="mw-shelf-detail__trackNo">${t}</span><span class="mw-shelf-detail__trackName">第 ${t} 首曲目名称示例</span><span class="mw-shelf-detail__trackDur">${fmtDur(210000+t*7000)}</span></div>`).join("")}
+        ${Array.from({length:28},(_,t)=>`<div class="mw-shelf-detail__track"><span class="mw-shelf-detail__trackNo">${t+1}</span><span class="mw-shelf-detail__trackName">第 ${t+1} 首曲目名称示例</span><span class="mw-shelf-detail__trackDur">${fmtDur(210000+t*7000)}</span></div>`).join("")}
       </div>
     </div>`;
   d.querySelector(".mw-shelf-detail__back").addEventListener("click", ()=>{ d.classList.remove("is-open"); stage.classList.remove("is-detail"); });

@@ -774,19 +774,77 @@ export class MusicWallView extends FileView implements WallHost {
 
   // ---- 展示架：场景内详情（替代播放模态，仅 shelf 布局） ----
 
+  /** 场景切换动画句柄与防重入标志 */
+  private detailAnims: Animation[] = [];
+  private detailBusy = false;
+
   private openShelfDetail(item: WallItem): void {
     const stage = this.contentEl.querySelector(".mw-stage");
     const detail = this.contentEl.querySelector(".mw-shelf-detail");
-    if (!stage || !detail) return;
+    if (!stage || !detail || this.detailBusy) return;
+    if (detail.hasClass("is-open")) return;
     this.retractAllShelf();
     this.buildShelfDetail(detail as HTMLElement, item);
     (detail as HTMLElement).addClass("is-open");
     (stage as HTMLElement).addClass("is-detail");
+    this.runDetailTransition(stage as HTMLElement, detail as HTMLElement, true);
   }
 
   private closeShelfDetail(): void {
-    this.contentEl.querySelector(".mw-shelf-detail")?.removeClass("is-open");
-    this.contentEl.querySelector(".mw-stage")?.removeClass("is-detail");
+    const stage = this.contentEl.querySelector(".mw-stage");
+    const detail = this.contentEl.querySelector(".mw-shelf-detail");
+    if (!stage || !detail || this.detailBusy) return;
+    if (!detail.hasClass("is-open")) return;
+    this.runDetailTransition(stage as HTMLElement, detail as HTMLElement, false);
+  }
+
+  /**
+   * 场景滑动切换：架子 ↔ 详情（WAAPI 强制驱动，不依赖 CSS transition，
+   * 避免 reduce-motion/主题导致硬切）；无 WAAPI 环境直接切状态。
+   */
+  private runDetailTransition(
+    stage: HTMLElement,
+    detail: HTMLElement,
+    opening: boolean
+  ): void {
+    const grid = stage.querySelector(".mw-grid--shelf") as HTMLElement | null;
+    if (!grid || typeof grid.animate !== "function") {
+      if (!opening) {
+        detail.removeClass("is-open");
+        stage.removeClass("is-detail");
+      }
+      return;
+    }
+    this.detailBusy = true;
+    const ease = "cubic-bezier(0.22, 1, 0.36, 1)";
+    const D = 420;
+    const a1 = grid.animate(
+      [
+        { transform: opening ? "translateX(0%)" : "translateX(-100%)" },
+        { transform: opening ? "translateX(-100%)" : "translateX(0%)" },
+      ],
+      { duration: D, easing: ease, fill: "forwards" }
+    );
+    const a2 = detail.animate(
+      [
+        { transform: opening ? "translateX(100%)" : "translateX(0%)" },
+        { transform: opening ? "translateX(0%)" : "translateX(100%)" },
+      ],
+      { duration: D, easing: ease, fill: "forwards" }
+    );
+    const old = this.detailAnims;
+    this.detailAnims = [a1, a2];
+    a2.addEventListener("finish", () => {
+      for (const a of old) a.cancel();
+      a1.cancel();
+      a2.cancel();
+      this.detailAnims = [];
+      this.detailBusy = false;
+      if (!opening) {
+        detail.removeClass("is-open");
+        stage.removeClass("is-detail");
+      }
+    });
   }
 
   private buildShelfDetail(detail: HTMLElement, item: WallItem): void {
@@ -797,8 +855,15 @@ export class MusicWallView extends FileView implements WallHost {
     back.setAttr("title", "返回展示架 (Esc)");
     back.addEventListener("click", () => this.closeShelfDetail());
 
+    // 左：封面封套（与架子同款），vinyl 样式悬停时盘片从封套下向上抽出
     const left = detail.createDiv({ cls: "mw-shelf-detail__left" });
-    left.appendChild(buildDiscElement(item, this.data!.style, { coverSize: 500 }));
+    const sleeve = left.createDiv({ cls: "mw-shelf-detail__sleeve" });
+    if (this.data!.style === "vinyl") {
+      const vinyl = sleeve.createDiv({ cls: "mw-shelf-vinyl mw-shelf-detail__vinyl" });
+      vinyl.appendChild(buildDiscElement(item, "vinyl", { coverSize: 500 }));
+    }
+    const jacket = sleeve.createDiv({ cls: "mw-shelf-jacket mw-shelf-detail__jacket" });
+    jacket.appendChild(makeCoverImg(sizedCover(meta.cover, 500), meta.name));
 
     const right = detail.createDiv({ cls: "mw-shelf-detail__right" });
     right.createDiv({ cls: "mw-shelf-detail__name", text: meta.name });
@@ -819,7 +884,7 @@ export class MusicWallView extends FileView implements WallHost {
 
     const actions = right.createDiv({ cls: "mw-shelf-detail__actions" });
     actions
-      .createEl("button", { cls: "mw-btn mw-btn--primary mw-shelf-detail__play", text: "▶ 播放整张" })
+      .createEl("button", { cls: "mw-btn mw-btn--primary mw-shelf-detail__play", text: "播放整张" })
       .addEventListener("click", () =>
         void playAlbum(item.meta, this.plugin.getPlaybackDeps())
       );

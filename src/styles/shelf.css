@@ -32,7 +32,8 @@
   aspect-ratio: 1 / 1;
 }
 
-/* 木横板段：::after 本体，::before 板下贴墙阴影 */
+/* 木横板段：::after 本体，::before 板下贴墙阴影
+   木纹 = 纯 CSS 渐变（前缘光 + 水平纤维纹 + 板长色差 + 棕色底），无 SVG，保证铺满 */
 .mw-shelf-slot::after {
   content: "";
   position: absolute;
@@ -49,8 +50,21 @@
       rgba(0, 0, 0, 0.5) 82%,
       rgba(0, 0, 0, 0.62)
     ),
-    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27260%27%20height%3D%2764%27%20viewBox%3D%270%200%20260%2064%27%3E%3Cdefs%3E%3Cfilter%20id%3D%27g%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.006%200.095%27%20numOctaves%3D%275%27%20seed%3D%2717%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20in%3D%27n%27%20type%3D%27matrix%27%20values%3D%270%200%200%200%200.52%200%200%200%200%200.34%200%200%200%200%200.18%200%200%200%202.8%20-0.9%27%2F%3E%3C%2Ffilter%3E%3Cfilter%20id%3D%27f%27%3E%3CfeTurbulence%20type%3D%27turbulence%27%20baseFrequency%3D%270.015%200.55%27%20numOctaves%3D%272%27%20seed%3D%274%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20in%3D%27n%27%20type%3D%27matrix%27%20values%3D%270%200%200%200%200.14%200%200%200%200%200.07%200%200%200%200%200.03%200%200%200%201.6%20-0.62%27%2F%3E%3C%2Ffilter%3E%3ClinearGradient%20id%3D%27b%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%236b4830%27%2F%3E%3Cstop%20offset%3D%27.55%27%20stop-color%3D%27%234e311d%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%2337220f%27%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20fill%3D%27url(%23b)%27%2F%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20filter%3D%27url(%23g)%27%20opacity%3D%27.55%27%2F%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20filter%3D%27url(%23f)%27%20opacity%3D%27.38%27%2F%3E%3C%2Fsvg%3E");
-  background-size: auto, 100% 100%;
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 226, 180, 0.1) 0 2px,
+      rgba(0, 0, 0, 0) 2px 6px,
+      rgba(0, 0, 0, 0.2) 6px 8px,
+      rgba(0, 0, 0, 0) 8px 13px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 205, 150, 0.05) 0 34px,
+      rgba(0, 0, 0, 0) 34px 47px,
+      rgba(0, 0, 0, 0.1) 47px 61px,
+      rgba(0, 0, 0, 0) 61px 97px
+    ),
+    linear-gradient(180deg, #6b4830, #4e311d 55%, #37220f);
   box-shadow:
     0 14px 22px rgba(0, 0, 0, 0.65),
     0 3px 5px rgba(0, 0, 0, 0.7),
@@ -197,7 +211,8 @@
   display: none;
 }
 
-/* ---- 场景容器与场景内详情（仅 shelf 布局；工具栏独立保留） ---- */
+/* ---- 场景容器与场景内详情（仅 shelf 布局；工具栏独立保留）
+   切换动画由视图层 WAAPI 驱动，这里只定义静态两端状态 ---- */
 .mw-stage {
   position: relative;
   flex: 1;
@@ -205,9 +220,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-.mw-stage .mw-grid--shelf {
-  transition: transform 0.45s var(--mw-shelf-ease);
 }
 .mw-stage.is-detail .mw-grid--shelf {
   transform: translateX(-100%);
@@ -225,7 +237,6 @@
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
     linear-gradient(180deg, #171310, #1d1611 45%, #0e0a06);
   transform: translateX(100%);
-  transition: transform 0.45s var(--mw-shelf-ease), visibility 0.45s;
   visibility: hidden;
 }
 .mw-shelf-detail.is-open {
@@ -256,6 +267,7 @@
   color: #fff;
 }
 
+/* 左侧：封面封套（与展示架同款视觉），vinyl 样式悬停时盘片从封套下方向上抽出 */
 .mw-shelf-detail__left {
   flex: 0 0 40%;
   display: flex;
@@ -263,19 +275,61 @@
   justify-content: center;
   min-width: 0;
 }
-.mw-shelf-detail__left .mw-disc {
+.mw-shelf-detail__sleeve {
+  position: relative;
   width: min(100%, 460px);
+  aspect-ratio: 1 / 1;
 }
-.mw-shelf-detail__left .mw-record__plate {
-  animation: mw-spin 8s linear infinite;
+.mw-shelf-detail__jacket {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.mw-shelf-detail__vinyl {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+}
+.mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl {
+  transform: translateY(-38%);
+}
+.mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl .mw-record__plate {
+  animation: mw-spin 4.5s linear infinite;
+}
+.mw-shelf-detail__sleeve:hover .mw-shelf-detail__jacket {
+  transform: translateY(-6px);
 }
 
+/* 右侧：信息固定，曲目列表独立滚动 */
 .mw-shelf-detail__right {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   color: #e6dcc9;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+/* 详情按钮与主题解耦：自有木风样式 */
+.mw-shelf-detail__right .mw-btn {
+  background: linear-gradient(180deg, #4a3423, #38261a);
+  border: 1px solid rgba(255, 226, 180, 0.28);
+  color: #e6dcc9;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+.mw-shelf-detail__right .mw-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 226, 180, 0.55);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+.mw-shelf-detail__right .mw-btn--primary {
+  background: linear-gradient(180deg, #a4703c, #7d5227);
+  border-color: rgba(255, 220, 160, 0.5);
+  color: #fff5e6;
+}
+.mw-shelf-detail__right > * {
+  flex-shrink: 0;
 }
 .mw-shelf-detail__name {
   font-size: 1.7em;
@@ -332,6 +386,18 @@
 .mw-shelf-detail__tracks {
   margin-top: 18px;
   border-top: 1px solid rgba(255, 226, 180, 0.14);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}.mw-shelf-detail__tracks::-webkit-scrollbar {
+  width: 8px;
+}
+.mw-shelf-detail__tracks::-webkit-scrollbar-thumb {
+  background: rgba(255, 226, 180, 0.18);
+  border-radius: 4px;
+}
+.mw-shelf-detail__tracks::-webkit-scrollbar-track {
+  background: transparent;
 }
 .mw-shelf-detail__track {
   display: flex;
@@ -377,9 +443,22 @@
   border-radius: 10px;
   border: 1px solid rgba(255, 226, 180, 0.2);
   background:
-    linear-gradient(rgba(255, 238, 208, 0.14), rgba(0, 0, 0, 0.1) 30%, rgba(0, 0, 0, 0.35)),
-    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27260%27%20height%3D%2764%27%20viewBox%3D%270%200%20260%2064%27%3E%3Cdefs%3E%3Cfilter%20id%3D%27g%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.006%200.095%27%20numOctaves%3D%275%27%20seed%3D%2717%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20in%3D%27n%27%20type%3D%27matrix%27%20values%3D%270%200%200%200%200.52%200%200%200%200%200.34%200%200%200%200%200.18%200%200%200%202.8%20-0.9%27%2F%3E%3C%2Ffilter%3E%3Cfilter%20id%3D%27f%27%3E%3CfeTurbulence%20type%3D%27turbulence%27%20baseFrequency%3D%270.015%200.55%27%20numOctaves%3D%272%27%20seed%3D%274%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20in%3D%27n%27%20type%3D%27matrix%27%20values%3D%270%200%200%200%200.14%200%200%200%200%200.07%200%200%200%200%200.03%200%200%200%201.6%20-0.62%27%2F%3E%3C%2Ffilter%3E%3ClinearGradient%20id%3D%27b%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23543a26%27%2F%3E%3Cstop%20offset%3D%27.55%27%20stop-color%3D%27%23412a19%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23302010%27%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20fill%3D%27url(%23b)%27%2F%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20filter%3D%27url(%23g)%27%20opacity%3D%27.45%27%2F%3E%3Crect%20width%3D%27260%27%20height%3D%2764%27%20filter%3D%27url(%23f)%27%20opacity%3D%27.3%27%2F%3E%3C%2Fsvg%3E");
-  background-size: auto, 100% 100%;
+    linear-gradient(rgba(255, 238, 208, 0.12), rgba(0, 0, 0, 0.08) 30%, rgba(0, 0, 0, 0.38)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 226, 180, 0.07) 0 3px,
+      rgba(0, 0, 0, 0) 3px 9px,
+      rgba(0, 0, 0, 0.14) 9px 12px,
+      rgba(0, 0, 0, 0) 12px 19px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 205, 150, 0.04) 0 40px,
+      rgba(0, 0, 0, 0) 40px 60px,
+      rgba(0, 0, 0, 0.08) 60px 78px,
+      rgba(0, 0, 0, 0) 78px 110px
+    ),
+    linear-gradient(180deg, #543a26, #412a19 55%, #302010);
   box-shadow:
     0 16px 34px rgba(0, 0, 0, 0.65),
     inset 0 0 0 1px rgba(0, 0, 0, 0.4);
@@ -417,12 +496,12 @@
   }
   .mw-shelf-card:hover .mw-disc--vinyl .mw-record__plate,
   .mw-shelf-card.is-pulled .mw-disc--vinyl .mw-record__plate,
-  .mw-shelf-detail__left .mw-record__plate {
+  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl .mw-record__plate {
     animation: none;
   }
-  .mw-stage .mw-grid--shelf,
-  .mw-shelf-detail {
-    transition: none;
+  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl,
+  .mw-shelf-detail__sleeve:hover .mw-shelf-detail__jacket {
+    transform: none;
   }
   .mw-view.mw-shelfcap-hidden .mw-shelf-cap,
   .mw-view.mw-shelfcap-pull .mw-shelf-cap {
