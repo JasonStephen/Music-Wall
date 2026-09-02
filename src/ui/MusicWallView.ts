@@ -241,6 +241,8 @@ export class MusicWallView extends FileView implements WallHost {
 
   private async render(): Promise<void> {
     const root = this.contentEl;
+    // 重建会丢滚动位置（迁移/删除/样式切换等），先记后还
+    const prevScroll = root.querySelector<HTMLElement>(".mw-grid")?.scrollTop ?? 0;
     root.empty();
     root.addClass("mw-view");
     const cap = this.plugin.settings.shelfCaption ?? "pull";
@@ -259,6 +261,7 @@ export class MusicWallView extends FileView implements WallHost {
     });
     grid.style.setProperty("--mw-min-col", `${this.plugin.settings.minColumnWidth}px`);
     this.renderGrid(grid);
+    grid.scrollTop = prevScroll;
     if (layout === "shelf") {
       // 场景内详情面板（懒填充）：点唱片从右滑入，整架左滑退场
       stage.createDiv({ cls: "mw-shelf-detail" });
@@ -451,6 +454,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private renderGrid(grid: HTMLElement): void {
+    // 搜索/筛选等局部重绘也保持滚动位置
+    const prevScroll = grid.scrollTop;
     grid.empty();
     const items = this.getVisibleItems();
     if (!items.length) {
@@ -502,6 +507,7 @@ export class MusicWallView extends FileView implements WallHost {
         }
       });
     }
+    grid.scrollTop = prevScroll;
   }
 
   private buildCard(item: WallItem): HTMLElement {
@@ -1021,9 +1027,12 @@ export class MusicWallView extends FileView implements WallHost {
       this.file.basename,
       async (name) => {
         try {
+          // 保持在原父目录：renameFile 需要完整目标路径，只给文件名会被挪到库根目录
+          const parent = this.file!.parent;
+          const parentPath = parent && parent.path !== "/" ? `${parent.path}/` : "";
           await this.app.fileManager.renameFile(
             this.file!,
-            normalizePath(`${name}.mw`)
+            normalizePath(`${parentPath}${name}.mw`)
           );
           // this.file 与标签标题由 FileView 基类的 rename 处理自动更新；
           // 这里只需同步 .mw 内部的 name 字段并重绘工具栏标题
