@@ -233,6 +233,9 @@
   align-items: stretch;
   gap: 24px;
   padding: 34px clamp(20px, 4vw, 56px) 40px;
+  /* 详情不在 .mw-grid--shelf 内，需自带动效变量，否则 transition 失效硬切 */
+  --mw-shelf-dur: 0.35s;
+  --mw-shelf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   background:
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
     linear-gradient(180deg, #171310, #1d1611 45%, #0e0a06);
@@ -291,7 +294,7 @@
   width: 100%;
 }
 .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl {
-  transform: translateY(-38%);
+  transform: translateY(38%);
 }
 .mw-shelf-detail__sleeve:hover .mw-shelf-detail__vinyl .mw-record__plate {
   animation: mw-spin 4.5s linear infinite;

@@ -75,6 +75,12 @@ function openDetail(n, i){
   d.classList.add("is-open");
 }
 if(location.search.includes("detail")) openDetail("七里香", 2);
+if(location.search.includes("pull")){
+  const st=document.createElement("style");
+  st.textContent=".mw-shelf-detail__sleeve .mw-shelf-detail__vinyl{transform:translateY(38%) !important}";
+  document.head.appendChild(st);
+  if(!location.search.includes("detail")) openDetail("Gift of Life", 0);
+}
 
 if(location.search.includes("menu")){
   const menu=document.createElement("div");
