@@ -1,4 +1,4 @@
-﻿// 开盒详情 e2e：把真实 MusicWallView + 真实 styles.css 跑在无头 Edge 里，
+// 开盒详情 e2e：把真实 MusicWallView + 真实 styles.css 跑在无头 Edge 里，
 // 对第二轮修复做自动化断言（封面 z 序/盘面切换与播放/中断收盒/相机回位/图标钮重置/排队）。
 //
 // 打包（仓库根目录执行）：
@@ -443,6 +443,75 @@ function installAnimPump(): void {
   }, 50);
 }
 
+/** 总时长展示：与专辑信息同横带、靠右（工具钮左侧），悬停精确"分:秒" */
+async function caseTotalDur(): Promise<void> {
+  await openAndWait(7);
+  const el = document.querySelector<HTMLElement>(".mw-gf__total")!;
+  result(!!el, "总时长元素存在", el ? el.textContent : "null");
+  if (!el) return;
+  const barMetaBox = document.querySelector<HTMLElement>(".mw-gf__bar-meta")!;
+  result(!!barMetaBox && !!barMetaBox.closest(".mw-gf__bar"), "总时长与年份在顶栏信息带");
+  const yearEl = document.querySelector<HTMLElement>(".mw-gf__bar-meta .mw-gf__year");
+  result(!!yearEl && yearEl.textContent === "发行于 2024", "发行年份同处", yearEl?.textContent);
+  const leftMeta = document.querySelector<HTMLElement>(".mw-gf__meta");
+  result(
+    !!leftMeta && !leftMeta.querySelector(".mw-gf__year, .mw-gf__total"),
+    "专辑名/艺术家区不再混入年份与总时长"
+  );
+  // 测试数据 137+154+121 = 412s → 6.87min（<60min）→ "总时长 7 分钟"；悬停 "6:52"
+  result(el.textContent === "总时长 7 分钟", "总时长文案", el.textContent);
+  result(el.title === "6:52", "悬停提示为总分钟:秒", el.title);
+  // 几何：贴右对齐、在工具钮左侧、不与关闭钮重叠、纵向落在顶栏内
+  const metaBox = document.querySelector<HTMLElement>(".mw-gf__bar-meta")!;
+  const bar = document.querySelector<HTMLElement>(".mw-gf__bar")!;
+  const tools = document.querySelector<HTMLElement>(".mw-gf__tools")!;
+  const close0 = document.querySelector<HTMLElement>(".mw-gf__close")!;
+  const mr = metaBox.getBoundingClientRect();
+  const br = bar.getBoundingClientRect();
+  const tr = tools.getBoundingClientRect();
+  const cr = close0.getBoundingClientRect();
+  result(
+    cr.left <= br.left + 1 &&
+      tr.right >= br.right - 1 &&
+      mr.right <= tr.left + 1 &&
+      mr.left >= cr.right - 1,
+    "顶栏顺序：关闭 / 年份总时长 / 操作钮",
+    {
+      bar: [Math.round(br.left), Math.round(br.right)],
+      close: [Math.round(cr.left), Math.round(cr.right)],
+      meta: [Math.round(mr.left), Math.round(mr.right)],
+      tools: [Math.round(tr.left), Math.round(tr.right)],
+    }
+  );
+  result(
+    mr.top >= br.top - 1 && mr.bottom <= br.bottom + 1,
+    "纵向落在顶栏内",
+    { metaTop: Math.round(mr.top), metaBottom: Math.round(mr.bottom), bar: [Math.round(br.top), Math.round(br.bottom)] }
+  );
+  const cs = getComputedStyle(metaBox);
+  result(cs.alignItems === "flex-end", "右对齐", cs.alignItems);
+  // 窄容器（≤640px 上下堆叠）下顶栏信息带不得与关闭钮/操作钮重叠
+  const nameEl = document.querySelector<HTMLElement>(".mw-gf__name")!;
+  const nr = nameEl.getBoundingClientRect();
+  result(
+    mr.width > 0 && mr.left > cr.right - 1 && mr.right < tr.left + 1,
+    "不与相邻元素重叠（窄容器同规则）",
+    {
+      stageW: Math.round(document.querySelector<HTMLElement>(".mw-stage")!.getBoundingClientRect().width),
+      close: [Math.round(cr.left), Math.round(cr.right)],
+      meta: [Math.round(mr.left), Math.round(mr.right)],
+      tools: [Math.round(tr.left), Math.round(tr.right)],
+      name: [Math.round(nr.left), Math.round(nr.right)],
+      metaH: Math.round(mr.height),
+    }
+  );
+  // 右页盘片面此时不应再承载该信息
+  result(
+    !document.querySelector(".mw-gf__face--tray .mw-gf__total"),
+    "右页盘托面无重复总时长"
+  );
+}
+
 // ---- 入口 ----
 
 (async () => {
@@ -468,6 +537,11 @@ function installAnimPump(): void {
       return null;
     }) as typeof window.open;
     const app = makeApp();
+    // ?w=<px> 覆盖舞台宽度：用于验证窄容器（≤640px 触发上下堆叠降级）下的顶栏信息带
+    const wParam = Number(new URLSearchParams(location.search).get("w"));
+    if (Number.isFinite(wParam) && wParam > 0) {
+      document.getElementById("mount")!.style.width = `${wParam}px`;
+    }
     view = new MusicWallView(new WorkspaceLeaf(app), makePlugin());
     (view as unknown as { file: TFile | null }).file = new TFile("Epics.mw");
     (view as unknown as { data: unknown }).data = makeData(14);
@@ -481,6 +555,7 @@ function installAnimPump(): void {
       interrupt: caseInterrupt,
       "close-position": caseClosePosition,
       queue: caseQueue,
+      "total-dur": caseTotalDur,
       hitdebug: caseHitDebug,
     };
     if (fn[caseName]) await fn[caseName]();

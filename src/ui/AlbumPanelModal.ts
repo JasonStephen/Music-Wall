@@ -1,10 +1,11 @@
-﻿// 共享「唱片详情面板」：左侧当前样式大预览（只读，样式跟随墙全局）+ 右侧 metadata。
+// 共享「唱片详情面板」：左侧当前样式大预览（只读，样式跟随墙全局）+ 右侧 metadata。
 // 播放确认（mode=play）与搜索添加确认（mode=add）复用同一组件，
 // 底部按钮与回调按模式切换（计划书 §变更B.2）。
 
 import { App, Modal } from "obsidian";
 import type { AlbumMeta, DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
+import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
 
 export interface PanelOptions {
@@ -48,6 +49,17 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
   };
   row("发行", opts.meta.year);
   row("曲目数", opts.meta.trackCount);
+  // 总时长：档位化展示（分钟/小时），悬停给"总分钟:秒"
+  const totalDur = sumTrackDur(opts.meta.tracks);
+  if (totalDur > 0) {
+    const r = meta.createDiv({ cls: "mw-panel__row" });
+    r.createSpan({ cls: "mw-panel__k", text: "总时长" });
+    r.createSpan({
+      cls: "mw-panel__v mw-panel__v--dur",
+      text: fmtTotalDur(totalDur),
+      title: fmtTotalDurTip(totalDur),
+    });
+  }
   row("唱片公司", opts.meta.company);
 
   if (opts.meta.description) {
@@ -64,11 +76,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
     for (const t of opts.meta.tracks) {
       const li = list.createEl("li");
       li.createSpan({ cls: "mw-track-name", text: t.name });
-      const dur = t.duration
-        ? `${Math.floor(t.duration / 60000)}:${String(
-            Math.floor((t.duration % 60000) / 1000)
-          ).padStart(2, "0")}`
-        : "";
+      const dur = t.duration ? fmtDur(t.duration) : "";
       if (dur) li.createSpan({ cls: "mw-track-dur", text: dur });
     }
   }

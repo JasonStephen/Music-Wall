@@ -1,4 +1,4 @@
-﻿/* ===== 展示架 Shelf（布局） =====
+/* ===== 展示架 Shelf（布局） =====
    深色暖调背板 + 每卡自带木横板段（列距 0 拼成整行）；
    封套伪随机倾角靠板，悬停/触屏抽出，vinyl 样式盘片向右滑出半张。
    木纹为双层 feTurbulence SVG（解码为位图平铺，非实时滤镜）。 */
@@ -395,12 +395,16 @@
     0 6px 14px rgba(0, 0, 0, 0.5);
 }
 
-/* 顶栏：左关闭，右复制/迁移/删除 */
+/* 顶栏：左关闭，中右发行年/总时长，最右复制/迁移/删除 */
 .mw-gf__bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+}
+/* 关闭钮后的弹性空隙，把年份/总时长与工具钮一起推到右侧 */
+.mw-gf__bar > .mw-gf__close {
+  margin-right: auto;
 }
 .mw-gf__bar .mw-gf__tool,
 .mw-gf__bar .mw-gf__close {
@@ -461,7 +465,8 @@
   white-space: nowrap;
 }
 .mw-gf__artist,
-.mw-gf__year {
+.mw-gf__year,
+.mw-gf__total {
   margin-top: 3px;
   font-size: clamp(0.78em, 1.6cqw, 0.95em);
   color: #c9b8a2;
@@ -469,9 +474,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mw-gf__year {
+.mw-gf__year,
+.mw-gf__total {
   color: #a89a86;
   font-variant-numeric: tabular-nums;
+}
+/* 顶栏信息带：发行年份 + 总时长（紧挨操作钮左侧；窄容器下随容器缩小字号） */
+.mw-gf__bar-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  margin-left: auto;
+  margin-right: 2px;
+  min-width: 0;
+  text-align: right;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.mw-gf__bar-meta .mw-gf__year,
+.mw-gf__bar-meta .mw-gf__total {
+  margin-top: 0;
+  max-width: 100%;
+  font-size: clamp(0.68em, 1.45cqw, 0.85em);
+  line-height: 1.25;
 }
 
 /* 曲目列表：独立 scroller */
@@ -695,6 +721,15 @@
   }
   .mw-gf__face--info {
     box-shadow: inset 0 0 0 1px rgba(255, 226, 180, 0.12);
+  }
+  /* 窄容器：盘片占满方形右页，顶栏只留操作钮，信息带缩到最小 */
+  .mw-gf__bar-meta .mw-gf__year,
+  .mw-gf__bar-meta .mw-gf__total {
+    font-size: 0.72em;
+    line-height: 1.2;
+  }
+  .mw-gf__bar > .mw-gf__close {
+    margin-right: 8px;
   }
 }
 

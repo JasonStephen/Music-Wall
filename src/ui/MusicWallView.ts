@@ -1,4 +1,4 @@
-﻿// 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
+// 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
 // FileView 基类负责 file 绑定/切换/重命名刷标题/导航历史，本类只管加载与渲染；
 // 工具栏（样式切换/搜索/筛选/排序/添加）+ 响应式网格 + ⋯ 菜单 + 外部修改自动刷新；
 // 展示架布局点唱片 = 推镜 + 3D 开盒（gatefold）详情。
@@ -28,6 +28,7 @@ import { loadWall, saveWall } from "../core/store";
 import { playAlbum } from "../core/playback";
 import { sizedCover } from "../core/metadata";
 import { ALL_STYLES, STYLE_LABELS, buildDiscElement, makeCoverImg } from "./disc";
+import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { EditMetaModal } from "./EditMetaModal";
@@ -53,12 +54,6 @@ const LAYOUT_LABELS: Record<WallLayout, string> = {
 function decadeOf(y?: string): string {
   const n = parseInt(y ?? "", 10);
   return Number.isFinite(n) ? `${Math.floor(n / 10) * 10}s` : "";
-}
-
-/** 毫秒 → "m:ss" */
-function fmtDur(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /** 数值防御：mock 环境 rect/滚动量可能不是数字 */
@@ -1327,6 +1322,21 @@ export class MusicWallView extends FileView implements WallHost {
     setIcon(closeBtn, "x");
     closeBtn.setAttr("title", "关闭 (Esc)");
     closeBtn.addEventListener("click", () => this.closeShelfDetail());
+
+    // 发行年 + 总时长：顶栏内、操作钮左侧（右页盘片占满，无处安放），随左页信息带一起右移
+    const barMeta = bar.createDiv({ cls: "mw-gf__bar-meta" });
+    if (meta.year) {
+      barMeta.createDiv({ cls: "mw-gf__year", text: `发行于 ${meta.year}` });
+    }
+    const totalDur = sumTrackDur(meta.tracks);
+    if (totalDur > 0) {
+      const durEl = barMeta.createDiv({
+        cls: "mw-gf__total",
+        text: `总时长 ${fmtTotalDur(totalDur)}`,
+      });
+      durEl.title = fmtTotalDurTip(totalDur);
+    }
+
     const tools = bar.createDiv({ cls: "mw-gf__tools" });
     const mkTool = (icon: string, title: string, danger: boolean, fn: () => void) => {
       const b = tools.createEl("button", {
@@ -1347,9 +1357,6 @@ export class MusicWallView extends FileView implements WallHost {
     const nameEl = metaBox.createDiv({ cls: "mw-gf__name", text: meta.name });
     nameEl.title = meta.name;
     metaBox.createDiv({ cls: "mw-gf__artist", text: meta.artist || "未知艺术家" });
-    if (meta.year) {
-      metaBox.createDiv({ cls: "mw-gf__year", text: `发行于 ${meta.year}` });
-    }
     const tracks = info.createDiv({ cls: "mw-gf__tracks" });
     const list = meta.tracks ?? [];
     if (!list.length) {

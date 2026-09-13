@@ -57,6 +57,11 @@
   min-width: 0;
   word-break: break-all;
 }
+/* 总时长等数值：等宽数字，悬停 title 给精确"分:秒" */
+.mw-panel__v--dur {
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
 .mw-panel__desc {
   font-size: 0.85em;
   color: var(--text-muted);
