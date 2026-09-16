@@ -17,11 +17,14 @@
    一旦滚动落在根节点上，播放器页就会出现上下/左右滚动条。
    这里用双类 (0,2,0) 压过它：整页不滚动，唯一的滚动区留给曲目列表。 */
 .mw-player.mw-view {
-  height: 100%;
   overflow: hidden;
 }
 
 /* ---- 背景模式 ---- */
+/* 播放键（主传输键）配色：随背景模式走。
+   white/dark/wood 用各模式的固定色；art（封面动态取色）由 JS 写入封面主色，
+   取不到时回退 --interactive-accent。
+   --mw-np-accent-fg 是压在该色上的图标色，按亮度给（浅底用深字）。 */
 .mw-player.mw-bg--white {
   background: linear-gradient(180deg, #ffffff, #eef0f3);
   color: var(--text-normal);
@@ -33,6 +36,18 @@
   --background-modifier-border: rgba(0, 0, 0, 0.12);
   --background-modifier-hover: rgba(0, 0, 0, 0.06);
   --mw-player-panel-bg: #ffffff;
+  --mw-panel-bg: var(--mw-player-panel-bg);
+  --mw-panel-fg: #22252b;
+  --mw-panel-fg-dim: #6b7280;
+  --mw-panel-line: rgba(0, 0, 0, 0.12);
+  --mw-panel-surface: rgba(0, 0, 0, 0.04);
+  --mw-panel-hover: rgba(0, 0, 0, 0.06);
+  --mw-np-accent: #4c5bd4;
+  --mw-np-accent-fg: #ffffff;
+  /* 控制键（上一首/播放/下一首/列表）的可见性：浅色背景下用深色半透明底 */
+  --mw-ctrl-bg: #ffffff;
+  --mw-ctrl-border: rgba(0, 0, 0, 0.12);
+  --mw-ctrl-fg: #22252b;
 }
 .mw-player.mw-bg--dark {
   background: radial-gradient(120% 90% at 50% 0%, #252932, #15181d 58%, #0d0f13);
@@ -45,6 +60,17 @@
   --background-modifier-border: rgba(255, 255, 255, 0.14);
   --background-modifier-hover: rgba(255, 255, 255, 0.1);
   --mw-player-panel-bg: #171a20;
+  --mw-panel-bg: var(--mw-player-panel-bg);
+  --mw-panel-fg: #e9ecf1;
+  --mw-panel-fg-dim: #a3aab5;
+  --mw-panel-line: rgba(255, 255, 255, 0.14);
+  --mw-panel-surface: rgba(255, 255, 255, 0.06);
+  --mw-panel-hover: rgba(255, 255, 255, 0.1);
+  --mw-np-accent: #d9a24a;
+  --mw-np-accent-fg: #1b1b1f;
+  --mw-ctrl-bg: rgba(255, 255, 255, 0.08);
+  --mw-ctrl-border: rgba(255, 255, 255, 0.16);
+  --mw-ctrl-fg: #e9ecf1;
 }
 .mw-player.mw-bg--art {
   background: #101216;
@@ -57,6 +83,21 @@
   --background-modifier-border: rgba(255, 255, 255, 0.2);
   --background-modifier-hover: rgba(255, 255, 255, 0.16);
   --mw-player-panel-bg: rgba(14, 16, 21, 0.92);
+  /* 封面模式：主色由 JS 从封面提取后写到行内；取不到就用主题强调色 */
+  --mw-np-accent: var(--interactive-accent);
+  --mw-np-accent-fg: #ffffff;
+  /* 面板必须是实底：封面背景的 --background-primary 只有 14% 白，
+     直接拿来当面板底色会「开着像关着」（第三轮用户报的「按键全不见」） */
+  --mw-panel-bg: var(--mw-player-panel-bg);
+  --mw-panel-fg: #f2f4f8;
+  --mw-panel-fg-dim: rgba(240, 244, 250, 0.72);
+  --mw-panel-line: rgba(255, 255, 255, 0.2);
+  --mw-panel-surface: rgba(255, 255, 255, 0.1);
+  --mw-panel-hover: rgba(255, 255, 255, 0.16);
+  /* 控制键：封面模糊底亮暗不定，固定用深色半透明底保证看得见、点得到 */
+  --mw-ctrl-bg: rgba(8, 10, 14, 0.55);
+  --mw-ctrl-border: rgba(255, 255, 255, 0.2);
+  --mw-ctrl-fg: #f2f4f8;
 }
 /* 封面动态取色：放大模糊的封面 + 压暗层，保证文字可读 */
 .mw-player.mw-bg--art::before {
@@ -83,6 +124,20 @@
   z-index: 0;
   pointer-events: none;
 }
+/* 顶栏区域的深色渐变（只覆盖顶部 ~60px，不整体压暗封面）：
+   封面模糊底亮暗不定，浅色封面上图标/标题会糊成一片（用户报过「按键不见了」）。
+   面板/控制键另有实底令牌，这里只保顶栏可读。 */
+.mw-player.mw-bg--art .mw-player__bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 60px;
+  background: linear-gradient(180deg, rgba(6, 8, 12, 0.72), rgba(6, 8, 12, 0));
+  pointer-events: none;
+  z-index: -1;
+}
 .mw-player.mw-bg--wood {
   background-color: #5c3f27;
   background-image:
@@ -106,9 +161,22 @@
   --background-modifier-border: rgba(255, 255, 255, 0.18);
   --background-modifier-hover: rgba(255, 255, 255, 0.14);
   --mw-player-panel-bg: rgba(38, 25, 15, 0.94);
+  /* 木地板：播放键取木色琥珀，与地板同族 */
+  --mw-np-accent: #b9773b;
+  --mw-np-accent-fg: #ffffff;
+  --mw-panel-bg: var(--mw-player-panel-bg);
+  --mw-panel-fg: #f6efe4;
+  --mw-panel-fg-dim: rgba(246, 239, 228, 0.72);
+  --mw-panel-line: rgba(255, 255, 255, 0.18);
+  --mw-panel-surface: rgba(255, 255, 255, 0.08);
+  --mw-panel-hover: rgba(255, 255, 255, 0.14);
+  --mw-ctrl-bg: rgba(255, 255, 255, 0.12);
+  --mw-ctrl-border: rgba(255, 255, 255, 0.2);
+  --mw-ctrl-fg: #f6efe4;
 }
 
-/* 顶栏：只剩「播放器名 + 右上角样式图标」，样式/背景收进右侧滑出抽屉 */
+/* 顶栏：只剩「播放器名 + 右上角样式图标」，样式/背景收进右侧滑出抽屉。
+   无自身底色与边框 —— 直接融进播放器背景（各 mw-bg--* 已定好文字色）。 */
 .mw-player__bar {
   position: relative;
   z-index: 2;
@@ -116,10 +184,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 12px;
-  min-height: 42px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  padding: 4px 12px;
+  min-height: 48px;
+  background: transparent;
+  border-bottom: 0;
 }
 .mw-player__title {
   font-size: 1.05em;
@@ -129,20 +197,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 图标钮的底色跟随播放器背景模式：Obsidian 的 button 规则特异性更高，
-   必须用 .mw-player 前缀抬特异性（同下方 .mw-player .mw-chip 的理由） */
+/* 图标钮只有图标：颜色跟随背景模式的 --text-normal/--text-muted，
+   因此四种背景下都能辨认（原来只设了 border/color 没设 background，
+   主题的白底盖了上来 → 白底白图标） */
 .mw-player .mw-toolbtn {
-  border-color: var(--background-modifier-border);
-  color: var(--text-muted);
-}
-.mw-player .mw-toolbtn:hover {
-  background: var(--background-modifier-hover);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-normal);
 }
+.mw-player .mw-toolbtn:hover {
+  background: transparent;
+  color: var(--text-accent);
+}
 .mw-player .mw-toolbtn.is-active {
-  background: var(--mw-accent, var(--interactive-accent));
-  border-color: var(--mw-accent, var(--interactive-accent));
-  color: var(--text-on-accent);
+  background: transparent;
+  color: var(--text-accent);
 }
 
 /* 芯片（样式 / 背景）：底色与文字全部走当前背景模式的变量。
@@ -585,14 +656,15 @@
   font-size: 0.85em;
   height: auto;
   padding: 1px 10px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  color: var(--text-normal);
+  background: var(--mw-ctrl-bg, var(--background-primary));
+  border: 1px solid var(--mw-ctrl-border, var(--background-modifier-border));
+  color: var(--mw-ctrl-fg, var(--text-normal));
   box-shadow: none;
 }
 .mw-player .mw-np__jump:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  filter: brightness(1.12);
+  border-color: var(--mw-np-accent, var(--interactive-accent));
+  color: var(--mw-ctrl-fg, var(--text-normal));
 }
 .mw-np__source {
   font-size: 0.72em;
@@ -621,22 +693,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-  color: var(--text-normal);
+  /* 控制键必须有实底：封面模式下背景亮暗不定，透明圆 + 淡描边会「看不见也找不到」 */
+  border: 1px solid var(--mw-ctrl-border, var(--background-modifier-border));
+  background: var(--mw-ctrl-bg, var(--background-primary));
+  color: var(--mw-ctrl-fg, var(--text-normal));
   box-shadow: none;
 }
 .mw-player .mw-np__ctrl:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  background: var(--mw-ctrl-bg, var(--background-primary));
+  border-color: var(--mw-np-accent, var(--interactive-accent));
+  color: var(--mw-ctrl-fg, var(--text-normal));
+  filter: brightness(1.12);
 }
 .mw-player .mw-np__ctrl--main,
 .mw-player .mw-np__ctrl--main:hover {
   width: 46px;
   height: 46px;
-  background: var(--mw-accent, var(--interactive-accent));
-  border-color: var(--mw-accent, var(--interactive-accent));
-  color: var(--text-on-accent);
+  /* 随背景模式取色（白/深/木地板各有固定色，封面模式用封面主色） */
+  background: var(--mw-np-accent, var(--interactive-accent));
+  border-color: var(--mw-np-accent, var(--interactive-accent));
+  color: var(--mw-np-accent-fg, var(--text-on-accent));
 }
 .mw-np__ctrl.is-disabled {
   opacity: 0.35;
@@ -647,8 +723,8 @@
   margin-left: 6px;
 }
 .mw-np__ctrl--list.is-active {
-  border-color: var(--mw-accent, var(--interactive-accent));
-  color: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-np-accent, var(--interactive-accent));
+  color: var(--mw-np-accent, var(--interactive-accent));
 }
 
 /* 全页唯一的滚动区 */
@@ -698,11 +774,7 @@
   color: var(--text-muted);
 }
 
-/* ---- 样式/背景抽屉：遮罩压在 body 之上、盖住上拉面板 ---- */
-.mw-player .mw-drawer__scrim {
-  z-index: 28;
-  background: rgba(0, 0, 0, 0.32);
-}
+/* ---- 样式/背景抽屉：压在内容之上（第四轮起没有遮罩，见 player.css 顶栏说明） ---- */
 .mw-player .mw-drawer {
   z-index: 29;
 }

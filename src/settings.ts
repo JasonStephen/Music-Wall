@@ -4,6 +4,10 @@ import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
 import {
   PLAYER_BG_LABELS,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  clampZoom,
   type DiscStyle,
   type PlayerBackground,
   type ShelfCaption,
@@ -171,6 +175,24 @@ export class MusicWallSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+
+    new Setting(containerEl)
+      .setName("界面缩放")
+      .setDesc(
+        "音乐墙与播放器页的全局缩放（含侧边抽屉与弹窗）。100% 为默认；也可在墙/播放器内用 Ctrl+滚轮 或 Alt+滚轮 直接调整。"
+      )
+      .addSlider((s) =>
+        s
+          .setLimits(ZOOM_MIN * 100, ZOOM_MAX * 100, ZOOM_STEP * 100)
+          .setValue(Math.round((this.plugin.settings.zoomScale ?? 1) * 100))
+          .setDynamicTooltip()
+          .onChange(async (v) => {
+            this.plugin.settings.zoomScale = clampZoom(v / 100);
+            // 不重建视图：变量在 body 上，两个视图会立刻跟着变
+            this.plugin.applyZoom();
+            await this.plugin.saveData(this.plugin.settings);
+          })
+      );
 
     new Setting(containerEl)
       .setName("SMTC 正在播放")

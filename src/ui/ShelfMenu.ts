@@ -7,7 +7,9 @@ export interface ShelfMenuItem {
   danger?: boolean;
   /** 置灰不可点（如未打开播放器时的「加入播放器」） */
   disabled?: boolean;
-  onClick: () => void;
+  /** 小标题行（不可点，用于给「移动到分组」这类成组条目分节） */
+  heading?: boolean;
+  onClick?: () => void;
 }
 
 let activeCleanup: (() => void) | null = null;
@@ -27,6 +29,12 @@ export function openShelfMenu(x: number, y: number, items: ShelfMenuItem[]): voi
 
   for (const item of items) {
     const row = doc.createElement("div");
+    if (item.heading) {
+      row.className = "mw-shelf-menu__heading";
+      row.textContent = item.title;
+      menu.appendChild(row);
+      continue;
+    }
     const classes = ["mw-shelf-menu__item"];
     if (item.danger) classes.push("is-danger");
     if (item.disabled) classes.push("is-disabled");
@@ -36,7 +44,7 @@ export function openShelfMenu(x: number, y: number, items: ShelfMenuItem[]): voi
       e.stopPropagation();
       if (item.disabled) return;
       closeActive();
-      item.onClick();
+      item.onClick?.();
     });
     menu.appendChild(row);
   }

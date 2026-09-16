@@ -193,9 +193,14 @@ const obsidianMock = {
         setTitle: mk,
         setIcon: mk,
         setDisabled: mk,
+        setChecked: mk,
         onClick: mk,
+        setSubmenu: () => chain,
       };
       cb(chain);
+      return this;
+    }
+    addSeparator() {
       return this;
     }
     showAtPosition() {}
@@ -292,16 +297,29 @@ const origLoad = Module._load;
   view.data.layout = undefined;
   console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式 + 场景详情）未抛错");
 
-  // 分组 + 手动排序 + 抽屉：分区渲染、编辑态进出、面板构建都不应抛错
+  // 分组 + 手动排序 + 抽屉/浮层：分区渲染、编辑态进出、面板构建都不应抛错
   view.enterEditMode();
   view.renderEditBar();
-  for (const key of ["style", "filter", "group", "sort", "search", "settings"]) {
+  for (const key of ["style", "filter", "sort", "settings"]) {
     view.drawer?.open(key);
     view.drawer?.refresh();
   }
   view.drawer?.close();
+  for (const key of ["search", "add"]) {
+    view.floater?.open(key);
+    view.floater?.refresh();
+  }
+  view.floater?.close();
   view.exitEditMode(true);
-  console.log("分组分区 + 布局编辑态 + 六个抽屉面板 未抛错");
+  console.log("分组分区 + 布局编辑态 + 侧边抽屉/右上浮层 未抛错");
+
+  // 全局缩放：设置项 → body 变量 → 视图尺寸补偿
+  plugin.settings.zoomScale = 1.25;
+  plugin.applyZoom();
+  if (plugin.settings.zoomScale !== 1.25) throw new Error("缩放设置未生效");
+  plugin.settings.zoomScale = 1;
+  plugin.applyZoom();
+  console.log("全局缩放（设置 → body 变量）未抛错");
 
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);

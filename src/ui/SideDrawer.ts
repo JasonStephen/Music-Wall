@@ -1,16 +1,27 @@
-// 右侧滑出抽屉：音乐墙与播放器页共用的图标面板外壳。
+// 浮层面板外壳：两种形态共用一套开合/互斥/快捷键逻辑
+// - side：从右侧滑出的侧边抽屉（样式与布局 / 筛选 / 排序）
+// - float：锚在右上角的悬浮框（搜索本墙 / 添加专辑），点击墙面不关闭
 //
 // 设计要点：
-// - 挂在视图根节点下（absolute 覆盖层），因此不参与 .mw-grid 的滚动；
+// - 挂在 .mw-stage 下（absolute 覆盖层），因此不参与 .mw-grid 的滚动；
 // - 内容由调用方通过 builder 提供，每次 open/refresh 重建，避免陈旧闭包；
-// - Esc / 点遮罩 / 关闭钮三种收起方式；外部按钮的激活态由 onAfterChange 回调同步。
+// - Esc / 关闭钮收起；外部按钮的激活态由 onAfterChange 回调同步。
 
-export type DrawerKey = "style" | "filter" | "group" | "sort" | "search" | "settings";
+import { setIcon } from "obsidian";
+
+export type DrawerKey =
+  | "style"
+  | "filter"
+  | "group"
+  | "sort"
+  | "search"
+  | "settings"
+  | "add";
 
 export interface DrawerApi {
-  /** 收起抽屉 */
+  /** 收起面板 */
   close(): void;
-  /** 重建当前面板内容（改数据后刷新列表用，不关闭抽屉） */
+  /** 重建当前面板内容（改数据后刷新列表用，不关闭面板） */
   refresh(): void;
 }
 
@@ -22,8 +33,6 @@ interface DrawerEntry {
 }
 
 export class SideDrawer {
-  private host: HTMLElement;
-  private scrim: HTMLElement;
   private panel: HTMLElement;
   private titleEl: HTMLElement;
   private bodyEl: HTMLElement;
@@ -33,25 +42,33 @@ export class SideDrawer {
   private onKey: (e: KeyboardEvent) => void;
   private disposed = false;
 
-  constructor(host: HTMLElement, onAfterChange?: () => void) {
-    this.host = host;
+  constructor(
+    host: HTMLElement,
+    onAfterChange?: () => void,
+    variant: "side" | "float" = "side"
+  ) {
     this.onAfterChange = onAfterChange;
 
-    this.scrim = host.createDiv({ cls: "mw-drawer__scrim" });
-    this.scrim.addEventListener("click", () => this.close());
-
-    this.panel = host.createDiv({ cls: "mw-drawer" });
+    // 刻意**不创建遮罩**（第四轮结论，别再改回去）：
+    // 1) 上一轮把遮罩从「只盖网格区」扩到整块缩放盒后，它会盖住顶栏图标——
+    //    用户点图标其实点在遮罩上，「展开侧栏 = 整屏变暗」也被明确否决；
+    // 2) 遮罩一旦与实例状态不同步（close() 的守卫早退 / dispose() 不清类名），
+    //    就会留下「看得见但点不动、还吞掉所有点击」的幽灵层。
+    // 关闭途径：工具栏图标 / 面板右上 × / Esc。
+    this.panel = host.createDiv({
+      cls: variant === "float" ? "mw-drawer mw-drawer--float" : "mw-drawer",
+    });
     const head = this.panel.createDiv({ cls: "mw-drawer__head" });
     this.titleEl = head.createDiv({ cls: "mw-drawer__title" });
-    const closeBtn = head.createEl("button", { cls: "mw-drawer__close" });
+    const closeBtn = head.createEl("button", { cls: "clickable-icon mw-drawer__close" });
     closeBtn.setAttr("aria-label", "关闭面板");
     closeBtn.setAttr("title", "关闭 (Esc)");
-    closeBtn.textContent = "✕";
+    setIcon(closeBtn, "x");
     closeBtn.addEventListener("click", () => this.close());
 
     this.bodyEl = this.panel.createDiv({ cls: "mw-drawer__body" });
 
-    // 捕获阶段：抽屉打开时优先吃掉 Esc，不让它继续去关展示架详情
+    // 捕获阶段：面板打开时优先吃掉 Esc，不让它继续去关展示架详情
     this.onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !this.openKey) return;
       e.stopPropagation();
@@ -73,6 +90,11 @@ export class SideDrawer {
     return this.openKey;
   }
 
+  /** 当前面板的 body 元素（外部聚焦/查询控件用） */
+  currentBodyEl(): HTMLElement | null {
+    return this.openKey ? this.bodyEl : null;
+  }
+
   /** 打开面板；再次调用同一个 key 视为收起（图标钮的开关语义） */
   toggle(key: DrawerKey): void {
     if (this.openKey === key) this.close();
@@ -87,17 +109,20 @@ export class SideDrawer {
     this.titleEl.textContent = entry.title;
     this.renderBody(entry);
     this.panel.addClass("is-open");
-    this.scrim.addClass("is-open");
     this.onAfterChange?.();
   }
 
+  /**
+   * 收起面板。**无条件清理 DOM 类名**：状态为空时也要把 is-open 摘掉，
+   * 否则「实例已 dispose / 状态已清空，但 DOM 还留着 is-open」会变成
+   * 一个盖住视图、吞掉点击的幽灵面板（第三轮踩过）。
+   */
   close(): void {
-    if (!this.openKey) return;
+    const wasOpen = this.openKey !== null;
     this.openKey = null;
     this.panel.removeClass("is-open");
-    this.scrim.removeClass("is-open");
     this.bodyEl.empty();
-    this.onAfterChange?.();
+    if (wasOpen) this.onAfterChange?.();
   }
 
   /** 重建当前面板（数据变更后刷新内容，不改变开合状态） */
@@ -110,12 +135,13 @@ export class SideDrawer {
     this.renderBody(entry);
   }
 
-  /** 视图重建/卸载时调用：撤掉全局监听，避免旧实例残留 */
+  /** 视图重建/卸载时调用：撤掉全局监听、清掉自身类名，避免旧实例残留 */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     document.removeEventListener("keydown", this.onKey, true);
     this.openKey = null;
+    this.panel.removeClass("is-open");
   }
 
   private renderBody(entry: DrawerEntry): void {

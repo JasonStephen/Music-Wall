@@ -17,6 +17,8 @@ import {
   WALL_DRAG_MIME,
   WALL_EXT,
   WALL_VIEW_TYPE,
+  ZOOM_CSS_VAR,
+  clampZoom,
   type AlbumMeta,
   type AlbumSummary,
   type MusicWallData,
@@ -47,7 +49,7 @@ import { MusicWallSettingTab } from "./settings";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "20260916-01";
+const BUILD_TAG = "20260916-04";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -156,6 +158,7 @@ export default class MusicWallPlugin extends Plugin {
 
     this.setupStatusBar();
     this.ensureNowPlayingStarted();
+    this.applyZoom();
 
     // 文件列表右键文件夹/库根目录 → 直接新建「新的音乐墙.mw」并打开
     // （点开 .mw 文件由 registerExtensions + FileView 原生处理，无需 file-open 转换）
@@ -194,12 +197,29 @@ export default class MusicWallPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.applySmtcSetting();
     this.refreshOpenViews();
+  }
+
+  /**
+   * 只落盘缩放、不重建视图：滚轮缩放是连续操作，
+   * 走 saveSettings 会连带 refreshOpenViews 把视图整页重绘（滚动位置与面板都会跳）。
+   */
+  async saveZoom(scale: number): Promise<void> {
+    this.settings.zoomScale = clampZoom(scale);
+    this.applyZoom();
+    await this.saveData(this.settings);
+  }
+
+  /** 把缩放系数写到 body 的 CSS 变量上（视图与模态框都继承） */
+  applyZoom(): void {
+    const scale = clampZoom(this.settings.zoomScale ?? 1);
+    document.body.style.setProperty(ZOOM_CSS_VAR, String(scale));
   }
 
   refreshOpenViews(): void {

@@ -6,13 +6,29 @@
 <link rel="stylesheet" href="../styles.css">
 <style>
   body { margin: 0; background: #211c18; }
+  /* 模拟 Obsidian 主题的标准变量（真实环境一定有）：播放器只覆盖背景相关的那几个，
+     强调色/文字色仍来自主题——缺了它们，取色断言会因为变量不存在而失真 */
+  :root {
+    --interactive-accent: #7c5cff;
+    --interactive-accent-hover: #6b4bf0;
+    --text-on-accent: #ffffff;
+    --text-normal: #22252b;
+    --text-muted: #6b7280;
+    --text-faint: #9aa1ac;
+    --text-accent: #7c5cff;
+    --background-modifier-border: rgba(0, 0, 0, 0.12);
+    --background-modifier-hover: rgba(0, 0, 0, 0.06);
+  }
   #mount { width: 1180px; height: 720px; margin: 0 auto; }
-  #mount .mw-view { height: 100%; }
+  /* 不写死 .mw-view 的高度：产品用 height: calc(100% / var(--mw-zoom)) 做缩放反除补偿，
+     这里再声明 height 会把它盖掉（缩放后就不是精确铺满了） */
   #result {
     position: fixed; right: 8px; top: 8px; z-index: 99999;
     background: #14100c; color: #eee; font: 14px/1.7 Consolas, monospace;
     padding: 10px 12px; max-width: 620px; max-height: 90vh; overflow: auto;
     border: 2px solid #666; border-radius: 8px;
+    /* 调试浮层不能拦命中测试：遮罩覆盖断言用 elementFromPoint，浮层盖住的区域会误判 */
+    pointer-events: none;
   }
   #result .ok { color: #8fd98f; }
   #result .bad { color: #ff9090; }

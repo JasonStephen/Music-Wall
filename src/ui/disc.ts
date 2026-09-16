@@ -24,6 +24,10 @@ function makeImg(src: string, alt: string): HTMLImageElement {
   img.loading = "lazy";
   img.decoding = "async";
   img.alt = alt;
+  // 关键：<img> 默认是浏览器的原生拖拽源，按住封面一移动就会启动原生图片拖拽
+  // 并取消指针事件 —— 排序手势会被整段抢走（用户报「拖不动」的根因之一）。
+  // 关掉它，拖拽源就只剩整张卡片。
+  img.draggable = false;
   img.addEventListener("error", () => {
     img.style.display = "none";
     const wrap = img.parentElement;

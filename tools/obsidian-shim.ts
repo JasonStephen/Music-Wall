@@ -51,6 +51,43 @@ export const Platform = {
   isMobileOnly: false,
 };
 
+/**
+ * requestUrl 垫片：产品代码用它在「封面动态取色」时取图片字节（绕过 CORS）。
+ *
+ * 约定：URL 里带 `accent-probe-<hex>` 就返回一张该颜色的 8×8 PNG（现场用 canvas
+ * 生成，保证字节合法），让取色链路可以被确定性地断言；其余 URL 一律抛错，
+ * 用来验证「取不到就回退主题强调色」这条路径。
+ */
+export async function requestUrl(req: { url: string }): Promise<{
+  status: number;
+  arrayBuffer: ArrayBuffer;
+  text: string;
+  headers: Record<string, string>;
+}> {
+  const url = String(req?.url ?? "");
+  const m = /accent-probe-([0-9a-f]{6})/i.exec(url);
+  if (m) {
+    const buf = probePng(`#${m[1]}`);
+    return { status: 200, arrayBuffer: buf, text: "", headers: {} };
+  }
+  throw new Error(`requestUrl unavailable in harness: ${url}`);
+}
+
+/** 用 canvas 现场生成一张纯色 PNG（避免在垫片里硬编码图片字节） */
+function probePng(color: string): ArrayBuffer {
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 8;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 8, 8);
+  const b64 = canvas.toDataURL("image/png").split(",")[1];
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer as ArrayBuffer;
+}
+
 export function normalizePath(p: string): string {
   return p;
 }
@@ -70,14 +107,56 @@ export function setIcon(el: HTMLElement, name: string): void {
   el.appendChild(svg);
 }
 
+/** 菜单条目快照：让 e2e 能断言「点了右键到底弹了什么」 */
+export interface ShimMenuItem {
+  title: string;
+  icon?: string;
+  disabled?: boolean;
+  submenu?: ShimMenuItem[];
+  run?: () => void;
+}
+
+/** 每次 showAtPosition 都会把当次菜单推进这里（供 e2e 读取） */
+export const MENU_LOG: { items: ShimMenuItem[] }[] = [];
+
 export class Menu {
-  addItem(_cb: (item: never) => unknown): this {
+  items: ShimMenuItem[] = [];
+
+  addItem(cb: (item: never) => unknown): this {
+    const entry: ShimMenuItem = { title: "" };
+    const chain = {
+      setTitle: (t: string) => {
+        entry.title = t;
+        return chain;
+      },
+      setIcon: (i: string) => {
+        entry.icon = i;
+        return chain;
+      },
+      setDisabled: (d: boolean) => {
+        entry.disabled = d;
+        return chain;
+      },
+      setChecked: () => chain,
+      onClick: (fn: () => void) => {
+        entry.run = fn;
+        return chain;
+      },
+      setSubmenu: () => {
+        const sub = new Menu();
+        entry.submenu = sub.items;
+        return sub;
+      },
+    };
+    cb(chain as never);
+    this.items.push(entry);
     return this;
   }
   addSeparator(): this {
     return this;
   }
   showAtPosition(_pos: { x: number; y: number }): this {
+    MENU_LOG.push({ items: this.items });
     return this;
   }
   hide(): this {
@@ -215,6 +294,16 @@ export function installDomHelpers(): void {
   proto.empty = function () {
     const self = this as HTMLElement;
     while (self.firstChild) self.removeChild(self.firstChild);
+  };
+  // Obsidian 注入的文本/属性助手（真实环境存在，shim 必须对齐，
+  // 否则产品代码里一用 setText 就会在 e2e 里抛 "not a function"）
+  proto.setText = function (text: string | DocumentFragment) {
+    const self = this as HTMLElement;
+    self.textContent = typeof text === "string" ? text : "";
+    if (typeof text !== "string") self.appendChild(text);
+  };
+  proto.getText = function () {
+    return (this as HTMLElement).textContent ?? "";
   };
   // 与真实 Obsidian 对齐：每个参数就是一个 token，空格分隔的字符串会抛
   // InvalidCharacterError（classList 原生行为），不做拆分兜底，保证 e2e 能抓住此类误用

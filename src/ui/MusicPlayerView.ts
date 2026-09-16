@@ -22,6 +22,8 @@ import { STYLE_LABELS } from "./disc";
 import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
+import { handleZoomWheel } from "./zoom";
+import { coverAccent, onAccentFor } from "./accent";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -125,6 +127,15 @@ export class MusicPlayerView extends FileView {
     });
     this.register(() => this.offNow?.());
     this.registerDomEvent(window, "resize", () => this.syncLayout());
+    // Ctrl/Alt + 滚轮：与音乐墙同一套全局缩放
+    this.registerDomEvent(
+      this.contentEl,
+      "wheel",
+      (e: WheelEvent) => {
+        handleZoomWheel(e, this.plugin, this.contentEl);
+      },
+      { passive: false, capture: true }
+    );
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
       if (e.key === "Escape" && this.playlistOpen) this.togglePlaylist(false);
     });
@@ -239,21 +250,26 @@ export class MusicPlayerView extends FileView {
     this.iconPaused = null;
     await this.refreshMatch();
 
-    this.applyBackground();
-    this.buildBar(root);
+    // 所有内容放进缩放盒（zoom 必须作用在没有 overflow 裁剪的中间层，见 base.css）
+    const box = root.createDiv({ cls: "mw-zoombox" });
 
-    const body = root.createDiv({ cls: "mw-player__body" });
+    this.applyBackground();
+    const bar = this.buildBar(box);
+    this.syncTopbarHeight(bar);
+
+    const body = box.createDiv({ cls: "mw-player__body" });
     this.shell = body;
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
 
     // 上拉曲目面板 + 遮罩：覆盖在 page 之上，纯查看不可切歌
-    this.el.scrim = root.createDiv({ cls: "mw-player__scrim" });
+    this.el.scrim = box.createDiv({ cls: "mw-player__scrim" });
     this.el.scrim.addEventListener("click", () => this.togglePlaylist(false));
-    this.el.panel = root.createDiv({ cls: "mw-player__playlist" });
+    this.el.panel = box.createDiv({ cls: "mw-player__playlist" });
     this.buildPlaylist(this.el.panel);
 
-    // 样式 / 背景抽屉：挂在 body 上，不参与页面滚动
-    this.drawer = this.buildDrawer(body);
+    // 样式 / 背景抽屉：与遮罩同层挂在缩放盒上（挂 body 上时遮罩只压暗 body，
+    // 顶栏与缩放盒四周会露白；面板仍从顶栏下方开始，靠 --mw-topbar-h）
+    this.drawer = this.buildDrawer(box);
     if (prevDrawer) this.drawer.open(prevDrawer);
 
     this.syncLayout();
@@ -266,30 +282,65 @@ export class MusicPlayerView extends FileView {
     const root = this.contentEl;
     root.removeClass("mw-bg--white", "mw-bg--dark", "mw-bg--art", "mw-bg--wood");
     root.addClass(`mw-bg--${this.bg}`);
+    const cover = this.displayAlbum()?.cover ?? "";
+    // 播放键取色：只有「封面」模式跟着封面主色走，其余模式用 CSS 里各模式的固定色
+    this.applyArtAccent(this.bg === "art" ? cover : "");
     if (this.bg !== "art") {
       root.style.removeProperty("--mw-player-art");
       return;
     }
-    const cover = this.displayAlbum()?.cover ?? "";
     if (cover) root.style.setProperty("--mw-player-art", `url("${sizedCover(cover, 800)}")`);
     else root.style.removeProperty("--mw-player-art");
   }
 
+  /** 已解析过主色的封面地址（防止异步结果覆盖后来的专辑） */
+  private accentKey = "";
+
+  /**
+   * 「封面」背景下的播放键配色 = 封面主色。
+   * 取色是异步的：回来的晚于专辑切换就丢弃（比对 key）。
+   * 取不到（无封面 / 网络失败 / 全是不适合的像素）时清掉内联变量，
+   * 回退到 CSS 的 --mw-np-accent（= 主题强调色）。
+   */
+  private applyArtAccent(cover: string): void {
+    const root = this.contentEl;
+    const key = cover.trim();
+    if (key === this.accentKey) return;
+    this.accentKey = key;
+    root.style.removeProperty("--mw-np-accent");
+    root.style.removeProperty("--mw-np-accent-fg");
+    if (!key) return;
+    void coverAccent(sizedCover(key, 300)).then((color) => {
+      if (!color || this.accentKey !== key) return;
+      root.style.setProperty("--mw-np-accent", color);
+      root.style.setProperty("--mw-np-accent-fg", onAccentFor(color));
+    });
+  }
+
+  /**
+   * 顶栏高度写进 --mw-topbar-h（局部像素）：抽屉面板与右上角浮层都从顶栏下方开始，
+   * 否则面板会盖住唯一的样式图标。缩放由缩放盒的 transform 负责，这里只给几何。
+   */
+  private syncTopbarHeight(bar: HTMLElement): void {
+    const h = bar.offsetHeight;
+    if (h > 0) this.contentEl.style.setProperty("--mw-topbar-h", `${h}px`);
+  }
+
   /** 顶栏：只有标题 + 右上角一个样式图标（点开滑出「样式 / 背景」抽屉） */
-  private buildBar(root: HTMLElement): void {
+  private buildBar(root: HTMLElement): HTMLElement {
     const bar = root.createDiv({ cls: "mw-player__bar" });
     bar.createDiv({
       cls: "mw-player__title",
       text: this.file?.basename ?? "音乐播放器",
     });
-    const btn = bar.createEl("button", { cls: "mw-toolbtn" });
+    const btn = bar.createEl("button", { cls: "clickable-icon mw-toolbtn" });
     btn.setAttr("type", "button");
     btn.setAttr("aria-label", "样式与背景");
     btn.setAttr("title", "样式与背景");
     setIcon(btn, "palette");
-    btn.addClass("mw-toolbtn--palette");
     btn.addEventListener("click", () => this.drawer?.toggle("settings"));
     this.styleBtn = btn;
+    return bar;
   }
 
   private buildDrawer(body: HTMLElement): SideDrawer {
@@ -551,6 +602,8 @@ export class MusicPlayerView extends FileView {
     if (!this.shell) return;
     const w = this.contentEl.clientWidth || 0;
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
+    const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
+    if (bar) this.syncTopbarHeight(bar);
   }
 
   // ---- 控制 ----

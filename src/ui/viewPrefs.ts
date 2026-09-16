@@ -1,15 +1,15 @@
-// 样式面板共用件：真实唱片缩略预览 + 预设类名。
+// 样式面板共用件：真实唱片缩略预览 + 预设瓷砖。
 //
-// 预览刻意复用 buildDiscElement 渲染真实 DOM 后整体 scale 缩小，
-// 不另写一套缩略图样式——四种样式的纹理永远与墙上一致，
-// 改 styles/*.css 不需要同步第二份。
+// 预览刻意复用 buildDiscElement 渲染真实 DOM：四种样式的纹理永远与墙上一致，
+// 改 styles/*.css 不需要同步第二份缩略图。尺寸由容器决定（见 presets.css），
+// 不用固定宽 + transform: scale()。
 
 import type { DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
 import { sizedCover } from "../core/metadata";
 
-/** 预览舞台的标称宽度（与 buildDiscElement 的 coverSize 对齐，取图上限 340） */
-const PRESET_STAGE_W = 340;
+/** 预览取图尺寸：瓷砖实际只有 ~120-180px，取 220 足够清晰又不浪费流量 */
+const PRESET_COVER_SIZE = 220;
 
 /** 预览用假条目：封面取「当前墙第一张」或内置渐变占位 */
 export function presetItem(cover: string, name = "样式预览"): WallItem {
@@ -62,23 +62,20 @@ export function buildStyleTile(
 
   const stage = document.createElement("div");
   stage.className = "mw-preset__stage";
-  const item = presetItem(
-    cover || placeholderCover(),
-    label
-  );
   stage.appendChild(
-    buildDiscElement(item, style as DiscStyle, { coverSize: PRESET_STAGE_W })
+    buildDiscElement(presetItem(cover || placeholderCover(), label), style, {
+      coverSize: PRESET_COVER_SIZE,
+    })
   );
-  // 缩放系数由 CSS 按瓷砖实际宽度反解（--mw-preset-w 由布局给出）
   tile.appendChild(stage);
   tile.createSpan({ cls: "mw-preset__label", text: label });
   tile.addEventListener("click", () => onPick(style));
   return tile;
 }
 
-/** 用当前墙的第一张封面作为预览图（保持四种样式预览的是同一张，便于对比） */
+/** 用当前墙的第一张封面作为预览图（四种样式预览同一张，便于对比） */
 export function firstCover(items: { meta: { cover: string } }[]): string {
-  for (const it of items) if (it.meta.cover) return sizedCover(it.meta.cover, PRESET_STAGE_W);
+  for (const it of items) if (it.meta.cover) return sizedCover(it.meta.cover, PRESET_COVER_SIZE);
   return "";
 }
 

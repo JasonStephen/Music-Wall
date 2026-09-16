@@ -23,6 +23,8 @@ export class InputModal extends Modal {
   }
 
   onOpen(): void {
+    // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
+    this.modalEl.addClass("mw-modal-zoom");
     const { contentEl } = this;
     contentEl.addClass("mw-input-modal");
     contentEl.createEl("h2", { text: this.title });

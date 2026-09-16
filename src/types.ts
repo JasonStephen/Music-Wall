@@ -169,6 +169,11 @@ export interface MusicWallSettings {
   smtcEnabled: boolean;
   /** 播放器页背景模式 */
   playerBackground: PlayerBackground;
+  /**
+   * 界面缩放（1 = 100%）。对音乐墙与播放器页全局生效，
+   * 含侧边抽屉与模态框；可在设置里调，也可在视图内 Ctrl/Alt + 滚轮调。
+   */
+  zoomScale: number;
 }
 
 export const DEFAULT_SETTINGS: MusicWallSettings = {
@@ -183,7 +188,23 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   shelfCaption: "pull",
   smtcEnabled: true,
   playerBackground: "dark",
+  zoomScale: 1,
 };
+
+/** 缩放范围与步进（设置页滑块与 Ctrl/Alt + 滚轮共用） */
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 2;
+export const ZOOM_STEP = 0.05;
+
+/** 夹取到合法缩放区间（保留两位小数，避免浮点噪声写进设置） */
+export function clampZoom(v: number): number {
+  if (!Number.isFinite(v)) return 1;
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
+  return Math.round(clamped * 100) / 100;
+}
+
+/** 画布缩放用的 CSS 变量名（设在 body 上，模态框也能继承） */
+export const ZOOM_CSS_VAR = "--mw-zoom";
 
 /** 当前 .mw 文件 schema 版本（v2：新增 groups / order / view） */
 export const WALL_FILE_VERSION = 2;

@@ -10,22 +10,10 @@
   --mw-shelf-dur: 0.35s;
   --mw-shelf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   gap: 68px 0;
-  padding-top: 44px;
-  /* 暗色墙纸：细竖纹 + 斜向织纹叠在暖棕底上，纯 CSS 保证铺满 */
-  background:
-    radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
-    radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 226, 180, 0.02) 0 2px,
-      rgba(0, 0, 0, 0) 2px 7px
-    ),
-    repeating-linear-gradient(
-      45deg,
-      rgba(255, 255, 255, 0.012) 0 14px,
-      rgba(0, 0, 0, 0) 14px 28px
-    ),
-    linear-gradient(180deg, #1b1511, #241b14 45%, #120d09);
+  padding-top: 0;
+  /* 木纹背板已上移到 .mw-view.mw-wall--shelf（顶栏与墙面同一张画布），
+     这里只留间距与列模板 */
+  background: transparent;
 }
 
 /* 分区容器承载列模板（.mw-grid 只放分区）：木横板段仍然按列宽铺满，
@@ -42,7 +30,8 @@
   padding-top: 0;
 }
 
-/* 家具深色固定，不随明暗主题；文字用暖浅色保证两主题下均可读 */
+/* 家具深色固定，不随明暗主题；文字用暖浅色保证两主题下均可读。
+   （木纹已经是 .mw-view.mw-wall--shelf 的背景，这里只管空态文字色） */
 .mw-grid--shelf .mw-empty {
   color: #cfc4b2;
 }
@@ -816,6 +805,15 @@
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s;
+}
+/* 小标题行（如「移动到分组」）：不可点，只做分节标签 */
+.mw-shelf-menu__heading {
+  padding: 8px 14px 3px;
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  color: #a89a86;
+  cursor: default;
+  white-space: nowrap;
 }
 .mw-shelf-menu__item:hover {
   background: rgba(255, 226, 180, 0.14);

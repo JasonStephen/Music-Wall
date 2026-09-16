@@ -134,28 +134,27 @@
   margin-top: 18px;
 }
 
-/* ---- 搜索模态框 ---- */
-.mw-search-modal {
-  max-width: 620px;
+/* ---- 搜索面板（挂进右上角悬浮框，不再是模态框） ---- */
+.mw-search-panel__hint {
+  color: var(--mw-panel-fg-dim, var(--text-muted));
+  font-size: 0.8em;
+  margin: 0 0 8px;
 }
-.mw-search-modal__hint {
-  color: var(--text-muted);
-  font-size: 0.85em;
-}
-.mw-search-modal__bar {
+.mw-search-panel__bar {
   display: flex;
   gap: 8px;
-  margin: 10px 0;
+  margin-bottom: 8px;
 }
-.mw-search-modal__bar input {
-  flex: 1;
+.mw-search-panel__bar input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.mw-search-modal__status {
-  min-height: 1.4em;
-  font-size: 0.8em;
-  color: var(--text-muted);
+.mw-search-panel__status {
+  min-height: 1.3em;
+  font-size: 0.78em;
+  color: var(--mw-panel-fg-dim, var(--text-muted));
 }
-.mw-search-modal__list {
+.mw-search-panel__list {
   max-height: 46vh;
   overflow-y: auto;
   display: flex;
@@ -172,8 +171,8 @@
   transition: background 0.15s, border-color 0.15s;
 }
 .mw-search-row:hover {
-  background: var(--background-modifier-hover);
-  border-color: var(--background-modifier-border);
+  background: var(--mw-panel-hover, var(--background-modifier-hover));
+  border-color: var(--mw-panel-line, var(--background-modifier-border));
 }
 .mw-search-row.is-added {
   opacity: 0.55;
@@ -192,13 +191,14 @@
 }
 .mw-search-row__name {
   font-weight: 600;
+  color: var(--mw-panel-fg, var(--text-normal));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .mw-search-row__sub {
   font-size: 0.8em;
-  color: var(--text-muted);
+  color: var(--mw-panel-fg-dim, var(--text-muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -209,6 +209,40 @@
 .mw-search-more {
   align-self: center;
   margin-top: 8px;
+}
+/* 搜索面板的三个按钮同样是「双类作用域」：单类会被主题的
+   button:not(.clickable-icon) 刷成白底药丸（与 .mw-drawer 内的规则成对） */
+.mw-drawer .mw-search-panel__bar button,
+.mw-drawer .mw-search-row__add,
+.mw-drawer .mw-search-more {
+  background: var(--mw-panel-surface);
+  border: 1px solid var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+  box-shadow: none;
+  height: auto;
+}
+.mw-drawer .mw-search-panel__bar button {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+  padding: 4px 12px;
+}
+.mw-drawer .mw-search-panel__bar button:hover,
+.mw-drawer .mw-search-more:hover {
+  background: var(--mw-panel-hover);
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--mw-panel-fg);
+}
+.mw-drawer .mw-search-panel__bar button:hover {
+  background: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+  filter: brightness(1.08);
+}
+.mw-drawer .mw-search-row__add:disabled {
+  opacity: 0.5;
+  background: var(--mw-panel-surface);
+  color: var(--mw-panel-fg-dim);
+  border-color: var(--mw-panel-line);
 }
 
 /* ---- 确认 / 选择 / 列表 / 输入 / 编辑 ---- */

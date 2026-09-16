@@ -4,13 +4,135 @@
   --mw-accent: var(--interactive-accent);
   --mw-radius: 10px;
   --mw-card-gap: 26px;
+  /* 墙面 token：顶栏与墙面共用一张画布（顶栏不再有独立底色/边框）。
+     各布局在 .mw-wall--* 里覆盖，展示架会在根上铺木纹。 */
+  --mw-wall-bg: var(--background-primary);
+  --mw-wall-fg: var(--text-normal);
+  --mw-wall-fg-dim: var(--text-muted);
+  --mw-wall-line: var(--background-modifier-border);
+  /* 面板 token：抽屉 / 浮层 / 预设瓷砖的统一取色口。
+     默认值全部指向主题变量 ⇒ 音乐墙（普通布局）与播放器（自带四种背景模式、
+     已重写 --background-primary 等）都保持原样；展示架模式再整体换成木墙色。 */
+  --mw-panel-bg: var(--background-primary);
+  --mw-panel-fg: var(--text-normal);
+  --mw-panel-fg-dim: var(--text-muted);
+  --mw-panel-line: var(--background-modifier-border);
+  --mw-panel-surface: var(--background-secondary);
+  --mw-panel-hover: var(--background-modifier-hover);
+  display: block;
+  /* 高度必须是确定值：缩放盒用 height: calc(100% / z) 反除补偿，父层没高度会塌成内容高 */
+  width: 100%;
   height: 100%;
+  overflow: hidden;
+  color: var(--mw-wall-fg);
+  background: var(--mw-wall-bg);
+}
+
+/*
+ * 缩放盒：所有内容都在这一层里，缩放只作用在这里。
+ *
+ * 为什么不用 zoom（2026-09 实测踩坑，务必不要改回去）：
+ * Chromium 128+ 重写了 zoom 语义，**当元素自身的宽/高来自百分比
+ * （含 `calc(100% / var(--mw-zoom))`）时 zoom 整段失效**——既不缩放布局，
+ * 也不缩放绘制与命中。表现是「反除补偿生效、放大系数不生效」：内容恒等于
+ * 窗格的 1/z，于是 >100% 时右侧/底部留白、<100% 时内容溢出被裁。
+ * 对照实验（Chrome 133 无头）：`zoom:1.5; width:calc(100%/1.5)` 画出来仍是
+ * 1/z，点缩放后的位置命中的是外层；同一个盒子改成显式 `width:200px` 才缩放；
+ * transform:scale 在任何写法下都正常。
+ *
+ * 现在的实现：布局在「窗格 / z」的空间里算，由 transform 整体放大 z 倍，
+ * 内容因此精确铺满窗格；子树 rect 是视觉像素（落点线等按此换算，见 zoom.ts）。
+ */
+.mw-zoombox {
+  transform: scale(var(--mw-zoom, 1));
+  transform-origin: 0 0;
+  width: calc(100% / var(--mw-zoom, 1));
+  height: calc(100% / var(--mw-zoom, 1));
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 定位上下文：拖拽浮标与抽屉都以缩放盒为原点。
+     注意 transform 会成为 fixed 后代的包含块，浮标因此必须用 absolute（见 .mw-drag-ghost）。 */
+  position: relative;
 }
 
-/* ---- 工具栏（固定：不随 .mw-grid 滚动） ---- */
+/* 图片不得成为原生拖拽源：按住封面移动会启动浏览器原生图片拖拽并取消指针事件，
+   把墙内排序手势整段抢走（配合 disc.ts 里的 img.draggable = false 双保险） */
+.mw-view img,
+.mw-drag-ghost img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* 缩放提示（Ctrl/Alt + 滚轮时短暂出现） */
+.mw-zoomtoast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9999;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  font-size: 0.8em;
+  color: var(--text-normal);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.mw-zoomtoast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 缩放不再需要 @supports 降级：transform 全平台可用，
+   而 zoom 的「支不支持」判定（@supports）与实际是否生效并不一致——
+   正是这个不一致让上一版看起来万事大吉。 */
+
+/* 展示架：木纹背板挂在根上，顶栏随之融入（原来挂在 .mw-grid 上，
+   于是顶栏是一条孤立的白色横条）。
+   同时把面板/文字/控件 token 一起换成暖木色：抽屉与浮层是同一张木墙上的家具，
+   浅色主题下再给白底面板就会「墙是木、面板是纸」（反馈过的问题）。
+   这些变量只作用于本墙子树，弹窗挂在 body 上不受影响。 */
+.mw-view.mw-wall--shelf {
+  --mw-wall-fg: #e6dcc9;
+  --mw-wall-fg-dim: #a89a86;
+  --mw-wall-line: rgba(255, 226, 180, 0.18);
+  --mw-panel-bg: #2a1f16;
+  --mw-panel-fg: #e6dcc9;
+  --mw-panel-fg-dim: #a89a86;
+  --mw-panel-line: rgba(255, 226, 180, 0.2);
+  --mw-panel-surface: rgba(255, 226, 180, 0.06);
+  --mw-panel-hover: rgba(255, 226, 180, 0.12);
+  /* 抽屉里的原生控件（输入框 / 复选框 / 滑块）读的是主题变量，
+     不一起换掉就会出现「深色面板 + 白底输入框」 */
+  --background-primary: #2a1f16;
+  --background-secondary: rgba(255, 226, 180, 0.06);
+  --background-modifier-form-field: rgba(0, 0, 0, 0.28);
+  --background-modifier-border: rgba(255, 226, 180, 0.2);
+  --background-modifier-hover: rgba(255, 226, 180, 0.12);
+  --text-normal: #e6dcc9;
+  --text-muted: #a89a86;
+  --text-faint: #8b7d6b;
+  --mw-wall-bg:
+    radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
+    radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 226, 180, 0.02) 0 2px,
+      rgba(0, 0, 0, 0) 2px 7px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.012) 0 14px,
+      rgba(0, 0, 0, 0) 14px 28px
+    ),
+    linear-gradient(180deg, #1b1511, #241b14 45%, #120d09);
+}
+
+/* ---- 工具栏（固定：不随 .mw-grid 滚动；无自身底色，融进墙面） ---- */
 .mw-toolbar {
   position: relative;
   z-index: 6;
@@ -18,10 +140,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  padding: 8px 12px;
-  min-height: 42px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  padding: 4px 12px;
+  min-height: 48px;
+  background: transparent;
+  border-bottom: 0;
+  color: var(--mw-wall-fg);
 }
 
 .mw-toolbar__left {
@@ -38,13 +161,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--mw-wall-fg);
 }
 .mw-toolbar__title:hover {
   color: var(--mw-accent, var(--interactive-accent));
 }
 .mw-toolbar__count {
   font-size: 0.8em;
-  color: var(--text-muted);
+  color: var(--mw-wall-fg-dim);
   white-space: nowrap;
 }
 .mw-toolbar__actions {
@@ -99,105 +223,49 @@
   color: var(--text-on-accent);
 }
 
-/* 方形图标钮：工具栏与抽屉头部共用 */
+/* 方形图标钮：只有图标本身——无底色、无边框、无圆角、无阴影。
+   配合 Obsidian 的 clickable-icon 类使用（主题的 button:not(.clickable-icon)
+   才不会再给它刷白底圆角）。 */
 .mw-toolbtn {
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
   box-shadow: none;
+  color: var(--mw-wall-fg-dim, var(--text-muted));
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color 0.15s, opacity 0.15s;
 }
 .mw-toolbtn:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-  border-color: var(--background-modifier-border);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--mw-wall-fg, var(--text-normal));
 }
 .mw-toolbtn.is-active {
-  background: color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 22%, transparent);
-  border-color: var(--mw-accent, var(--interactive-accent));
-  color: var(--text-normal);
-}
-.mw-toolbtn svg {
-  width: 17px;
-  height: 17px;
-}
-.mw-toolbtn--primary {
+  background: transparent;
   color: var(--mw-accent, var(--interactive-accent));
 }
-.mw-toolbtn--primary:hover {
-  background: var(--mw-accent, var(--interactive-accent));
-  color: var(--text-on-accent);
-  border-color: var(--mw-accent, var(--interactive-accent));
+/* 图标本体 25px（原 17px，约 +50%）：顶栏图标太小看不清，且命中区同步放大到 40px */
+.mw-toolbtn svg {
+  width: 25px;
+  height: 25px;
 }
 
-/* ---- 内联搜索行：绝对定位在工具栏之下，不推挤网格、不随滚动 ---- */
-.mw-searchrow {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
-}
-.mw-searchrow.is-open {
-  display: flex;
-}
-.mw-searchrow__input {
-  flex: 1 1 auto;
-  height: auto;
-  padding: 5px 10px;
-  font-size: 0.9em;
-}
-.mw-searchrow__close {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-primary);
-  color: var(--text-muted);
-  box-shadow: none;
-  cursor: pointer;
-}
-.mw-searchrow__close:hover {
-  color: var(--text-normal);
-  border-color: var(--interactive-accent);
-}
-
-/* ---- 右侧滑出抽屉（样式 / 筛选 / 分组 / 排序 …） ---- */
-.mw-drawer__scrim {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  background: rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.18s ease, visibility 0.18s;
-}
-.mw-drawer__scrim.is-open {
-  opacity: 1;
-  visibility: visible;
-}
+/* ---- 右侧滑出抽屉（样式 / 筛选 / 排序）+ 右上角悬浮框（搜索 / 添加） ----
+   注意：侧边抽屉**没有遮罩**（第四轮起）——不压暗页面，也不占用点击。
+   曾经有过一版「扩大到整块缩放盒」的遮罩，结果盖住顶栏图标，
+   并且一旦实例状态与 DOM 不同步就会留下吞点击的幽灵层。 */
 .mw-drawer {
   position: absolute;
-  top: 0;
+  /* 从顶栏下方开始（--mw-topbar-h 由视图写入，单位是缩放盒内的局部像素）：
+     面板不能盖住顶栏图标，否则收起面板要绕道 Esc */
+  top: var(--mw-topbar-h, 48px);
   right: 0;
   bottom: 0;
   z-index: 19;
@@ -205,9 +273,10 @@
   max-width: 92%;
   display: flex;
   flex-direction: column;
-  background: var(--background-primary);
-  border-left: 1px solid var(--background-modifier-border);
+  background: var(--mw-panel-bg);
+  border-left: 1px solid var(--mw-panel-line);
   box-shadow: -14px 0 34px rgba(0, 0, 0, 0.32);
+  color: var(--mw-panel-fg);
   transform: translateX(102%);
   visibility: hidden;
   transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.22s;
@@ -216,12 +285,35 @@
   transform: translateX(0);
   visibility: visible;
 }
+
+/* 悬浮形态：锚在右上角，不压暗页面（搜索时想边筛边看墙） */
+.mw-drawer--float {
+  top: calc(var(--mw-topbar-h, 48px) + 6px);
+  right: 12px;
+  bottom: auto;
+  left: auto;
+  width: min(420px, calc(100% - 24px));
+  /* vh 是视口单位、不随缩放盒放大，所以上限要按缩放系数反除 */
+  max-height: min(calc(72vh / var(--mw-zoom, 1)), 560px);
+  border: 1px solid var(--mw-panel-line);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+  transform: translateY(-10px);
+  opacity: 0;
+}
+.mw-drawer--float.is-open {
+  transform: translateY(0);
+  opacity: 1;
+}
+.mw-drawer--float .mw-drawer__body {
+  padding: 10px 12px 14px;
+}
 .mw-drawer__head {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 10px 10px 14px;
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--mw-panel-line);
 }
 .mw-drawer__title {
   flex: 1 1 auto;
@@ -235,18 +327,21 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1;
   box-shadow: none;
+  color: var(--mw-panel-fg-dim);
   cursor: pointer;
 }
 .mw-drawer__close:hover {
-  color: #e93147;
-  border-color: #e93147;
+  background: transparent;
+  border: 0;
+  color: var(--mw-panel-fg);
+}
+.mw-drawer__close svg {
+  width: 16px;
+  height: 16px;
 }
 .mw-drawer__body {
   flex: 1 1 auto;
@@ -273,7 +368,7 @@
   font-size: 0.78em;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
+  color: var(--mw-panel-fg-dim);
   text-transform: uppercase;
 }
 .mw-panel__clear {
@@ -288,7 +383,7 @@
   cursor: pointer;
 }
 .mw-panel__clear.is-disabled {
-  color: var(--text-faint);
+  color: var(--mw-panel-fg-dim);
   cursor: default;
 }
 .mw-panel__input {
@@ -307,7 +402,7 @@
 .mw-panel__hint {
   font-size: 0.78em;
   line-height: 1.5;
-  color: var(--text-faint);
+  color: var(--mw-panel-fg-dim);
 }
 .mw-panel__add {
   width: 100%;
@@ -315,6 +410,148 @@
 .mw-panel__reset {
   width: 100%;
   margin-top: 4px;
+}
+
+/* ---- 输入框 + 右端 × 清空（面板统一形态，不再用整宽「清空」按钮） ---- */
+.mw-panel__searchbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.mw-panel__searchbar .mw-panel__input {
+  padding-right: 32px;
+}
+.mw-drawer .mw-panel__clearicon {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: var(--mw-panel-fg-dim);
+  cursor: pointer;
+}
+.mw-drawer .mw-panel__clearicon:hover {
+  background: var(--mw-panel-hover);
+  color: var(--mw-panel-fg);
+}
+.mw-drawer .mw-panel__clearicon.is-hidden {
+  display: none;
+}
+.mw-drawer .mw-panel__clearicon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/*
+ * 面板内控件统一样式（第四轮）。
+ *
+ * 为什么必须写双类选择器：Obsidian 自带 `button:not(.clickable-icon)` 特异性是 (0,1,1)，
+ * 我们所有单类规则 (0,1,0) 都会被它压过去——清除按钮、升降序按钮、搜索/添加按钮
+ * 因此全被刷成「主题白底圆角药丸」，在深色木墙面板上非常突兀。
+ * 同理，输入框 hover 变白来自主题的 --background-modifier-form-field-highlighted，
+ * 只在 .mw-drawer 作用域内换掉它，才不会影响墙上的其它控件。
+ */
+.mw-drawer {
+  --background-modifier-form-field: var(--mw-panel-surface);
+  --background-modifier-form-field-highlighted: var(--mw-panel-hover);
+  --background-modifier-border-focus: var(--mw-panel-line);
+}
+.mw-drawer input,
+.mw-drawer textarea,
+.mw-drawer select {
+  background: var(--mw-panel-surface);
+  border: 1px solid var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+  box-shadow: none;
+}
+.mw-drawer input::placeholder,
+.mw-drawer textarea::placeholder {
+  color: var(--mw-panel-fg-dim);
+}
+.mw-drawer input:hover,
+.mw-drawer textarea:hover,
+.mw-drawer select:hover {
+  background: var(--mw-panel-hover);
+  border-color: var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+}
+.mw-drawer input:focus,
+.mw-drawer textarea:focus,
+.mw-drawer select:focus {
+  background: var(--mw-panel-surface);
+  border-color: var(--mw-accent, var(--interactive-accent));
+  box-shadow: none;
+  outline: none;
+}
+.mw-drawer .mw-btn {
+  background: var(--mw-panel-surface);
+  border: 1px solid var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+  box-shadow: none;
+}
+.mw-drawer .mw-btn:hover {
+  background: var(--mw-panel-hover);
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--mw-panel-fg);
+  transform: none;
+  box-shadow: none;
+}
+.mw-drawer .mw-btn--primary {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+.mw-drawer .mw-panel__clear {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--mw-accent, var(--interactive-accent));
+}
+.mw-drawer .mw-panel__clear:hover {
+  background: transparent;
+  color: var(--mw-panel-fg);
+  text-decoration: underline;
+}
+.mw-drawer .mw-panel__clear.is-disabled {
+  color: var(--mw-panel-fg-dim);
+  text-decoration: none;
+}
+.mw-drawer .mw-dirbtn {
+  background: var(--mw-panel-surface);
+  border: 1px solid var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+  box-shadow: none;
+}
+.mw-drawer .mw-dirbtn:hover {
+  background: var(--mw-panel-hover);
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--mw-panel-fg);
+  transform: none;
+}
+.mw-drawer .mw-dirbtn.is-active,
+.mw-drawer .mw-dirbtn.is-active:hover {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+.mw-drawer .mw-chip {
+  background: transparent;
+  border-color: var(--mw-panel-line);
+  color: var(--mw-panel-fg);
+}
+.mw-drawer .mw-chip.is-active {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
 }
 
 .mw-check {
@@ -327,7 +564,7 @@
   font-size: 0.86em;
 }
 .mw-check:hover {
-  background: var(--background-modifier-hover);
+  background: var(--mw-panel-hover);
 }
 .mw-check__box {
   flex: 0 0 auto;
@@ -343,7 +580,7 @@
 .mw-check__count {
   flex: 0 0 auto;
   font-size: 0.85em;
-  color: var(--text-faint);
+  color: var(--mw-panel-fg-dim);
   font-variant-numeric: tabular-nums;
 }
 
@@ -369,126 +606,6 @@
   height: 15px;
 }
 
-/* ---- 样式 / 布局预设瓷砖：真实唱片缩略预览 ---- */
-.mw-preset-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.mw-preset-grid--3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.mw-preset {
-  --mw-preset-w: 150;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 6px 6px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  box-shadow: none;
-  height: auto;
-  cursor: pointer;
-  overflow: hidden;
-  transition: border-color 0.15s, background 0.15s;
-}
-.mw-preset:hover {
-  border-color: var(--mw-accent, var(--interactive-accent));
-}
-.mw-preset.is-active {
-  border-color: var(--mw-accent, var(--interactive-accent));
-  background: color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 14%, transparent);
-}
-.mw-preset__stage {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  display: grid;
-  align-items: center;
-  justify-items: center;
-  overflow: hidden;
-}
-.mw-preset__stage .mw-disc {
-  width: 340px;
-  max-width: none;
-  transform: scale(calc(var(--mw-preset-w) / 340));
-  transform-origin: center center;
-  pointer-events: none;
-}
-.mw-preset__label {
-  font-size: 0.76em;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.mw-preset.is-active .mw-preset__label {
-  color: var(--text-normal);
-}
-
-/* 布局预设：纯 CSS 示意图（不依赖封面） */
-.mw-preset__art {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 6px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  padding: 8px;
-  display: grid;
-  gap: 4px;
-  overflow: hidden;
-}
-.mw-preset__cell {
-  border-radius: 2px;
-  background: var(--text-faint);
-  opacity: 0.62;
-}
-.mw-preset__art--grid {
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-}
-.mw-preset__art--list {
-  grid-template-columns: 1fr;
-  grid-auto-rows: 1fr;
-}
-.mw-preset__art--list .mw-preset__cell {
-  border-radius: 999px;
-  height: 60%;
-  align-self: center;
-}
-.mw-preset__art--shelf {
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-  background: linear-gradient(180deg, #241b14, #17110c);
-  border-color: rgba(255, 226, 180, 0.22);
-}
-.mw-preset__art--shelf .mw-preset__cell {
-  background: linear-gradient(180deg, #6b4830, #3a2413);
-  opacity: 1;
-}
-
-/* 背景预设（播放器）：小色块 */
-.mw-preset--bg .mw-preset__art {
-  aspect-ratio: 4 / 3;
-  padding: 0;
-}
-.mw-preset__art--bg-white {
-  background: linear-gradient(180deg, #ffffff, #eef0f3);
-}
-.mw-preset__art--bg-dark {
-  background: radial-gradient(120% 90% at 50% 0%, #252932, #0d0f13);
-}
-.mw-preset__art--bg-art {
-  background: linear-gradient(135deg, #5b6ee1, #8a5be1 45%, #e15b8a);
-}
-.mw-preset__art--bg-wood {
-  background:
-    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.34) 0 2px, rgba(0, 0, 0, 0) 2px 10px),
-    linear-gradient(180deg, #7a5433, #432d1c);
-}
-
 /* ---- 网格：只放分区，卡片由分区内的列容器排布 ---- */
 .mw-grid {
   flex: 1;
@@ -496,7 +613,8 @@
   overflow-y: auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
+  /* 分区之间要留出可见间距（曾经只有 4px，分组头几乎贴着上一组最后一张） */
+  gap: 18px;
   padding: 18px clamp(16px, 4vw, 48px) 30px;
   align-content: start;
 }
@@ -538,15 +656,16 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
   box-shadow: none;
+  color: var(--mw-wall-fg-dim);
   cursor: pointer;
 }
 .mw-section__chevron:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-border);
+  background: transparent;
+  border: 0;
+  color: var(--mw-wall-fg);
 }
 .mw-section__chevron svg {
   width: 15px;
@@ -555,6 +674,7 @@
 .mw-section__title {
   font-size: 0.95em;
   font-weight: 600;
+  color: var(--mw-wall-fg);
   cursor: text;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -562,7 +682,7 @@
 }
 .mw-section__count {
   font-size: 0.75em;
-  color: var(--text-faint);
+  color: var(--mw-wall-fg-dim);
   font-variant-numeric: tabular-nums;
 }
 .mw-section__actions {
@@ -588,43 +708,30 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 5px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
   box-shadow: none;
+  color: var(--mw-wall-fg-dim);
   cursor: pointer;
 }
 .mw-section__btn:hover {
-  color: var(--text-normal);
-  border-color: var(--background-modifier-border);
+  background: transparent;
+  border: 0;
+  color: var(--mw-wall-fg);
 }
 .mw-section__btn--danger:hover {
   color: #e93147;
-  border-color: #e93147;
 }
 .mw-section__btn svg {
   width: 14px;
   height: 14px;
 }
 
-/* ---- 布局编辑态：长按 / 右键「编辑布局」后的可拖拽状态 ---- */
+/* ---- 布局编辑态：不再画卡片虚线框（反馈太丑），靠顶部提示条 + grab 光标 + 落点线 ---- */
 .mw-edit-layout .mw-card,
-.mw-edit-layout .mw-row,
-.mw-edit-layout .mw-section__head {
+.mw-edit-layout .mw-row {
   cursor: grab;
-}
-.mw-edit-layout .mw-card::after,
-.mw-edit-layout .mw-row::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border: 1px dashed color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 55%, transparent);
-  border-radius: 10px;
-  pointer-events: none;
-}
-.mw-edit-layout .mw-row::after {
-  inset: -1px;
 }
 .mw-card.is-dragging,
 .mw-row.is-dragging,
@@ -636,8 +743,24 @@
   outline-offset: 4px;
   border-radius: 8px;
 }
+/* 跨分组落点：整块分区高亮。收起的分组与空分组里没有卡片，
+   卡片级高亮画不出来，必须靠这一层告诉用户「这一组会被接收」。 */
+.mw-section.is-drop-section {
+  outline: 2px solid var(--mw-accent, var(--interactive-accent));
+  outline-offset: 6px;
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    var(--mw-accent, var(--interactive-accent)) 12%,
+    transparent
+  );
+}
+/* 拖拽浮标：**必须 absolute 而不是 fixed**——缩放盒用了 transform，
+   而 transform 会成为 fixed 后代的包含块，fixed 会被钉在缩放盒上（实测），
+   于是「跟随光标」的坐标换算会整体偏掉。以缩放盒为原点写 left/top，
+   坐标按「视觉像素 ÷ z」换算（见 positionGhost）。 */
 .mw-drag-ghost {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   z-index: 9999;
@@ -686,30 +809,47 @@
   width: auto;
 }
 
-/* 编辑态操作条：工具栏下沿常驻，右下角「完成 / 取消」 */
+/* 编辑态操作条：正常流的第一行（编辑条 → 工具栏 → 网格），因此不能用 absolute。
+   缩放盒是定位上下文，absolute:top:0 会正好压在工具栏上（文字重叠 + 横线穿图标）。 */
 .mw-editbar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 7;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  background: color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 16%, var(--background-secondary));
-  border-bottom: 1px solid var(--mw-accent, var(--interactive-accent));
+  background: transparent;
+  border-bottom: 1px solid var(--mw-wall-line);
+  color: var(--mw-wall-fg);
 }
 .mw-editbar__text {
   flex: 1 1 auto;
   font-size: 0.8em;
-  color: var(--text-normal);
+  color: var(--mw-wall-fg-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mw-editbar__btn {
+/* 双类作用域：Obsidian 的 button:not(.clickable-icon) 是 (0,1,1)，
+   单类 (0,1,0) 会被它刷成白底药丸（编辑条上的完成/取消曾经就是白的） */
+.mw-editbar .mw-editbar__btn {
   flex: 0 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--mw-accent, var(--interactive-accent));
+  font-size: 0.85em;
+  padding: 2px 6px;
+  height: auto;
+}
+.mw-editbar .mw-editbar__btn:hover {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  text-decoration: underline;
+}
+.mw-editbar .mw-editbar__btn:not(.mw-btn--primary) {
+  color: var(--mw-wall-fg-dim);
 }
 
 /* ---- 卡片 ---- */
@@ -897,11 +1037,22 @@
     justify-content: flex-end;
   }
 }
-/* 尊重系统的「减少动态效果」：抽屉与搜索行直接切换，不做滑动/淡入 */
+/* 尊重系统的「减少动态效果」：抽屉与浮层直接切换，不做滑动/淡入 */
 @media (prefers-reduced-motion: reduce) {
   .mw-drawer,
-  .mw-drawer__scrim,
-  .mw-searchrow {
+  .mw-zoomtoast {
     transition: none;
   }
+}
+
+/* 模态框也跟随缩放（弹窗挂在 body 上，继承 body 的 --mw-zoom）。
+   这里同样不能用 zoom（见 .mw-zoombox 的说明：zoom 对百分比尺寸的元素已失效，
+   .modal 的宽度来自 Obsidian/主题，多半不是显式长度）。
+   改用 transform：以中心为原点整体放大，容器仍按 flex 居中，放大后依旧居中；
+   代价是内部排版不重排，所以用 vw/vh 的上限要按 z 反除，避免高倍放大跑出屏幕。 */
+.mw-modal-zoom .modal {
+  transform: scale(var(--mw-zoom, 1));
+  transform-origin: center center;
+  max-width: calc(92vw / var(--mw-zoom, 1));
+  max-height: calc(88vh / var(--mw-zoom, 1));
 }

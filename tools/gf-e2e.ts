@@ -10,7 +10,7 @@
 // 结果读 <title>：PASS:<case> 或 FAIL:<case>:<明细>（断言行在 #result）。
 
 import { MusicWallView } from "../src/ui/MusicWallView";
-import { installDomHelpers, TFile, WorkspaceLeaf } from "./obsidian-shim";
+import { installDomHelpers, MENU_LOG, TFile, WorkspaceLeaf } from "./obsidian-shim";
 
 declare global {
   interface Window {
@@ -129,6 +129,7 @@ function makePlugin() {
       playbackPlaylistId: "",
       mobileNoticeShown: true,
       shelfCaption: "always",
+      zoomScale: 1,
     },
     getPlaybackDeps: () => ({
       isDesktop: false,
@@ -190,6 +191,15 @@ function makePlugin() {
     },
     firstPlayerView: () => null,
     addToPlayer() {},
+    // 缩放：产品把它们放在插件实例上（缩放变量写在 body 上，两个视图共享）
+    applyZoom() {
+      const scale = this.settings.zoomScale ?? 1;
+      document.body.style.setProperty("--mw-zoom", String(scale));
+    },
+    async saveZoom(scale: number) {
+      this.settings.zoomScale = scale;
+      this.applyZoom();
+    },
   };
 }
 
@@ -414,6 +424,9 @@ async function caseClosePosition(): Promise<void> {
     .plugin;
   const prevCaption = plugin.settings.shelfCaption;
   plugin.settings.shelfCaption = "hidden";
+  // 本例需要「架子明显可滚」：把舞台压回原来的 520px（网格用例用的是 900px）
+  const mount = document.getElementById("mount")!;
+  mount.style.height = "520px";
   await view["render"]();
   grid = document.querySelector<HTMLElement>(".mw-grid")!;
 
@@ -630,7 +643,7 @@ const centerOf = (el: HTMLElement): { x: number; y: number } => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 };
 
-function pointer(type: string, x: number, y: number): PointerEvent {
+function pointer(type: string, x: number, y: number, pointerType = "mouse"): PointerEvent {
   return new PointerEvent(type, {
     bubbles: true,
     cancelable: true,
@@ -640,7 +653,7 @@ function pointer(type: string, x: number, y: number): PointerEvent {
     button: 0,
     buttons: type === "pointerup" ? 0 : 1,
     pointerId: 1,
-    pointerType: "mouse",
+    pointerType,
     isPrimary: true,
   });
 }
@@ -648,64 +661,101 @@ function pointer(type: string, x: number, y: number): PointerEvent {
 const isDragging = (): boolean =>
   !!document.querySelector(".mw-card.is-dragging, .mw-row.is-dragging");
 
-/** 长按并拖到目标元素：分派真实指针事件（走产品代码的长按 + 拖拽判定链路） */
-async function dragTo(
-  from: HTMLElement,
-  to: HTMLElement,
-  tx: (r: DOMRect) => number = (r) => r.right - 6,
-  ty: (r: DOMRect) => number = (r) => r.top + r.height / 2,
-  label = ""
-): Promise<void> {
-  const a = centerOf(from);
-  from.dispatchEvent(pointer("pointerdown", a.x, a.y));
-  await wait(LONG_PRESS_MS + 220);
-  if (label) {
-    const dbg = anyViewOf(view) as unknown as { dragActive: boolean };
-    result(
-      dbg.dragActive && !!document.querySelector(".mw-drag-ghost"),
-      `${label}：长按进入拖拽`,
-      { active: dbg.dragActive, ghost: !!document.querySelector(".mw-drag-ghost") }
-    );
-  }
-  const b = centerOf(to);
-  window.dispatchEvent(pointer("pointermove", b.x, b.y));
-  await wait(120);
-  const r = to.getBoundingClientRect();
-  // 目标元素整体在视口内时不夹取（保持落点语义，如上/下边缘决定 before/after）；
-  // 只有落到视口外才夹回来——那种情况下 elementFromPoint 必然返回 null
+/** 落点夹回视口内（视口外的坐标 elementFromPoint 永远拿不到东西） */
+function clampToViewport(p: { x: number; y: number }, r: DOMRect): { x: number; y: number } {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const inside = r.left >= 0 && r.right <= w && r.top >= 0 && r.bottom <= h;
-  const drop = inside
-    ? { x: tx(r), y: ty(r) }
-    : {
-        x: Math.min(Math.max(tx(r), 8), w - 8),
-        y: Math.min(Math.max(ty(r), 8), h - 8),
-      };
-  window.dispatchEvent(pointer("pointermove", drop.x, drop.y));
-  await wait(90);
-  window.dispatchEvent(pointer("pointerup", drop.x, drop.y));
-  await wait(160);
+  if (inside) return p;
+  return { x: Math.min(Math.max(p.x, 8), w - 8), y: Math.min(Math.max(p.y, 8), h - 8) };
+}
+
+function makeDataTransfer(): DataTransfer | null {
+  try {
+    return new DataTransfer();
+  } catch {
+    return null;
+  }
+}
+
+function dragEvent(type: string, dt: DataTransfer | null, p?: { x: number; y: number }): DragEvent {
+  return new DragEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    dataTransfer: dt ?? undefined,
+    clientX: p?.x ?? 0,
+    clientY: p?.y ?? 0,
+  });
 }
 
 /** 长按阈值（与产品代码一致；改产品代码时这里会随之失败，是刻意的耦合） */
 const LONG_PRESS_MS = 400;
+const LONG_PRESS_MS_TOUCH = 350;
+
+/**
+ * 原生拖拽（桌面端的唯一手势）：pointerdown 武装 draggable → dragstart
+ * → dragover（本墙是否接收由编辑态决定）→ drop → dragend。
+ */
+async function nativeDrag(
+  from: HTMLElement,
+  to: HTMLElement,
+  aim: (r: DOMRect) => { x: number; y: number } = (r) => ({
+    x: r.right - 6,
+    y: r.top + r.height / 2,
+  })
+): Promise<{ overPrevented: boolean; dropEffect: string }> {
+  const a = centerOf(from);
+  from.dispatchEvent(pointer("pointerdown", a.x, a.y)); // 武装 draggable
+  const dt = makeDataTransfer();
+  from.dispatchEvent(dragEvent("dragstart", dt));
+  const r = to.getBoundingClientRect();
+  const p = clampToViewport(aim(r), r);
+  const over = dragEvent("dragover", dt, p);
+  to.dispatchEvent(over);
+  const info = { overPrevented: over.defaultPrevented, dropEffect: dt?.dropEffect ?? "?" };
+  await wait(60);
+  to.dispatchEvent(dragEvent("drop", dt, p));
+  from.dispatchEvent(dragEvent("dragend", dt));
+  await wait(200);
+  return info;
+}
+
+/** 触屏指针拖拽：长按 350ms 后由产品代码接管（HTML5 DnD 在触屏不可用） */
+async function touchDragTo(
+  from: HTMLElement,
+  to: HTMLElement,
+  aim: (r: DOMRect) => { x: number; y: number } = (r) => ({
+    x: r.left + 6,
+    y: r.top + r.height / 2,
+  })
+): Promise<void> {
+  const a = centerOf(from);
+  from.dispatchEvent(pointer("pointerdown", a.x, a.y, "touch"));
+  await wait(LONG_PRESS_MS_TOUCH + 200);
+  const r = to.getBoundingClientRect();
+  const p = clampToViewport(aim(r), r);
+  window.dispatchEvent(pointer("pointermove", p.x, p.y, "touch"));
+  await wait(80);
+  window.dispatchEvent(pointer("pointerup", p.x, p.y, "touch"));
+  await wait(160);
+}
 
 const editBarText = (): string =>
   document.querySelector<HTMLElement>(".mw-editbar__text")?.textContent ?? "";
 
-/** 工具栏：图标行 + 右侧滑出抽屉，且不随网格滚动 */
+/** 工具栏（纯图标 + 侧边抽屉）与网格列模板 */
 async function caseToolbarDrawer(): Promise<void> {
   await resetView(gridData());
 
   const btns = Array.from(
     document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
   );
-  result(btns.length === 7, "工具栏只剩 7 个图标钮", btns.length);
+  result(btns.length === 6, "工具栏 6 个图标钮", btns.length);
   const labels = btns.map((b) => b.getAttribute("aria-label") ?? "");
   result(
-    labels.join("|") === "样式与布局|筛选|分组|排序|添加专辑|搜索本墙专辑|更多操作",
-    "图标语义顺序正确",
+    labels.join("|") === "样式与布局|筛选|排序|添加专辑|搜索本墙专辑|更多操作",
+    "图标语义顺序正确（分组图标已移除）",
     labels.join("|")
   );
   result(
@@ -717,11 +767,18 @@ async function caseToolbarDrawer(): Promise<void> {
     "标题旁显示数量",
     document.querySelector(".mw-toolbar__count")?.textContent
   );
+  const barColor = getComputedStyle(document.querySelector<HTMLElement>(".mw-toolbar")!)
+    .backgroundColor;
+  result(
+    barColor === "rgba(0, 0, 0, 0)" || barColor === "transparent",
+    "工具栏无独立底色（融入墙面）",
+    barColor
+  );
 
-  // 点样式图标 → 右侧抽屉打开，布局三选一与四种样式瓷砖都在
+  // 点样式图标 → 侧边抽屉打开，布局三选一与四种样式瓷砖都在
   btns[0].click();
   await wait(120);
-  const drawer = document.querySelector<HTMLElement>(".mw-drawer")!;
+  const drawer = document.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float)")!;
   result(!!drawer && drawer.classList.contains("is-open"), "样式抽屉打开");
   result(
     document.querySelectorAll(".mw-preset[data-mw-style]").length === 4,
@@ -740,22 +797,48 @@ async function caseToolbarDrawer(): Promise<void> {
   );
   result(btns[0].classList.contains("is-active"), "打开时图标进入激活态");
 
-  // 抽屉只在 .mw-stage 内、不参与滚动
+  // 顶栏图标放大 50%（本轮反馈）：命中区 40×40、图标本体 25px
+  {
+    const ibr = btns[0].getBoundingClientRect();
+    const isvg = btns[0].querySelector("svg");
+    const isr = isvg ? isvg.getBoundingClientRect() : null;
+    result(
+      Math.round(ibr.width) === 40 && Math.round(ibr.height) === 40,
+      "顶栏图标钮 40×40（原 30）",
+      [Math.round(ibr.width), Math.round(ibr.height)]
+    );
+    result(
+      !!isr && Math.round(isr.width) === 25 && Math.round(isr.height) === 25,
+      "图标本体 25px（原 17，约 +50%）",
+      isr ? [Math.round(isr.width), Math.round(isr.height)] : "no svg"
+    );
+    const ics = getComputedStyle(btns[0]);
+    result(
+      ics.backgroundColor === "rgba(0, 0, 0, 0)" &&
+        ics.borderTopWidth === "0px" &&
+        ics.borderTopLeftRadius === "0px",
+      "放大后仍只有图标（无底色/边框/圆角）",
+      `${ics.backgroundColor}/${ics.borderTopWidth}/${ics.borderTopLeftRadius}`
+    );
+  }
+
+  // 抽屉与遮罩同层挂在缩放盒上（不在 .mw-grid 里，不参与滚动）：
+  // 必须与遮罩同级，遮罩才压得住顶栏与四周，面板又盖在遮罩之上
   const gridScroll = grid.scrollTop;
   result(
-    drawer.parentElement?.classList.contains("mw-stage") === true,
-    "抽屉挂在 .mw-stage（网格之外）"
+    drawer.parentElement?.classList.contains("mw-zoombox") === true,
+    "抽屉挂在 .mw-zoombox（与遮罩同层、网格之外）"
   );
   result(grid.scrollTop === gridScroll, "打开抽屉不改变网格滚动位置");
 
-  // 切换到排序面板：同时只能开一个面板
-  btns[3].click();
+  // 切换到排序面板
+  btns[2].click();
   await wait(120);
   result(
     document.querySelectorAll(".mw-drawer.is-open").length === 1 &&
-      document.querySelector<HTMLElement>(".mw-drawer__title")!.textContent === "排序",
+      drawer.querySelector<HTMLElement>(".mw-drawer__title")!.textContent === "排序",
     "面板互斥切换",
-    document.querySelector<HTMLElement>(".mw-drawer__title")?.textContent
+    drawer.querySelector<HTMLElement>(".mw-drawer__title")?.textContent
   );
   const modes = Array.from(
     document.querySelectorAll<HTMLElement>('input[name="mw-sort-mode"]')
@@ -779,18 +862,22 @@ async function caseToolbarDrawer(): Promise<void> {
     checked?.parentElement?.textContent
   );
 
-  // 点遮罩关闭；再开一次用 Esc 关闭
-  document.querySelector<HTMLElement>(".mw-drawer__scrim")!.click();
+  // 不再有遮罩：用面板右上 × 关闭；再开一次用 Esc 关闭
+  result(!document.querySelector(".mw-drawer__scrim"), "侧边抽屉没有遮罩（不压暗页面）");
+  document.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float) .mw-drawer__close")!.click();
   await wait(120);
   result(
-    !document.querySelector(".mw-drawer.is-open"),
-    "点遮罩关闭抽屉"
+    !document.querySelector(".mw-drawer:not(.mw-drawer--float)")!.classList.contains("is-open"),
+    "点 × 关闭抽屉"
   );
   btns[1].click();
   await wait(100);
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   await wait(120);
-  result(!document.querySelector(".mw-drawer.is-open"), "Esc 关闭抽屉");
+  result(
+    !document.querySelector(".mw-drawer:not(.mw-drawer--float)")!.classList.contains("is-open"),
+    "Esc 关闭抽屉"
+  );
 
   // 图标行固定在顶部：网格滚动后工具栏矩形不变
   const barBefore = document.querySelector<HTMLElement>(".mw-toolbar")!.getBoundingClientRect();
@@ -802,24 +889,7 @@ async function caseToolbarDrawer(): Promise<void> {
     "工具栏不随 scroller 滚动",
     { before: Math.round(barBefore.top), after: Math.round(barAfter.top) }
   );
-
-  // 搜索行：点放大镜展开，输入后立即筛选
-  btns[5].click();
-  await wait(80);
-  const row = document.querySelector<HTMLElement>(".mw-searchrow")!;
-  result(row.classList.contains("is-open"), "搜索行展开");
-  const input = row.querySelector<HTMLInputElement>(".mw-searchrow__input")!;
-  input.value = "Album 01";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  await wait(120);
-  result(
-    document.querySelectorAll(".mw-card[data-mw-album]").length === 1,
-    "搜索即时生效",
-    document.querySelectorAll(".mw-card[data-mw-album]").length
-  );
-  input.value = "";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  await wait(120);
+  grid.scrollTop = 0;
 
   // 分组列容器：卡片必须在分区内，且网格列数符合 --mw-min-col=200 / 1180 宽
   const cards = document.querySelectorAll<HTMLElement>(".mw-section__cards .mw-card");
@@ -1015,7 +1085,52 @@ async function caseGroups(): Promise<void> {
   );
 }
 
-/** 手动排序：长按进入编辑态 → 拖拽换位 → 完成/取消 */
+/** 墙面融入：顶栏不再是一条独立的白条，展示架下与木墙同色 */
+async function caseWallSurface(): Promise<void> {
+  // 展示架（bootstrap 数据就是 shelf）
+  const root = view.contentEl;
+  result(root.classList.contains("mw-wall--shelf"), "展示架：根节点带墙面类", root.className);
+  const bar = document.querySelector<HTMLElement>(".mw-toolbar")!;
+  const barCs = getComputedStyle(bar);
+  result(
+    barCs.backgroundColor === "rgba(0, 0, 0, 0)" || barCs.backgroundColor === "transparent",
+    "展示架：顶栏无独立底色",
+    barCs.backgroundColor
+  );
+  result(barCs.borderBottomWidth === "0px", "展示架：顶栏无分隔线", barCs.borderBottomWidth);
+  const rootBg = getComputedStyle(root).backgroundImage;
+  result(rootBg !== "none", "展示架：木纹背板挂在根节点上（顶栏与墙同一张画布）", rootBg.slice(0, 40));
+  const gridCs = getComputedStyle(document.querySelector<HTMLElement>(".mw-grid")!);
+  result(
+    gridCs.backgroundColor === "rgba(0, 0, 0, 0)" || gridCs.backgroundColor === "transparent",
+    "展示架：网格自身不再铺第二层底"
+  );
+  const titleCs = getComputedStyle(document.querySelector<HTMLElement>(".mw-toolbar__title")!);
+  const chip = titleCs.color;
+  const m = /rgba?\(([^)]+)\)/.exec(chip);
+  const [r0, g0, b0] = m ? m[1].split(",").map((x) => parseFloat(x)) : [0, 0, 0];
+  result(
+    r0 > 190 && g0 > 180 && b0 > 160,
+    "展示架：标题用暖浅色（木墙上可读）",
+    chip
+  );
+  // 网格布局：回到主题底色，不再带木纹
+  await resetView(gridData());
+  const root2 = view.contentEl;
+  result(root2.classList.contains("mw-wall--grid"), "网格：根节点带墙面类", root2.className);
+  result(
+    getComputedStyle(root2).backgroundImage === "none",
+    "网格：无木纹背板（用主题底色）",
+    getComputedStyle(root2).backgroundImage
+  );
+  result(
+    getComputedStyle(document.querySelector<HTMLElement>(".mw-toolbar")!).backgroundColor ===
+      "rgba(0, 0, 0, 0)",
+    "网格：顶栏同样无独立底色"
+  );
+}
+
+/** 手动排序：长按进编辑态 → 原生拖拽换位 → 取消/完成 */
 async function caseManualOrder(): Promise<void> {
   await resetView(gridData());
   const anyView = anyViewOf(view);
@@ -1024,40 +1139,37 @@ async function caseManualOrder(): Promise<void> {
 
   result(orderOf().join(",") === "1,2,3,4,5,6", "初始 order 正确", orderOf().join(","));
 
-  // 长按卡片 400ms → 进入编辑态（并已开始拖动）
+  // 长按 400ms → 进入编辑态（容差放宽后，手抖 10px 也应该进得去）
   const first = cardOf(1);
   const c = centerOf(first);
   first.dispatchEvent(pointer("pointerdown", c.x, c.y));
+  await wait(120);
+  window.dispatchEvent(pointer("pointermove", c.x + 10, c.y)); // 手抖 10px（< 12px 容差）
   await wait(LONG_PRESS_MS + 200);
   result(
     document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-    "长按进入布局编辑态"
+    "长按（含 10px 手抖）进入布局编辑态"
   );
   result(!!document.querySelector(".mw-editbar"), "出现编辑态操作条");
   result(
-    !!document.querySelector(".mw-drag-ghost"),
-    "长按后直接进入拖拽（有拖拽浮标）"
+    !document.querySelector(".mw-edit-layout .mw-card")!.closest(".mw-card")!.className.includes("is-dragging"),
+    "桌面长按不另起指针拖拽（交给原生拖拽）"
   );
-  result(isDragging(), "被拖卡片标记 is-dragging");
   window.dispatchEvent(pointer("pointerup", c.x, c.y));
   await wait(150);
-  result(!document.querySelector(".mw-drag-ghost"), "松手后浮标清理");
   result(
     (anyView.data as { view?: { sortMode?: string } }).view?.sortMode === "manual",
     "编辑态自动切到手动排序"
   );
 
-  // 拖 1 到 3 的左半 → 落为「3 之前」= 1 与 2 交换
-  await dragTo(cardOf(1), cardOf(3), (r) => r.left + 6);
+  // 编辑态内原生拖拽：把 1 拖到 3 之前
+  const info = await nativeDrag(cardOf(1), cardOf(3), (r) => ({ x: r.left + 6, y: r.top + r.height / 2 }));
+  result(info.overPrevented, "编辑态：本墙接收拖拽（dragover 被 preventDefault）", info);
   result(orderOf().join(",") === "2,1,3,4,5,6", "拖拽换位写回 order", orderOf().join(","));
   const domOrder = Array.from(
     document.querySelectorAll<HTMLElement>(".mw-section__cards .mw-card")
   ).map((el) => el.dataset.mwAlbum);
   result(domOrder.join(",") === "2,1,3,4,5,6", "DOM 顺序与 order 一致", domOrder.join(","));
-
-  // 反向再拖一次：把 1 拖回最前（2 之前），确认双向都成立
-  await dragTo(cardOf(1), cardOf(2), (r) => r.left + 6);
-  result(orderOf().join(",") === "1,2,3,4,5,6", "反向拖拽同样生效", orderOf().join(","));
 
   // 取消：恢复到进入编辑态时的顺序
   document.querySelectorAll<HTMLButtonElement>(".mw-editbar__btn")[1].click();
@@ -1068,26 +1180,13 @@ async function caseManualOrder(): Promise<void> {
     "取消后退出编辑态"
   );
 
-  // 右键菜单路径：展示架用自绘菜单，能直接点到「编辑布局」
-  cardOf(3).dispatchEvent(
-    new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 100, clientY: 100 })
+  // 触屏：长按 350ms 后走指针拖拽（HTML5 DnD 在触屏不可用）
+  await touchDragTo(cardOf(1), cardOf(3));
+  result(
+    document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
+    "触屏长按同样进入编辑态"
   );
-  await wait(120);
-  const menu = document.querySelector<HTMLElement>(".mw-shelf-menu");
-  if (menu) {
-    const item = Array.from(menu.querySelectorAll<HTMLElement>(".mw-shelf-menu__item")).find(
-      (el) => el.textContent === "编辑布局"
-    );
-    result(!!item, "右键菜单含「编辑布局」");
-    item?.click();
-    await wait(200);
-    result(
-      document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-      "菜单「编辑布局」进入编辑态"
-    );
-  } else {
-    result(true, "网格布局使用原生 Menu（无头环境无法点选，跳过菜单路径）");
-  }
+  result(orderOf().join(",") === "2,1,3,4,5,6", "触屏指针拖拽换位生效", orderOf().join(","));
 
   // 完成按钮
   anyView.enterEditMode();
@@ -1102,6 +1201,551 @@ async function caseManualOrder(): Promise<void> {
     ((anyView.data as { view?: { sortMode?: string } }).view?.sortMode ?? "") === "manual",
     "完成后保留手动排序模式"
   );
+}
+
+/** 拖拽闸门：非编辑态只允许跨墙、编辑态才允许墙内；封面图片不得抢走手势 */
+async function caseDragGate(): Promise<void> {
+  await resetView(gridData());
+  const anyView = anyViewOf(view);
+  const orderOf = (): number[] => ((anyView.data as { order?: number[] }).order ?? []);
+
+  // 封面图片必须是「非原生可拖拽」，否则浏览器会抢走手势（用户报拖不动的根因）
+  const img = document.querySelector<HTMLImageElement>(".mw-card img")!;
+  result(img?.draggable === false, "封面 img 非原生可拖拽", img?.draggable);
+  result(
+    img ? getComputedStyle(img).webkitUserDrag === "none" : false,
+    "-webkit-user-drag: none 生效",
+    img ? getComputedStyle(img).webkitUserDrag : "no-img"
+  );
+
+  // pointerdown 武装卡片本身为拖拽源（原生拖拽的前提）
+  const a = centerOf(cardOf(1));
+  cardOf(1).dispatchEvent(pointer("pointerdown", a.x, a.y));
+  result(cardOf(1).draggable === true, "左键按下后卡片可拖（两种模式都武装）");
+
+  // 非编辑态：本墙拒绝落点，order 不变
+  const refused = await nativeDrag(cardOf(1), cardOf(3), (r) => ({
+    x: r.left + 6,
+    y: r.top + r.height / 2,
+  }));
+  result(!refused.overPrevented, "非编辑态：本墙拒绝墙内拖拽（dragover 未 preventDefault）", refused);
+  result(orderOf().join(",") === "1,2,3,4,5,6", "非编辑态：墙内拖拽不改变顺序", orderOf().join(","));
+  result(
+    (anyView.data as { view?: { sortMode?: string } }).view?.sortMode !== "manual" ||
+      !anyView["editMode"],
+    "非编辑态：没有误进编辑态"
+  );
+
+  // 外力拖拽（来自别的墙）在任何模式下都应被接收
+  const dt = makeDataTransfer();
+  dt?.setData("application/x-music-wall-item", JSON.stringify({ kind: "item", srcPath: "other.mw", albumId: 99 }));
+  const foreign = dragEvent("dragover", dt, { x: 100, y: 100 });
+  view.contentEl.dispatchEvent(foreign);
+  result(foreign.defaultPrevented, "外来拖拽始终可被本墙接收（非编辑态）");
+  anyView.enterEditMode();
+  await wait(120);
+  const foreign2 = dragEvent("dragover", dt, { x: 100, y: 100 });
+  view.contentEl.dispatchEvent(foreign2);
+  result(foreign2.defaultPrevented, "外来拖拽在编辑态同样可被本墙接收");
+  result(
+    !(anyView.data as { items: unknown[] }).items.some(
+      (i) => (i as { albumId: number }).albumId === 99
+    ),
+    "仅 dragover 不会误落库"
+  );
+  anyView.exitEditMode(true);
+  await wait(120);
+
+  // 长按抖动容差：移动 20px 视为不是长按
+  const b = centerOf(cardOf(2));
+  cardOf(2).dispatchEvent(pointer("pointerdown", b.x, b.y));
+  await wait(60);
+  window.dispatchEvent(pointer("pointermove", b.x + 20, b.y));
+  await wait(LONG_PRESS_MS + 200);
+  result(
+    !document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
+    "移动超过容差（20px）不触发长按"
+  );
+  window.dispatchEvent(pointer("pointerup", b.x, b.y));
+}
+
+/** 分组：右键菜单（新建/展开全部/收起全部/重命名/删除）+ 非编辑态直接拖拽换序 */
+async function caseGroupMenus(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : "g2",
+      })),
+    })
+  );
+  const anyView = anyViewOf(view);
+
+  // 顶部不再有分组图标
+  const labels = Array.from(
+    document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
+  ).map((b) => b.getAttribute("aria-label"));
+  result(
+    labels.join("|") === "样式与布局|筛选|排序|添加专辑|搜索本墙专辑|更多操作",
+    "分组图标已移除（6 个图标）",
+    labels.join("|")
+  );
+
+  // 墙空白处右键 → 分组相关菜单项
+  MENU_LOG.length = 0;
+  const grid = document.querySelector<HTMLElement>(".mw-grid")!;
+  const gr = grid.getBoundingClientRect();
+  grid.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: gr.left + 10,
+      clientY: gr.bottom - 10,
+    })
+  );
+  await wait(60);
+  const wallMenu = MENU_LOG.at(-1)?.items.map((i) => i.title) ?? [];
+  result(wallMenu.includes("新建分组…"), "墙右键菜单可新建分组", wallMenu.join("|"));
+  result(
+    wallMenu.includes("展开全部分组") && wallMenu.includes("收起全部分组"),
+    "墙右键菜单含展开/收起全部",
+    wallMenu.join("|")
+  );
+
+  // 收起全部 → 所有分区收起且不再渲染卡片
+  MENU_LOG.at(-1)!.items.find((i) => i.title === "收起全部分组")!.run!();
+  await wait(200);
+  const collapsed = Array.from(document.querySelectorAll<HTMLElement>(".mw-section")).every(
+    (s) => s.classList.contains("is-collapsed")
+  );
+  result(collapsed, "一键收起全部生效");
+  result(
+    document.querySelectorAll(".mw-card").length === 0,
+    "收起的分区不渲染卡片",
+    document.querySelectorAll(".mw-card").length
+  );
+  result(
+    (anyView.data as { groups: { collapsed?: boolean }[] }).groups.every((g) => g.collapsed === true),
+    "收起状态写入数据"
+  );
+
+  // 分组头右键 → 重命名/删除/展开收起
+  MENU_LOG.length = 0;
+  const head = document.querySelector<HTMLElement>(
+    '.mw-section[data-mw-group="g1"] .mw-section__head'
+  )!;
+  head.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+  await wait(60);
+  const headMenu = MENU_LOG.at(-1)?.items.map((i) => i.title) ?? [];
+  result(
+    headMenu.includes("重命名分组…") && headMenu.includes("删除分组…"),
+    "分组头右键菜单含重命名/删除",
+    headMenu.join("|")
+  );
+  MENU_LOG.at(-1)!.items.find((i) => i.title === "展开全部分组")!.run!();
+  await wait(200);
+  result(
+    document.querySelectorAll(".mw-card").length === 6,
+    "一键展开全部恢复渲染",
+    document.querySelectorAll(".mw-card").length
+  );
+
+  // 分组头直接拖拽换序：**不需要**编辑模式
+  result(
+    !document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
+    "拖分组头之前不在编辑态"
+  );
+  const head2 = document.querySelector<HTMLElement>(
+    '.mw-section[data-mw-group="g1"] .mw-section__head'
+  )!;
+  const head1 = document.querySelector<HTMLElement>(
+    '.mw-section[data-mw-group="g2"] .mw-section__head'
+  )!;
+  const hv = anyViewOf(view) as unknown as {
+    resolveDrop(x: number, y: number): unknown;
+    dragPayload: unknown;
+  };
+  const r2 = head2.getBoundingClientRect();
+  const probe = { x: r2.left + r2.width / 2, y: r2.top + 4 };
+  result(true, "拖拽前探针", {
+    head1: head1.dataset ? !!head1 : false,
+    head2Rect: [Math.round(r2.left), Math.round(r2.top), Math.round(r2.width)],
+    hit: (() => {
+      const h = document.elementFromPoint(probe.x, probe.y) as HTMLElement | null;
+      return h ? `${h.className || h.tagName}` : "null";
+    })(),
+  });
+  const info = await nativeDrag(head1, head2, () => probe);
+  result(true, "分组拖拽 info", {
+    info,
+    payload: (hv.dragPayload as { kind?: string } | null)?.kind ?? "null",
+  });
+  const groups = (anyView.data as { groups: { id: string }[] }).groups;
+  result(
+    groups.map((g) => g.id).join(",") === "g2,g1",
+    "非编辑态直接拖拽分组头换序",
+    groups.map((g) => g.id).join(",")
+  );
+  const titles = Array.from(document.querySelectorAll<HTMLElement>(".mw-section__title")).map(
+    (t) => t.textContent
+  );
+  result(titles.join("|") === "组二|组一", "DOM 分组顺序同步", titles.join("|"));
+  result(
+    !document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
+    "拖完仍不在编辑态"
+  );
+}
+
+/** 样式预览：四种（MWP 三种）唱片必须完整可见，不能只露一角 */
+async function casePreviews(): Promise<void> {
+  await resetView(gridData());
+  (anyViewOf(view) as unknown as { drawer: { open(k: string): void } }).drawer.open("style");
+  await wait(250);
+
+  const stages = Array.from(document.querySelectorAll<HTMLElement>(".mw-preset__stage"));
+  result(stages.length === 4, "四种样式瓷砖都在", stages.length);
+  for (const stage of stages) {
+    const tile = stage.closest<HTMLElement>(".mw-preset")!;
+    const style = tile.dataset.mwStyle;
+    const disc = stage.querySelector<HTMLElement>(".mw-disc");
+    result(!!disc, `${style}：预览内有唱片 DOM`);
+    if (!disc) continue;
+    const sr = stage.getBoundingClientRect();
+    const dr = disc.getBoundingClientRect();
+    const inside =
+      dr.left >= sr.left - 1 &&
+      dr.right <= sr.right + 1 &&
+      dr.top >= sr.top - 1 &&
+      dr.bottom <= sr.bottom + 1;
+    const ratio = (dr.width * dr.height) / (sr.width * sr.height);
+    result(inside, `${style}：唱片完整落在瓷砖内（不裁切）`, {
+      stage: [Math.round(sr.left), Math.round(sr.top), Math.round(sr.width)],
+      disc: [Math.round(dr.left), Math.round(dr.top), Math.round(dr.width)],
+    });
+    result(ratio > 0.45, `${style}：预览占比合理（不是只露一角）`, ratio.toFixed(2));
+  }
+}
+
+/** 搜索/添加改为右上角悬浮框；顶部图标只有图标（无底色/无边框） */
+async function caseFloatPanels(): Promise<void> {
+  await resetView(gridData());
+  const btns = Array.from(
+    document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
+  );
+  result(btns.length === 6, "顶部 6 个图标", btns.length);
+  result(!document.querySelector(".mw-searchrow"), "底部搜索条已移除");
+
+  // 纯图标：无底色 / 无边框 / 无阴影
+  for (const b of btns) {
+    const cs = getComputedStyle(b);
+    result(
+      cs.backgroundColor === "rgba(0, 0, 0, 0)" || cs.backgroundColor === "transparent",
+      `${b.getAttribute("aria-label")}：无按钮底色`,
+      cs.backgroundColor
+    );
+    result(
+      cs.borderTopWidth === "0px" && cs.boxShadow === "none",
+      `${b.getAttribute("aria-label")}：无边框无阴影`,
+      `${cs.borderTopWidth}/${cs.boxShadow}`
+    );
+  }
+
+  // 放大镜 → 右上角悬浮框（不压暗、无遮罩）
+  const searchBtn = btns.find((b) => b.getAttribute("aria-label") === "搜索本墙专辑")!;
+  searchBtn.click();
+  await wait(200);
+  const float = document.querySelector<HTMLElement>(".mw-drawer--float")!;
+  const fv = anyViewOf(view) as unknown as {
+    floater: { currentKey(): string | null } | null;
+  };
+  result(!!float, "存在悬浮框外壳");
+  result(
+    float?.classList.contains("is-open") === true,
+    "搜索悬浮框打开",
+    {
+      cls: float?.className,
+      keys: fv.floater?.currentKey() ?? "no-floater",
+      count: document.querySelectorAll(".mw-drawer--float").length,
+      sameNode: float === (fv.floater as unknown as { panel?: HTMLElement })?.panel,
+    }
+  );
+  result(
+    !document.querySelector(".mw-drawer__scrim"),
+    "悬浮框同样没有遮罩（不压暗页面）"
+  );
+  const fr = float.getBoundingClientRect();
+  const vr = view.contentEl.getBoundingClientRect();
+  result(
+    vr.right - fr.right < 40 && fr.top - vr.top < 140,
+    "悬浮框锚在右上角",
+    { right: Math.round(vr.right - fr.right), top: Math.round(fr.top - vr.top) }
+  );
+  const input = float.querySelector<HTMLInputElement>(".mw-panel__input")!;
+  result(!!input, "悬浮框内有搜索输入");
+  input.value = "Album 01";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await wait(150);
+  result(
+    document.querySelectorAll(".mw-card[data-mw-album]").length === 1,
+    "悬浮框搜索即时生效",
+    document.querySelectorAll(".mw-card[data-mw-album]").length
+  );
+  input.value = "";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await wait(150);
+  result(
+    document.querySelectorAll(".mw-card[data-mw-album]").length === 6,
+    "清空后恢复全部"
+  );
+
+  // ＋ → 同一个悬浮框切换成「添加专辑」
+  const addBtn = btns.find((b) => b.getAttribute("aria-label") === "添加专辑")!;
+  addBtn.click();
+  await wait(200);
+  const floatTitle = float.querySelector<HTMLElement>(".mw-drawer__title")!.textContent;
+  result(floatTitle === "添加专辑", "同一个悬浮框切到添加专辑", floatTitle);
+  result(!!float.querySelector(".mw-search-panel__bar"), "添加面板承载搜索框");
+  result(searchBtn.classList.contains("is-active") === false, "切换后搜索图标不再激活");
+  result(addBtn.classList.contains("is-active"), "＋ 图标进入激活态");
+
+  // 侧边抽屉与悬浮框互斥
+  btns.find((b) => b.getAttribute("aria-label") === "样式与布局")!.click();
+  await wait(250);
+  result(
+    document.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float)")!.classList.contains("is-open"),
+    "侧边抽屉打开"
+  );
+  result(!float.classList.contains("is-open"), "打开侧边抽屉会收起悬浮框");
+
+  // Esc 关闭
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await wait(200);
+  result(
+    !document.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float)")!.classList.contains("is-open"),
+    "Esc 关闭侧边抽屉"
+  );
+}
+
+/** 缩放：设置 + Ctrl/Alt 滚轮，视图仍精确填满窗格、末张可达、模态框一起缩放 */
+async function caseZoom(): Promise<void> {
+  await resetView(gridData());
+  const plugin = (view as unknown as {
+    plugin: { settings: { zoomScale: number }; applyZoom(): void };
+  }).plugin;
+  plugin.settings.zoomScale = plugin.settings.zoomScale ?? 1;
+  const root = view.contentEl;
+  const mount = document.getElementById("mount")!;
+  const mr = mount.getBoundingClientRect();
+
+  const geom = () => {
+    // 外层 .mw-view 是**不缩放**的裁剪盒，它必须精确等于窗格；
+    // 内容缩放由内部 .mw-zoombox 负责（zoom + 反除补偿）
+    const rr = root.getBoundingClientRect();
+    return { rr, mr, box: document.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect() };
+  };
+  const fills = (): boolean => {
+    const { rr } = geom();
+    return (
+      Math.abs(rr.width - mr.width) < 2 &&
+      Math.abs(rr.height - mr.height) < 2 &&
+      Math.abs(rr.left - mr.left) < 2 &&
+      Math.abs(rr.top - mr.top) < 2
+    );
+  };
+  result(fills(), "100%：视图精确等于窗格", {
+    view: [Math.round(geom().rr.width), Math.round(geom().rr.height)],
+    mount: [Math.round(mr.width), Math.round(mr.height)],
+  });
+
+  for (const scale of [1.25, 0.8]) {
+    plugin.settings.zoomScale = scale;
+    plugin.applyZoom();
+    await wait(150);
+    result(
+      document.querySelector<HTMLElement>(".mw-zoombox")!.style.zoom !== "1" ||
+        getComputedStyle(document.querySelector<HTMLElement>(".mw-zoombox")!).zoom === String(scale),
+      `${Math.round(scale * 100)}%：缩放作用在缩放盒上`,
+      getComputedStyle(document.querySelector<HTMLElement>(".mw-zoombox")!).zoom
+    );
+    // 落点线用的是「rect 差值 / zoom」这个约定：这里用同一算法摆一条线，
+    // 必须与目标卡片完全重合（dz=0），否则缩放后落点线会跑偏
+    const stage = document.querySelector<HTMLElement>(".mw-stage")!;
+    const card = cardOf(3);
+    const line = document.createElement("div");
+    line.style.cssText = "position:absolute;z-index:9999;background:red;";
+    stage.appendChild(line);
+    const sr = stage.getBoundingClientRect();
+    const cr = card.getBoundingClientRect();
+    line.style.left = `${(cr.left - sr.left) / scale}px`;
+    line.style.top = `${(cr.top - sr.top) / scale}px`;
+    line.style.width = "3px";
+    line.style.height = `${cr.height / scale}px`;
+    await wait(50);
+    const lr = line.getBoundingClientRect();
+    result(
+      Math.abs(lr.left - cr.left) <= 1.5 &&
+        Math.abs(lr.top - cr.top) <= 1.5 &&
+        Math.abs(lr.height - cr.height) <= 2.5,
+      `${Math.round(scale * 100)}%：落点线定位约定成立（rect/zoom 与目标重合）`,
+      {
+        delta: [
+          Math.round(lr.left - cr.left),
+          Math.round(lr.top - cr.top),
+          Math.round(lr.height - cr.height),
+        ],
+      }
+    );
+    line.remove();
+
+    const visual = geom().box;
+    result(
+      fills(),
+      `${Math.round(scale * 100)}%：视图仍精确等于窗格（无裁切/溢出）`,
+      {
+        view: [Math.round(geom().rr.width), Math.round(geom().rr.height)],
+        mount: [Math.round(mr.width), Math.round(mr.height)],
+        zoombox: [Math.round(visual.width), Math.round(visual.height)],
+      }
+    );
+    // 缩放盒自身也必须等于窗格（视觉像素）。旧的 zoom 写法在这里会露馅：
+    // 反除补偿生效但放大失效 ⇒ 缩放盒只有窗格的 1/z（>100% 留白、<100% 溢出）。
+    result(
+      Math.abs(visual.width - mr.width) < 2 && Math.abs(visual.height - mr.height) < 2,
+      `${Math.round(scale * 100)}%：缩放盒精确等于窗格`,
+      {
+        zoombox: [Math.round(visual.width), Math.round(visual.height)],
+        mount: [Math.round(mr.width), Math.round(mr.height)],
+      }
+    );
+    // 内容真的铺满：四角 + 顶边中点 + 底边中点的命中栈里必须出现缩放盒/网格。
+    // 这条是本次缺陷的直接守卫——旧断言只看「根元素 == 窗格」（根永远是窗格）
+    // 与 root.contains(hit)（命中根元素时也成立），所以「内容只占 1/z」能一路绿灯。
+    const probes: [number, number][] = [
+      [mr.left + 4, mr.top + 4],
+      [mr.right - 4, mr.top + 4],
+      [mr.left + 4, mr.bottom - 4],
+      [mr.right - 4, mr.bottom - 4],
+      [mr.left + mr.width / 2, mr.bottom - 4],
+      [mr.right - 4, mr.top + mr.height / 2],
+    ];
+    const stacks = probes.map(([px, py]) =>
+      document
+        .elementsFromPoint(
+          Math.min(Math.max(px, 2), window.innerWidth - 2),
+          Math.min(Math.max(py, 2), window.innerHeight - 2)
+        )
+        .map((el) => String((el as HTMLElement).className || el.tagName))
+    );
+    const covered = stacks.every((s) =>
+      s.some((c) => c.includes("mw-zoombox") || c.includes("mw-grid"))
+    );
+    result(
+      covered,
+      `${Math.round(scale * 100)}%：内容铺满窗格（四角与边中点都命中缩放盒）`,
+      stacks.map((s) => s.slice(0, 3).join(">")).join(" | ")
+    );
+    // 视觉兜底：窗格右下角必须仍然命中本视图（填满且无裁切）。
+    // 探针要夹进视口（mount 可能比可视区高，或者落点恰好在窗口外）
+    const px = Math.min(mr.right - 4, window.innerWidth - 4);
+    const py = Math.min(mr.bottom - 4, window.innerHeight - 4);
+    const hit = document.elementFromPoint(px, py);
+    // 逐卡命中：缩放后「画出来的位置」必须仍然点得到（zoom 反除不能只对绘制生效）
+    const cardHits = Array.from(document.querySelectorAll<HTMLElement>(".mw-card")).map((c) => {
+      const r = c.getBoundingClientRect();
+      if (r.bottom > window.innerHeight || r.top < 0) return "offscreen";
+      const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return h && (c === h || c.contains(h)) ? "ok" : h ? "other" : "null";
+    });
+    result(
+      !!hit && root.contains(hit),
+      `${Math.round(scale * 100)}%：窗格右下角仍落在视图内（未被裁切）`,
+      {
+        probe: [Math.round(px), Math.round(py)],
+        hit: hit ? (hit as HTMLElement).className || hit.tagName : "null",
+        cardHits: cardHits.join(","),
+      }
+    );
+    result(
+      cardHits.every((h) => h === "ok" || h === "offscreen"),
+      `${Math.round(scale * 100)}%：可见卡片全部可命中（缩放未产生点不到的区域）`,
+      cardHits.join(",")
+    );
+
+    const gridEl = document.querySelector<HTMLElement>(".mw-grid")!;
+    const last = Array.from(document.querySelectorAll<HTMLElement>(".mw-card")).at(-1)!;
+    gridEl.scrollTop = gridEl.scrollHeight;
+    await wait(80);
+    const lr2 = last.getBoundingClientRect();
+    const gr2 = gridEl.getBoundingClientRect();
+    result(
+      lr2.bottom <= gr2.bottom + 2 && lr2.top >= gr2.top - 2,
+      `${Math.round(scale * 100)}%：滚到底后末张卡片完整可见`,
+      { cardBottom: Math.round(lr2.bottom), gridBottom: Math.round(gr2.bottom) }
+    );
+    gridEl.scrollTop = 0;
+  }
+
+  // Ctrl + 滚轮：改设置、更新变量、弹提示
+  plugin.settings.zoomScale = 1;
+  plugin.applyZoom();
+  await wait(120);
+  const before = plugin.settings.zoomScale;
+  for (let i = 0; i < 3; i++) {
+    root.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true })
+    );
+  }
+  await wait(150);
+  result(
+    plugin.settings.zoomScale > before,
+    "Ctrl+滚轮 放大",
+    plugin.settings.zoomScale
+  );
+  result(
+    document.body.style.getPropertyValue("--mw-zoom") === String(plugin.settings.zoomScale),
+    "缩放变量已写到 body",
+    document.body.style.getPropertyValue("--mw-zoom")
+  );
+  result(!!document.querySelector(".mw-zoomtoast.is-visible"), "出现缩放提示");
+  const zoomed = plugin.settings.zoomScale;
+  root.dispatchEvent(
+    new WheelEvent("wheel", { deltaY: 100, altKey: true, bubbles: true, cancelable: true })
+  );
+  await wait(150);
+  result(plugin.settings.zoomScale < zoomed, "Alt+滚轮 缩小", plugin.settings.zoomScale);
+
+  // 无修饰键的滚轮不得被吞掉（要留给滚动）
+  const plain = new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true });
+  root.dispatchEvent(plain);
+  result(!plain.defaultPrevented, "普通滚轮不被缩放拦截（仍用于滚动）");
+
+  // 模态框一起缩放
+  plugin.settings.zoomScale = 2;
+  plugin.applyZoom();
+  await wait(120);
+  const { ConfirmModal } = await import("../src/ui/ConfirmModal");
+  const app = { setting: { open() {}, openTabById() {} } };
+  const modal = new ConfirmModal(app as never, {
+    title: "缩放测试",
+    message: "x",
+    onConfirm: () => {},
+  });
+  modal.open();
+  await wait(150);
+  const modalEl = document.querySelector<HTMLElement>(".mw-modal-zoom .modal");
+  result(!!modalEl, "模态框挂上了缩放作用域类");
+  const mr2 = modalEl!.getBoundingClientRect();
+  result(mr2.width > 560 * 1.5, "模态框随 200% 一起放大", Math.round(mr2.width));
+  modal.close();
+
+  plugin.settings.zoomScale = 1;
+  plugin.applyZoom();
+  await wait(100);
 }
 
 /** 跨分组拖动：改变分组归属并重排 order */
@@ -1130,7 +1774,10 @@ async function caseCrossGroupMove(): Promise<void> {
   );
 
   // 把组一的 album 1 拖到组二的 album 5（非相邻）右半
-  await dragTo(cardOf(1), cardOf(5));
+  anyView.enterEditMode();
+  await wait(150);
+  const info = await nativeDrag(cardOf(1), cardOf(5));
+  result(info.overPrevented, "编辑态：跨组拖拽被本墙接收", info);
   result(data.items.find((i) => i.albumId === 1)?.groupId === "g2", "分组归属已改变");
   const g1Count = document.querySelectorAll('.mw-section[data-mw-group="g1"] .mw-card').length;
   const g2Count = document.querySelectorAll('.mw-section[data-mw-group="g2"] .mw-card').length;
@@ -1145,14 +1792,16 @@ async function caseCrossGroupMove(): Promise<void> {
   ).map((el) => el.dataset.mwAlbum);
   result(g2Ids.join(",") === "4,5,1,6", "落在锚点卡片之后且组内顺序正确", g2Ids.join(","));
 
-  // 分组头整体拖拽换序：把「组一」拖到「组二」之前
+  // 分组头整体拖拽换序：把「组二」拖到「组一」之前（不需要编辑模式）
+  anyView.exitEditMode();
+  await wait(150);
   const head1 = document.querySelector<HTMLElement>(
     '.mw-section[data-mw-group="g2"] .mw-section__head'
   )!;
   const head2 = document.querySelector<HTMLElement>(
     '.mw-section[data-mw-group="g1"] .mw-section__head'
   )!;
-  await dragTo(head1, head2, (r) => r.left + r.width / 2, (r) => r.top + 4, "分组拖拽");  const groups = (data as unknown as { groups: { id: string }[] }).groups;
+  await nativeDrag(head1, head2, (r) => ({ x: r.left + r.width / 2, y: r.top + 4 }));  const groups = (data as unknown as { groups: { id: string }[] }).groups;
   result(
     groups.map((g) => g.id).join(",") === "g2,g1",
     "分组整体拖拽换序",
@@ -1162,6 +1811,648 @@ async function caseCrossGroupMove(): Promise<void> {
     document.querySelectorAll<HTMLElement>(".mw-section__title")
   ).map((t) => t.textContent);
   result(headsAfter.join("|") === "组二|组一", "DOM 分组顺序同步", headsAfter.join("|"));
+}
+
+// ---- 第 3 轮新增：跨组落点 / 展示架面板主题 / 遮罩覆盖 ----
+
+/** "#rrggbb" / "rgb(a, b, c)" → [r,g,b] */
+function parseRgb(v: string): [number, number, number] {
+  const m = /rgba?\(([^)]+)\)/.exec(v);
+  if (m) {
+    const p = m[1].split(",").map((s) => parseFloat(s));
+    return [p[0] || 0, p[1] || 0, p[2] || 0];
+  }
+  const h = /#([0-9a-f]{3,8})/i.exec(v);
+  if (h) {
+    const s = h[1];
+    const n = (i: number) => parseInt(s.slice(i, i + 2), 16);
+    return [n(0), n(2), n(4)];
+  }
+  return [0, 0, 0];
+}
+
+/** 相对亮度（0..1），用于对比度断言 */
+function relLum(c: [number, number, number]): number {
+  const f = (v: number) => {
+    const n = v / 255;
+    return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+}
+
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const la = relLum(a);
+  const lb = relLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * 跨分组拖拽的三条「曾经会静默失败」的路径：
+ * 空分组（没有任何卡片 DOM）、收起的分组（卡片被 display:none）、分组头。
+ * 旧实现此时把锚点解析成被拖的唱片自己，commitDrop 直接丢弃这次落点。
+ */
+async function caseCrossGroupTargets(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "空组" },
+        { id: "g3", name: "收起组", collapsed: true },
+      ],
+      items: makeData(7).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : i === 3 ? "g3" : undefined,
+      })),
+    })
+  );
+  const anyView = anyViewOf(view);
+  const data = anyView.data as {
+    items: { albumId: number; groupId?: string }[];
+    groups: { id: string; collapsed?: boolean }[];
+  };
+  const groupOf = (id: number) => data.items.find((i) => i.albumId === id)?.groupId ?? "";
+  const headOf = (gid: string) =>
+    document.querySelector<HTMLElement>(
+      `.mw-section[data-mw-group="${gid}"] .mw-section__head`
+    )!;
+  const sectionOf = (gid: string) =>
+    document.querySelector<HTMLElement>(`.mw-section[data-mw-group="${gid}"]`);
+
+  result(!!headOf("g2") && !sectionOf("g2")!.querySelector(".mw-card"), "空组：只有表头，没有卡片");
+  result(
+    !!headOf("g3") && !sectionOf("g3")!.querySelector(".mw-card"),
+    "收起组：卡片不在 DOM 里"
+  );
+
+  anyView.enterEditMode();
+  await wait(150);
+
+  // (a) 拖到空分组：悬停时必须整组高亮，松手必须改归属
+  const from = cardOf(1);
+  const head = headOf("g2");
+  const a = centerOf(from);
+  from.dispatchEvent(pointer("pointerdown", a.x, a.y));
+  const dt = makeDataTransfer();
+  from.dispatchEvent(dragEvent("dragstart", dt));
+  const hr = head.getBoundingClientRect();
+  const p = clampToViewport({ x: hr.left + hr.width / 2, y: hr.top + hr.height / 2 }, hr);
+  head.dispatchEvent(dragEvent("dragover", dt, p));
+  await wait(80);
+  result(
+    !!sectionOf("g2")?.classList.contains("is-drop-section"),
+    "悬停空分组：整组高亮（可见反馈）"
+  );
+  head.dispatchEvent(dragEvent("drop", dt, p));
+  from.dispatchEvent(dragEvent("dragend", dt));
+  await wait(220);
+  result(groupOf(1) === "g2", "拖到空分组：归属已改为 g2", groupOf(1));
+  result(
+    sectionOf("g2")!.querySelectorAll(".mw-card").length === 1,
+    "空分组里出现了这张唱片"
+  );
+
+  // (b) 拖到收起的分组：锚点要按数据算（卡片根本不在 DOM 里）
+  // 长墙里收起的分组可能落在视口之外：先把表头滚进视野再拖（用户也是这么做的），
+  // 否则落点会被夹到视口边缘、命中别的分区（不是产品缺陷）
+  headOf("g3").scrollIntoView({ block: "center" });
+  await wait(150);
+  await nativeDrag(cardOf(2), headOf("g3"));
+  await wait(120);
+  result(groupOf(2) === "g3", "拖到收起的分组：归属已改为 g3", groupOf(2));
+  result(
+    data.groups.find((g) => g.id === "g3")?.collapsed === true,
+    "收起状态保持不变（不会被拖拽改成展开）"
+  );
+  // 展开后应能看到两张（原有一张 + 新拖入的一张）
+  headOf("g3").querySelector<HTMLElement>(".mw-section__chevron")!.click();
+  await wait(200);
+  result(
+    sectionOf("g3")!.querySelectorAll(".mw-card").length === 2,
+    "展开收起组：两张唱片都在",
+    String(sectionOf("g3")!.querySelectorAll(".mw-card").length)
+  );
+
+  // (c) 拖到分组头（表头那一条）：同组自己的表头不应产生位移
+  headOf("g1").scrollIntoView({ block: "center" });
+  await wait(150);
+  const before = (anyView.data as { order?: number[] }).order?.join(",") ?? "";
+  await nativeDrag(cardOf(3), headOf("g1"));
+  await wait(120);
+  const after = (anyView.data as { order?: number[] }).order?.join(",") ?? "";
+  result(before === after && groupOf(3) === "g1", "同组表头落点：原地不动（无副作用）");
+}
+
+/** 展示架模式下抽屉必须跟着木墙配色（浅色主题下也不该是白底） */
+async function caseShelfPanelTheme(): Promise<void> {
+  await resetView(gridData({ layout: "shelf" }));
+  const anyView = anyViewOf(view);
+  anyView.drawer.open("style");
+  await wait(250);
+  const panel = document.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float)")!;
+  const cs = getComputedStyle(panel);
+  const bg = parseRgb(cs.backgroundColor);
+  const fg = parseRgb(cs.color);
+  result(bg[0] < 120 && bg[0] >= bg[2], "展示架抽屉底色是暖色（不是主题白）", cs.backgroundColor);
+  result(contrast(fg, bg) >= 3, "面板正文与底色对比度 ≥ 3", {
+    fg: cs.color,
+    bg: cs.backgroundColor,
+    contrast: Math.round(contrast(fg, bg) * 100) / 100,
+  });
+  const preset = panel.querySelector<HTMLElement>(".mw-preset");
+  const pcs = preset ? getComputedStyle(preset) : null;
+  const raw = pcs?.backgroundColor ?? "";
+  const pm = /rgba?\(([^)]+)\)/.exec(raw);
+  const parts = pm ? pm[1].split(",").map((x) => parseFloat(x)) : [0, 0, 0, 1];
+  const alpha = parts.length > 3 ? parts[3] : 1;
+  // 半透明的暖色底是我们要的；不透明的近白才是「被主题刷成白卡」
+  const opaqueWhite = alpha > 0.9 && parts[0] > 225 && parts[1] > 225 && parts[2] > 225;
+  result(!!pcs && !opaqueWhite, "预设瓷砖同样走面板 token（不是主题白卡）", raw);
+  const input = panel.querySelector<HTMLElement>(".mw-panel__input");
+  result(true, "面板内控件存在性", input ? "input" : "none");
+}
+
+/**
+ * 侧边抽屉**没有遮罩**（第四轮）：不再压暗页面、不会盖住顶栏图标、也不会
+ * 留下「看得见但点不动」的幽灵层。同时验证关闭/复开与 dispose 后的类名清理。
+ */
+async function caseNoScrim(): Promise<void> {
+  await resetView(gridData());
+  const anyV = anyViewOf(view);
+  const root = view.contentEl;
+  const iconCenter = () => {
+    const btn = root.querySelector<HTMLElement>(".mw-toolbar .mw-toolbtn")!;
+    const r = btn.getBoundingClientRect();
+    return { btn, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+  const hitAt = (x: number, y: number): HTMLElement | null =>
+    document.elementFromPoint(
+      Math.min(Math.max(x, 2), window.innerWidth - 2),
+      Math.min(Math.max(y, 2), window.innerHeight - 2)
+    ) as HTMLElement | null;
+
+  result(!root.querySelector(".mw-drawer__scrim"), "抽屉没有遮罩元素");
+  anyV.drawer.open("style");
+  await wait(250);
+  result(!root.querySelector(".mw-drawer__scrim"), "打开后依然没有遮罩元素");
+  // 打开面板后，窗格四角与顶栏都应仍然命中墙面/工具栏本身（没有被覆盖层吃掉点击）
+  const r = root.getBoundingClientRect();
+  const probes: [string, number, number][] = [
+    ["左上", r.left + 4, r.top + 4],
+    ["右上", r.right - 4, r.top + 4],
+    ["左下", r.left + 4, r.bottom - 6],
+    ["顶栏中点", (r.left + r.right) / 2, r.top + 18],
+    ["底边中点", (r.left + r.right) / 2, r.bottom - 6],
+  ];
+  const hits = probes.map(([label, x, y]) => {
+    const el = hitAt(x, y);
+    return `${label}:${String(el?.className ?? el?.tagName ?? "null")}`;
+  });
+  result(
+    hits.every((h) => !h.includes("scrim")),
+    "面板打开时没有被覆盖层遮挡（四角与顶栏都命中原元素）",
+    hits.join(" | ")
+  );
+  // 顶栏图标必须自己就是命中要素（曾经被遮罩盖住，点它等于点遮罩）
+  const c1 = iconCenter();
+  const hit1 = hitAt(c1.x, c1.y);
+  result(
+    !!hit1 && (hit1 === c1.btn || c1.btn.contains(hit1)),
+    "面板打开时顶栏图标仍可点（不被遮罩盖住）",
+    String(hit1?.className ?? hit1?.tagName ?? "null")
+  );
+  // 关闭后图标可点，且能再次打开
+  root.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float) .mw-drawer__close")!.click();
+  await wait(200);
+  result(!anyV.drawer.isOpen(), "× 关闭抽屉");
+  const c2 = iconCenter();
+  const hit2 = hitAt(c2.x, c2.y);
+  result(
+    !!hit2 && (hit2 === c2.btn || c2.btn.contains(hit2)),
+    "关闭后顶栏图标可点",
+    String(hit2?.className ?? hit2?.tagName ?? "null")
+  );
+  c2.btn.click();
+  await wait(200);
+  result(anyV.drawer.isOpen(), "再点图标能重新打开");
+  // 幽灵层加固：dispose 时必须把 DOM 上的 is-open 一起摘掉
+  const panel = root.querySelector<HTMLElement>(".mw-drawer:not(.mw-drawer--float)")!;
+  anyV.drawer.dispose();
+  result(!panel.classList.contains("is-open"), "dispose 后不留 is-open（不会变幽灵面板）");
+}
+
+/** 编辑条是正常流的一行：不能压在工具栏上（图标与文字都不能重叠） */
+async function caseEditbarClear(): Promise<void> {
+  await resetView(gridData());
+  const anyV = anyViewOf(view);
+  anyV.enterEditMode();
+  await wait(220);
+  const bar = document.querySelector<HTMLElement>(".mw-editbar")!;
+  const toolbar = document.querySelector<HTMLElement>(".mw-toolbar")!;
+  const br = bar.getBoundingClientRect();
+  const tr = toolbar.getBoundingClientRect();
+  result(!!bar, "编辑条存在");
+  result(
+    br.bottom <= tr.top + 1,
+    "编辑条在工具栏上方且不重叠",
+    { barBottom: Math.round(br.bottom), toolbarTop: Math.round(tr.top) }
+  );
+  const overlaps = Array.from(toolbar.querySelectorAll<HTMLElement>(".mw-toolbtn")).map((b) => {
+    const r = b.getBoundingClientRect();
+    return !(r.bottom <= br.top || r.top >= br.bottom) && !(r.right <= br.left || r.left >= br.right);
+  });
+  result(!overlaps.some(Boolean), "工具栏图标都不与编辑条相交", overlaps.join(","));
+  // 每个图标中心都应命中自己（重叠时会被编辑条抢走命中）
+  const misses = Array.from(toolbar.querySelectorAll<HTMLElement>(".mw-toolbtn")).filter((b) => {
+    const r = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !hit || !(hit === b || b.contains(hit));
+  });
+  result(misses.length === 0, "工具栏图标中心都命中自己", misses.length);
+  // 顶栏下沿（含编辑条）写进 --mw-topbar-h：面板要落在它下面
+  const topbar = Number(
+    (view.contentEl.style.getPropertyValue("--mw-topbar-h") || "0").replace("px", "")
+  );
+  const hostTop = document.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect().top;
+  const zoomEl = Array.from(document.querySelectorAll<HTMLElement>(".mw-zoombox"))[0];
+  const z = Number(getComputedStyle(zoomEl).getPropertyValue("--mw-zoom")) || 1;
+  result(
+    Math.abs(hostTop + topbar * z - tr.bottom) < 4,
+    "--mw-topbar-h 按工具栏底部计算（含编辑条）",
+    { topbar, toolbarBottom: Math.round(tr.bottom), hostTop: Math.round(hostTop) }
+  );
+  anyV.exitEditMode();
+  await wait(200);
+  result(!document.querySelector(".mw-editbar"), "退出编辑态后编辑条移除");
+}
+
+/** 分区之间要有可见的上下间距（展示架与网格都不能贴在一起） */
+async function caseSectionGaps(): Promise<void> {
+  const probe = async (layout: "grid" | "shelf") => {
+    await resetView(
+      gridData({
+        layout: layout === "grid" ? undefined : layout,
+        groups: [
+          { id: "g1", name: "组合一" },
+          { id: "g2", name: "组合二" },
+        ],
+        items: makeData(8).items.map((it, i) => ({
+          ...it,
+          artist: `artist-${it.albumId % 2}`,
+          groupId: i < 4 ? "g1" : "g2",
+        })),
+      })
+    );
+    await wait(200);
+    const sections = Array.from(document.querySelectorAll<HTMLElement>(".mw-section"));
+    const s1 = sections[0];
+    const s2 = sections[1];
+    const head1 = s1.querySelector<HTMLElement>(".mw-section__head")!.getBoundingClientRect();
+    const cards1 = s1.querySelector<HTMLElement>(".mw-section__cards")!.getBoundingClientRect();
+    const lastItem = Array.from(
+      s1.querySelectorAll<HTMLElement>("[data-mw-album]")
+    ).at(-1)!.getBoundingClientRect();
+    const head2 = s2.querySelector<HTMLElement>(".mw-section__head")!.getBoundingClientRect();
+    result(
+      cards1.top - head1.bottom >= 12,
+      `${layout}：分组头 → 卡片留出间距`,
+      Math.round(cards1.top - head1.bottom)
+    );
+    result(
+      head2.top - lastItem.bottom >= 14,
+      `${layout}：上一分区末卡 → 下一分区头留出间距`,
+      Math.round(head2.top - lastItem.bottom)
+    );
+  };
+  await probe("grid");
+  await probe("shelf");
+}
+
+/** 样式面板：布局在上、唱片样式在下；唱片样式只在网格布局出现 */
+async function caseStylePanelOrder(): Promise<void> {
+  await resetView(gridData({ layout: undefined }));
+  const anyV = anyViewOf(view);
+  anyV.drawer.open("style");
+  await wait(220);
+  const labels = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".mw-drawer:not(.mw-drawer--float) .mw-panel__label"
+      )
+    ).map((el) => el.textContent ?? "");
+  result(labels().join(">") === "布局>唱片样式", "网格：顺序为 布局 → 唱片样式", labels().join(">"));
+  result(
+    document.querySelectorAll(".mw-preset[data-mw-style]").length === 4,
+    "网格：四种唱片样式都在"
+  );
+  // 切到展示架：重绘后面板按新布局重建
+  document.querySelector<HTMLElement>('.mw-preset[data-mw-layout="shelf"]')!.click();
+  await wait(320);
+  const after = labels();
+  result(after.join(">") === "布局", "展示架：不再显示唱片样式组", after.join(">"));
+  result(
+    document.querySelectorAll(".mw-preset[data-mw-style]").length === 0,
+    "展示架：样式瓷砖已移除"
+  );
+  const hint = document.querySelector<HTMLElement>(
+    ".mw-drawer:not(.mw-drawer--float) .mw-panel__hint"
+  );
+  result(
+    hint?.textContent?.includes("只在网格布局下生效") === true,
+    "展示架：保留一行说明",
+    hint?.textContent
+  );
+}
+
+/** 面板控件与输入框：不接受主题的白底（单类规则会被 button:not(.clickable-icon) 压过） */
+async function casePanelControls(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [{ id: "g1", name: "组一" }],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  const anyV = anyViewOf(view);
+  const WHITE = [238, 240, 244]; // 假主题给裸 button 刷的白底
+  const nearWhite = (c: string) => {
+    const [r, g, b] = parseRgb(c);
+    return r > 225 && g > 225 && b > 225;
+  };
+  // 排序面板：升降序两个按钮（一个 active 一个非 active）
+  anyV.drawer.open("sort");
+  await wait(220);
+  const dirbtns = Array.from(
+    document.querySelectorAll<HTMLElement>(".mw-drawer .mw-dirbtn")
+  );
+  result(dirbtns.length === 2, "排序面板有升/降序两个按钮", dirbtns.length);
+  const dirBg = dirbtns.map((b) => getComputedStyle(b).backgroundColor);
+  result(!dirBg.some(nearWhite), "升降序按钮不是主题白底", dirBg.join(" | "));
+  const active = dirbtns.find((b) => b.classList.contains("is-active"));
+  result(
+    !!active && !nearWhite(getComputedStyle(active).backgroundColor),
+    "激活态按钮走 accent",
+    active ? getComputedStyle(active).backgroundColor : "none"
+  );
+  const editBtn = document.querySelector<HTMLElement>(".mw-drawer .mw-panel__add")!;
+  result(
+    !nearWhite(getComputedStyle(editBtn).backgroundColor),
+    "「调整顺序（编辑布局）」不是白底",
+    getComputedStyle(editBtn).backgroundColor
+  );
+  // 筛选面板：清除按钮透明底、文字非黑
+  anyV.drawer.open("filter");
+  await wait(220);
+  const clear = document.querySelector<HTMLElement>(".mw-drawer .mw-panel__clear")!;
+  const ccs = getComputedStyle(clear);
+  result(!nearWhite(ccs.backgroundColor), "「清除」不是白底药丸", ccs.backgroundColor);
+  const [cr, cg, cb] = parseRgb(ccs.color);
+  result(cr + cg + cb > 120, "「清除」文字颜色可辨（非近黑主题色）", ccs.color);
+  // 输入框：静息/聚焦都不变白，且 hover 变量被面板接管
+  const input = document.querySelector<HTMLInputElement>(".mw-drawer .mw-panel__input")!;
+  const ics = getComputedStyle(input);
+  result(!nearWhite(ics.backgroundColor), "输入框静息底色走面板 token", ics.backgroundColor);
+  input.focus();
+  await wait(80);
+  const fcs = getComputedStyle(input);
+  result(!nearWhite(fcs.backgroundColor), "输入框聚焦后也不变白", fcs.backgroundColor);
+  const drawerEl = document.querySelector<HTMLElement>(".mw-drawer")!;
+  const hl = getComputedStyle(drawerEl)
+    .getPropertyValue("--background-modifier-form-field-highlighted")
+    .trim();
+  result(!!hl, "面板内覆盖了表单 hover 变量（主题的白色高亮被接管）", hl);
+  // 合成探针：搜索行按钮同样不该是白底
+  const probe = document.querySelector<HTMLElement>(".mw-drawer__body")!;
+  const a = probe.createEl("button", { cls: "mw-search-row__add", text: "添加" });
+  const b = probe.createEl("button", { cls: "mw-search-more", text: "加载更多" });
+  result(
+    !nearWhite(getComputedStyle(a).backgroundColor) &&
+      !nearWhite(getComputedStyle(b).backgroundColor),
+    "搜索行「添加 / 加载更多」不是白底",
+    `${getComputedStyle(a).backgroundColor} | ${getComputedStyle(b).backgroundColor}`
+  );
+  a.remove();
+  b.remove();
+}
+
+/** 三处面板的「清空」都改成输入框右端的 ×，且真的能清空 */
+async function caseClearX(): Promise<void> {
+  await resetView(gridData());
+  const anyV = anyViewOf(view);
+  // 搜索本墙（悬浮框）
+  anyV.floater.open("search");
+  await wait(220);
+  const bar = document.querySelector<HTMLElement>(".mw-drawer--float .mw-panel__searchbar")!;
+  result(!!bar, "搜索本墙：输入行包裹了 searchbar");
+  result(
+    !document.querySelector(".mw-drawer--float .mw-panel__reset"),
+    "搜索本墙：不再有整宽「清空」按钮"
+  );
+  const input = bar.querySelector<HTMLInputElement>(".mw-panel__input")!;
+  const clearBtn = bar.querySelector<HTMLElement>(".mw-panel__clearicon")!;
+  result(!!clearBtn, "搜索本墙：× 清空钮存在");
+  result(clearBtn.classList.contains("is-hidden"), "空输入时 × 隐藏");
+  input.value = "Album 01";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await wait(180);
+  result(!clearBtn.classList.contains("is-hidden"), "有输入时 × 出现");
+  result(
+    document.querySelectorAll(".mw-card[data-mw-album]").length === 1,
+    "输入即筛（剩 1 张）",
+    document.querySelectorAll(".mw-card[data-mw-album]").length
+  );
+  clearBtn.click();
+  await wait(200);
+  result(input.value === "" && anyV.q === "", "点 × 清空输入与筛选词", input.value);
+  result(
+    document.querySelectorAll(".mw-card[data-mw-album]").length === 6,
+    "清空后恢复全部",
+    document.querySelectorAll(".mw-card[data-mw-album]").length
+  );
+  // 筛选面板的关键词行同样有 ×
+  anyV.drawer.open("filter");
+  await wait(220);
+  const fbar = document.querySelector<HTMLElement>(".mw-drawer .mw-panel__searchbar")!;
+  result(!!fbar?.querySelector(".mw-panel__clearicon"), "筛选面板：关键词行也有 ×");
+}
+
+/** 卡片菜单的「移动到分组…」走模态选择框（不再用会撑爆屏幕的内联子菜单） */
+async function caseGroupPicker(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  const anyV = anyViewOf(view);
+  MENU_LOG.length = 0;
+  const card = cardOf(1);
+  const r = card.getBoundingClientRect();
+  card.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: r.left + 4,
+      clientY: r.top + 4,
+    })
+  );
+  await wait(120);
+  const menu = MENU_LOG.at(-1);
+  const entry = menu?.items.find((it) => it.title.startsWith("移动到分组"));
+  result(!!entry, "菜单里有「移动到分组…」", menu?.items.map((i) => i.title).join("|"));
+  result(!entry?.submenu, "不再使用内联子菜单");
+  entry?.run?.();
+  await wait(200);
+  const modal = document.querySelector<HTMLElement>(".modal-container .mw-picker");
+  result(!!modal, "打开模态选择框");
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(".mw-picker__row"));
+  result(rows.length === 3, "列出 未分组 + 两个分组", rows.map((x) => x.textContent).join(" | "));
+  result(
+    rows[1]?.textContent?.includes("✓") === true,
+    "当前所在分组标 ✓",
+    rows[1]?.textContent
+  );
+  // 选「未分组」→ 归属改变、两组计数同步
+  rows[0].click();
+  await wait(250);
+  const data = anyV.data as { items: { albumId: number; groupId?: string }[] };
+  result(
+    data.items.find((i) => i.albumId === 1)?.groupId === undefined,
+    "选中后归属改为未分组",
+    String(data.items.find((i) => i.albumId === 1)?.groupId)
+  );
+  result(!document.querySelector(".mw-picker"), "选择后模态框关闭");
+}
+
+/**
+ * 交互走查（交付前的「真实交互」自测）：把用户实际会点的一串动作按顺序走一遍，
+ * 每步都断言「点得到 + 状态对」，最后确认没有残留覆盖层、图标仍然可点。
+ * 与其它场景的区别：这里刻意连成一条链，任何一步破坏了后续交互都会被抓到。
+ */
+async function caseInteractionWalk(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  const anyV = anyViewOf(view);
+  const root = view.contentEl;
+  const steps: string[] = [];
+  const clickable = (el: HTMLElement, label: string): boolean => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const ok = !!hit && (hit === el || el.contains(hit));
+    steps.push(`${label}:${ok ? "ok" : "blocked(" + String(hit?.className ?? "null") + ")"}`);
+    return ok;
+  };
+  const icons = () =>
+    Array.from(root.querySelectorAll<HTMLElement>(".mw-toolbar .mw-toolbtn"));
+
+  // ① 六个顶栏图标：每个都先确认点得到，再点开对应面板/菜单
+  const iconList = icons();
+  result(iconList.length === 6, "顶栏 6 个图标齐全", iconList.length);
+  const reachable = iconList.every((b, i) => clickable(b, `图标${i}`));
+  result(reachable, "六个图标都可点（无覆盖层）", steps.join(" "));
+  steps.length = 0;
+
+  iconList[0].click();
+  await wait(200);
+  result(anyV.drawer.currentKey() === "style", "样式面板打开");
+  iconList[1].click();
+  await wait(200);
+  result(anyV.drawer.currentKey() === "filter", "筛选面板打开（互斥切换）");
+  iconList[2].click();
+  await wait(200);
+  result(anyV.drawer.currentKey() === "sort", "排序面板打开");
+  // ② 排序面板：切类型 + 切方向
+  const radios = Array.from(
+    root.querySelectorAll<HTMLInputElement>('.mw-drawer input[name="mw-sort-mode"]')
+  );
+  radios[1].checked = true;
+  radios[1].dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(220);
+  result(anyV.sortMode === "addedAt", "排序类型切到「添加时间」", anyV.sortMode);
+  const dirs = Array.from(root.querySelectorAll<HTMLElement>(".mw-drawer .mw-dirbtn"));
+  dirs[1].click();
+  await wait(220);
+  result(anyV.sortAsc === false, "切到降序", String(anyV.sortAsc));
+  // ③ 进入/退出布局编辑（编辑条与工具栏不能重叠）
+  const editBtn = root.querySelector<HTMLElement>(".mw-drawer .mw-panel__add")!;
+  clickable(editBtn, "调整顺序按钮");
+  editBtn.click();
+  await wait(260);
+  result(anyV.editMode === true, "进入布局编辑");
+  const barRect = document.querySelector<HTMLElement>(".mw-editbar")!.getBoundingClientRect();
+  const tbRect = document.querySelector<HTMLElement>(".mw-toolbar")!.getBoundingClientRect();
+  result(barRect.bottom <= tbRect.top + 1, "编辑条不压工具栏");
+  const doneBtn = Array.from(
+    root.querySelectorAll<HTMLElement>(".mw-editbar .mw-editbar__btn")
+  ).find((b) => b.textContent === "完成")!;
+  clickable(doneBtn, "完成按钮");
+  doneBtn.click();
+  await wait(280);
+  result(anyV.editMode === false, "点「完成」退出编辑");
+  result(!root.querySelector(".mw-editbar"), "编辑条已移除");
+  // ④ 卡片右键 → 移动到分组… → 模态框选择
+  MENU_LOG.length = 0;
+  const card = cardOf(1);
+  const cr = card.getBoundingClientRect();
+  card.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: cr.left + 4,
+      clientY: cr.top + 4,
+    })
+  );
+  await wait(150);
+  const pickItem = MENU_LOG.at(-1)?.items.find((it) => it.title.startsWith("移动到分组"));
+  result(!!pickItem, "菜单里能打开「移动到分组…」");
+  pickItem?.run?.();
+  await wait(220);
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(".mw-picker__row"));
+  result(rows.length === 3, "选择框列出 未分组 + 两个分组", rows.length);
+  rows[2].click();
+  await wait(300);
+  const data = anyV.data as { items: { albumId: number; groupId?: string }[] };
+  result(
+    data.items.find((i) => i.albumId === 1)?.groupId === "g2",
+    "选中「组二」后归属变更",
+    String(data.items.find((i) => i.albumId === 1)?.groupId)
+  );
+  // ⑤ 收尾：没有残留覆盖层，图标仍然可点、面板还能开关
+  result(!root.querySelector(".mw-drawer__scrim"), "全程没有遮罩残留");
+  result(
+    !document.querySelector(".mw-picker") && !document.querySelector(".mw-modal-zoom"),
+    "模态框已关闭"
+  );
+  const iconAfter = icons()[0];
+  clickable(iconAfter, "收尾图标");
+  iconAfter.click();
+  await wait(220);
+  result(anyV.drawer.currentKey() === "style", "收尾仍能打开样式面板");
+  iconAfter.click();
+  await wait(220);
+  result(anyV.drawer.currentKey() === null, "再点一次收起");
+  result(steps.every((s) => s.endsWith("ok")), "收尾命中检查", steps.join(" "));
 }
 
 // ---- 入口 ----
@@ -1216,9 +2507,25 @@ async function caseCrossGroupMove(): Promise<void> {
       "total-dur": caseTotalDur,
       hitdebug: caseHitDebug,
       "toolbar-drawer": caseToolbarDrawer,
+      "wall-surface": caseWallSurface,
       groups: caseGroups,
       "manual-order": caseManualOrder,
       "cross-group-move": caseCrossGroupMove,
+      "cross-group-targets": caseCrossGroupTargets,
+      "shelf-panel-theme": caseShelfPanelTheme,
+      "no-scrim": caseNoScrim,
+      "editbar-clear": caseEditbarClear,
+      "section-gaps": caseSectionGaps,
+      "style-panel-order": caseStylePanelOrder,
+      "panel-controls": casePanelControls,
+      "clear-x": caseClearX,
+      "group-picker": caseGroupPicker,
+      "interaction-walk": caseInteractionWalk,
+      "drag-gate": caseDragGate,
+      "group-menus": caseGroupMenus,
+      previews: casePreviews,
+      "float-panels": caseFloatPanels,
+      zoom: caseZoom,
       dragdiag: caseDragDiag,
     };
     if (fn[caseName]) await fn[caseName]();
@@ -1229,7 +2536,13 @@ async function caseCrossGroupMove(): Promise<void> {
   finalize(caseName);
 })();
 
-/** dragdiag：拖拽链路逐步诊断（指针捕获 / 事件到达 / 命中要素） */
+/**
+ * dragdiag：触屏指针拖拽链路的逐步诊断（指针捕获 / 事件到达 / 命中要素）。
+ *
+ * 桌面端走的是**原生 HTML5 拖拽**（长按只负责进编辑态，不接管指针），
+ * 所以这里刻意用 pointerType: "touch" —— 触屏没有原生 DnD，产品代码会走
+ * beginPointerDrag/浮标这条路径，本场景就是它的诊断入口。
+ */
 async function caseDragDiag(): Promise<void> {
   await resetView(gridData());
   const from = cardOf(1);
@@ -1243,26 +2556,38 @@ async function caseDragDiag(): Promise<void> {
   window.addEventListener("pointermove", onDocMove, true);
   window.addEventListener("pointerup", onDocUp, true);
 
-  from.dispatchEvent(pointer("pointerdown", a.x, a.y));
-  await wait(LONG_PRESS_MS + 200);
+  from.dispatchEvent(pointer("pointerdown", a.x, a.y, "touch"));
+  await wait(LONG_PRESS_MS_TOUCH + 250);
   const anyV = anyViewOf(view) as unknown as {
     dragActive: boolean;
     dragPayload: unknown;
   };
-  result(!!document.querySelector(".mw-drag-ghost"), "长按后有浮标");
+  result(!!document.querySelector(".mw-drag-ghost"), "触屏长按后出现浮标");
   result(anyV.dragActive === true, "dragActive=true", anyV.dragActive);
   result(
-    document.pointerLockElement === null && (from as HTMLElement).hasPointerCapture?.(1) === true,
-    "卡片持有指针捕获",
+    document.pointerLockElement === null &&
+      (from as HTMLElement).hasPointerCapture?.(1) === false,
+    "刻意不做指针捕获（捕获会让 document 上的监听收不到事件）",
     (from as HTMLElement).hasPointerCapture?.(1)
+  );
+  // 浮标是缩放盒里的 absolute 元素：位置按「视觉像素 ÷ zoom」换算
+  const ghost = document.querySelector<HTMLElement>(".mw-drag-ghost")!;
+  const gr = ghost.getBoundingClientRect();
+  result(
+    Math.abs(gr.left - (a.x + 12)) < 6 && Math.abs(gr.top - (a.y + 12)) < 6,
+    "浮标跟随指针（原点换算正确）",
+    {
+      ghost: [Math.round(gr.left), Math.round(gr.top)],
+      want: [a.x + 12, a.y + 12],
+    }
   );
 
   const r = to.getBoundingClientRect();
   const drop = { x: r.left + 4, y: r.top + r.height / 2 };
   reached.length = 0;
-  const moved = pointer("pointermove", drop.x, drop.y);
-  (from as HTMLElement).dispatchEvent(moved);
-  await wait(80);
+  const moved = pointer("pointermove", drop.x, drop.y, "touch");
+  window.dispatchEvent(moved);
+  await wait(120);
   const hit = document.elementFromPoint(drop.x, drop.y) as HTMLElement | null;
   result(true, "移动事件到达", { reached: reached.join(","), bubbles: moved.bubbles });
   result(true, "落点命中要素", hit ? hit.className || hit.tagName : "null");
@@ -1270,9 +2595,8 @@ async function caseDragDiag(): Promise<void> {
   result(true, "落点归属卡片", hitCard?.dataset.mwAlbum ?? "none");
 
   reached.length = 0;
-  (from as HTMLElement).dispatchEvent(pointer("pointerup", drop.x, drop.y));
-  await wait(200);
-  result(true, "抬起事件到达", reached.join(","));
+  window.dispatchEvent(pointer("pointerup", drop.x, drop.y, "touch"));
+  await wait(250);
   result(true, "抬起事件到达", reached.join(","));
   result(!document.querySelector(".mw-drag-ghost"), "抬起后浮标被清理");
   const order = (anyV as unknown as { data: { order?: number[] } }).data.order ?? [];

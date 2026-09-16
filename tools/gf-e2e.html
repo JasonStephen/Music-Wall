@@ -6,12 +6,36 @@
 <link rel="stylesheet" href="../styles.css">
 <style>
   body { margin: 0; background: #211c18; }
-  /* 固定舞台：520px 高保证架子可滚动（相机平移/回位可测） */
-  #mount { width: 1180px; height: 520px; margin: 0 auto; }
-  #mount .mw-view { height: 100%; }
-  /* 模拟 Obsidian/主题对裸 <button> 的默认样式（类级特异性，与真实主题一致）：
-     插件的图标钮重置必须压过它 */
-  .mw-view button {
+  /* 模拟 Obsidian 主题提供的标准变量（真实环境一定有）。
+     缺了它们，插件里 var(--interactive-accent) / var(--background-secondary) 这类引用
+     会整条失效——断言就会「因为变量不存在而通过或失败」，测不出真实观感。 */
+  :root {
+    --interactive-accent: #7c5cff;
+    --interactive-accent-hover: #6b4bf0;
+    --text-on-accent: #ffffff;
+    --text-normal: #22252b;
+    --text-muted: #6b7280;
+    --text-faint: #9aa1ac;
+    --text-accent: #7c5cff;
+    --background-primary: #ffffff;
+    --background-secondary: rgba(0, 0, 0, 0.04);
+    --background-modifier-border: rgba(0, 0, 0, 0.12);
+    --background-modifier-border-focus: rgba(0, 0, 0, 0.25);
+    --background-modifier-hover: rgba(0, 0, 0, 0.06);
+    --background-modifier-form-field: rgba(0, 0, 0, 0.03);
+    --background-modifier-form-field-highlighted: rgba(0, 0, 0, 0.08);
+  }
+  /* 固定舞台：900px 高保证架子可滚动（相机平移/回位可测） */
+  #mount { width: 1180px; height: 900px; margin: 0 auto; }
+  /* 不要把 .mw-view 的高度写死：产品用 height: calc(100% / var(--mw-zoom))
+     做缩放反除补偿，这里再声明 height 会把它盖掉（缩放后就不是精确填满了） */
+  /* 模拟 Obsidian/主题对裸 <button> 的默认样式。
+     刻意用 (0,1,2) 这种「低特异性」写法（body + button + :not(类)）：
+     真实主题的基础规则就是这个量级，插件用双类选择器的硬重置（如
+     .mw-gf__bar .mw-gf__tool）应当能压过它；而只带单个类的图标钮压不过，
+     因此必须靠 Obsidian 自带的 .clickable-icon 来豁免 —— 这正是产品代码的做法。
+     用 #id 或 .mw-view 前缀会人为抬高特异性，测出来的就不是真实观感了。 */
+  body button:not(.clickable-icon) {
     background-color: #eef0f4;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.25);
     border: 1px solid #d8dbe2;
@@ -25,6 +49,9 @@
     background: #14100c; color: #eee; font: 15px/1.8 Consolas, monospace;
     padding: 10px 12px; max-width: 640px; max-height: 80vh; overflow: auto;
     border: 2px solid #666; border-radius: 8px;
+    /* 结果面板是调试浮层，绝不能拦命中测试：拖拽落点用 elementFromPoint 判定，
+       面板盖住的区域会让落点变成 null（分组头横跨整行，中心点必然被盖住） */
+    pointer-events: none;
   }
   #result .ok { color: #8fd98f; }
   #result .bad { color: #ff9090; }

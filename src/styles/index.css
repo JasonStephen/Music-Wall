@@ -7,3 +7,6 @@
 @import "./groups.css";
 @import "./player.css";
 @import "./modals.css";
+/* 预设瓷砖必须在播放器样式之后：.mw-preset__stage > .mw-disc 与
+   .mw-player .mw-disc 特异性相同，靠导入顺序保证预览尺寸生效 */
+@import "./presets.css";
