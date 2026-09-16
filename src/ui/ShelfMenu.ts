@@ -5,6 +5,8 @@
 export interface ShelfMenuItem {
   title: string;
   danger?: boolean;
+  /** 置灰不可点（如未打开播放器时的「加入播放器」） */
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -25,10 +27,14 @@ export function openShelfMenu(x: number, y: number, items: ShelfMenuItem[]): voi
 
   for (const item of items) {
     const row = doc.createElement("div");
-    row.className = item.danger ? "mw-shelf-menu__item is-danger" : "mw-shelf-menu__item";
+    const classes = ["mw-shelf-menu__item"];
+    if (item.danger) classes.push("is-danger");
+    if (item.disabled) classes.push("is-disabled");
+    row.className = classes.join(" ");
     row.textContent = item.title;
     row.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (item.disabled) return;
       closeActive();
       item.onClick();
     });

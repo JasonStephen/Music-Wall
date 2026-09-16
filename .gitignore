@@ -10,7 +10,13 @@ dist/
 # 自检脚本编译输出（bundlesmoke.cjs 是手写测试件，需入库）
 tools/netcheck.cjs
 tools/storecheck.cjs
+tools/smtccheck.cjs
 tools/gf-e2e.bundle.js
+tools/mwp-e2e.bundle.js
+# e2e 运行期产物（--dump-dom 输出与浏览器 stderr）
+tools/_dump_*.txt
+tools/_err_*.txt
+tools/_e2e_*.txt
 
 # 临时/缓存
 .obsidian-git-cache/

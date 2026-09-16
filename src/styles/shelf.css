@@ -28,6 +28,20 @@
     linear-gradient(180deg, #1b1511, #241b14 45%, #120d09);
 }
 
+/* 分区容器承载列模板（.mw-grid 只放分区）：木横板段仍然按列宽铺满，
+   列距 0 让相邻板的段拼成整行，视觉与分区前一致 */
+.mw-grid--shelf .mw-section__cards {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--mw-min-col, 180px), 1fr)
+  );
+  gap: 68px 0;
+  padding-top: 44px;
+}
+.mw-grid--shelf .mw-section.is-collapsed > .mw-section__cards {
+  padding-top: 0;
+}
+
 /* 家具深色固定，不随明暗主题；文字用暖浅色保证两主题下均可读 */
 .mw-grid--shelf .mw-empty {
   color: #cfc4b2;
@@ -811,4 +825,11 @@
 }
 .mw-shelf-menu__item.is-danger:hover {
   background: rgba(233, 72, 88, 0.18);
+}
+.mw-shelf-menu__item.is-disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.mw-shelf-menu__item.is-disabled:hover {
+  background: transparent;
 }

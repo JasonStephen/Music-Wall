@@ -1,0 +1,178 @@
+/* ===== 分组（照片墙分区） =====
+   分组面板的列表行 + 网格里分组头的木架配色 + 删除分组确认框。
+   基础分区结构（.mw-section / .mw-section__head）在 base.css，这里只补细节。 */
+
+/* ---- 抽屉里的分组列表 ---- */
+.mw-grouplist {
+  gap: 4px;
+}
+.mw-grouplist__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mw-grouplist__row:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+  opacity: 1;
+}
+.mw-grouplist__row.is-dragging {
+  opacity: 0.4;
+}
+.mw-grouplist__row.is-drop-target {
+  border-color: var(--mw-accent, var(--interactive-accent));
+}
+.mw-grouplist__handle {
+  width: 20px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  box-shadow: none;
+  cursor: grab;
+  touch-action: none;
+}
+.mw-grouplist__handle:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-border);
+}
+.mw-grouplist__handle svg {
+  width: 14px;
+  height: 14px;
+}
+.mw-grouplist__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.88em;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mw-grouplist__count {
+  flex: 0 0 auto;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.mw-grouplist__btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.mw-grouplist__row:hover .mw-grouplist__btn {
+  opacity: 1;
+}
+@media (hover: none) {
+  .mw-grouplist__btn {
+    opacity: 0.7;
+  }
+}
+.mw-grouplist__btn:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+.mw-grouplist__btn--danger:hover {
+  color: #e93147;
+  border-color: #e93147;
+}
+.mw-grouplist__btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- 展示架布局下的分组头：暖色木风，与架子背板同调 ---- */
+.mw-grid--shelf .mw-section__head {
+  color: #e6dcc9;
+  border: 1px solid rgba(255, 226, 180, 0.16);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 226, 180, 0.07),
+    rgba(0, 0, 0, 0.24)
+  );
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  margin: 8px 0 18px;
+  padding: 6px 10px;
+}
+.mw-grid--shelf .mw-section__head:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 226, 180, 0.13),
+    rgba(0, 0, 0, 0.28)
+  );
+  border-color: rgba(255, 226, 180, 0.35);
+}
+.mw-grid--shelf .mw-section__chevron,
+.mw-grid--shelf .mw-section__btn {
+  color: #cbbda4;
+}
+.mw-grid--shelf .mw-section__chevron:hover,
+.mw-grid--shelf .mw-section__btn:hover {
+  color: #fff2dc;
+  background: rgba(255, 226, 180, 0.14);
+  border-color: rgba(255, 226, 180, 0.32);
+}
+.mw-grid--shelf .mw-section__btn--danger:hover {
+  color: #ff8a8a;
+  border-color: rgba(255, 138, 138, 0.6);
+}
+.mw-grid--shelf .mw-section__count {
+  color: #a89a86;
+}
+.mw-grid--shelf .mw-section {
+  padding-top: 2px;
+}
+/* 架子上的分区：木纹背板由 .mw-grid--shelf 提供，列模板落在分区容器上 */
+.mw-grid--shelf {
+  gap: 0;
+}
+
+/* ---- 删除分组确认框（必须输入分组名） ---- */
+.mw-confirm__warn {
+  color: var(--text-warning, #e0a33e);
+}
+.mw-confirm__details--scroll {
+  max-height: 168px;
+  overflow-y: auto;
+}
+.mw-confirm__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+.mw-confirm__label {
+  font-size: 0.88em;
+  color: var(--text-normal);
+}
+.mw-confirm__input {
+  width: 100%;
+}
+.mw-confirm__hint {
+  min-height: 1.1em;
+  font-size: 0.78em;
+  color: var(--text-faint);
+}
+.mw-confirm__hint.is-error {
+  color: #e93147;
+}

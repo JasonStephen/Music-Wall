@@ -1,0 +1,850 @@
+/* ===== 音乐播放器 (.mwp) =====
+   结构：顶栏（样式/背景芯片）+ 单列主体（设备/信息/进度/控制）
+   + 覆盖在页面之上的上拉曲目面板（纯查看）。
+   设备外观见 styles/player.css 的「设备外观」段，与 MW 墙上的唱片样式互不影响。 */
+
+.mw-player {
+  --mw-np-size: clamp(190px, 38vh, 340px);
+  position: relative;
+  /* color 是继承属性：主题在祖先节点上就把 color 算成了具体值，
+     子元素继承的是那个已算好的颜色，只覆盖 --text-* 不会有任何效果。
+     必须在本节点重新声明一次 color，下面各背景模式的覆盖才会真正生效。 */
+  color: var(--text-normal);
+}
+
+/* 根节点锁死高度并全向裁剪。Obsidian 的 .view-content 自带 overflow: auto，
+   与 base.css 的 .mw-view 是同一档特异性 (0,1,0)，谁生效取决于加载顺序；
+   一旦滚动落在根节点上，播放器页就会出现上下/左右滚动条。
+   这里用双类 (0,2,0) 压过它：整页不滚动，唯一的滚动区留给曲目列表。 */
+.mw-player.mw-view {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---- 背景模式 ---- */
+.mw-player.mw-bg--white {
+  background: linear-gradient(180deg, #ffffff, #eef0f3);
+  color: var(--text-normal);
+  --text-normal: #22252b;
+  --text-muted: #6b7280;
+  --text-faint: #9aa1ac;
+  --background-primary: #ffffff;
+  --background-secondary: rgba(0, 0, 0, 0.04);
+  --background-modifier-border: rgba(0, 0, 0, 0.12);
+  --background-modifier-hover: rgba(0, 0, 0, 0.06);
+  --mw-player-panel-bg: #ffffff;
+}
+.mw-player.mw-bg--dark {
+  background: radial-gradient(120% 90% at 50% 0%, #252932, #15181d 58%, #0d0f13);
+  color: var(--text-normal);
+  --text-normal: #e9ecf1;
+  --text-muted: #a3aab5;
+  --text-faint: #7b828d;
+  --background-primary: rgba(255, 255, 255, 0.08);
+  --background-secondary: rgba(255, 255, 255, 0.06);
+  --background-modifier-border: rgba(255, 255, 255, 0.14);
+  --background-modifier-hover: rgba(255, 255, 255, 0.1);
+  --mw-player-panel-bg: #171a20;
+}
+.mw-player.mw-bg--art {
+  background: #101216;
+  color: var(--text-normal);
+  --text-normal: #f2f4f8;
+  --text-muted: rgba(240, 244, 250, 0.72);
+  --text-faint: rgba(240, 244, 250, 0.5);
+  --background-primary: rgba(255, 255, 255, 0.14);
+  --background-secondary: rgba(255, 255, 255, 0.1);
+  --background-modifier-border: rgba(255, 255, 255, 0.2);
+  --background-modifier-hover: rgba(255, 255, 255, 0.16);
+  --mw-player-panel-bg: rgba(14, 16, 21, 0.92);
+}
+/* 封面动态取色：放大模糊的封面 + 压暗层，保证文字可读 */
+.mw-player.mw-bg--art::before {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  background-image: var(--mw-player-art, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(52px) saturate(1.6);
+  z-index: 0;
+  pointer-events: none;
+}
+.mw-player.mw-bg--art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 12, 17, 0.42),
+    rgba(10, 12, 17, 0.62) 60%,
+    rgba(10, 12, 17, 0.78)
+  );
+  z-index: 0;
+  pointer-events: none;
+}
+.mw-player.mw-bg--wood {
+  background-color: #5c3f27;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.34) 0 2px,
+      rgba(0, 0, 0, 0) 2px 68px
+    ),
+    repeating-linear-gradient(
+      92deg,
+      rgba(0, 0, 0, 0.06) 0 7px,
+      rgba(255, 255, 255, 0.035) 7px 15px
+    ),
+    linear-gradient(180deg, #7a5433, #5a3d25 55%, #432d1c);
+  color: var(--text-normal);
+  --text-normal: #f6efe4;
+  --text-muted: rgba(246, 239, 228, 0.72);
+  --text-faint: rgba(246, 239, 228, 0.5);
+  --background-primary: rgba(255, 255, 255, 0.12);
+  --background-secondary: rgba(0, 0, 0, 0.22);
+  --background-modifier-border: rgba(255, 255, 255, 0.18);
+  --background-modifier-hover: rgba(255, 255, 255, 0.14);
+  --mw-player-panel-bg: rgba(38, 25, 15, 0.94);
+}
+
+/* 顶栏：只剩「播放器名 + 右上角样式图标」，样式/背景收进右侧滑出抽屉 */
+.mw-player__bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+.mw-player__title {
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 图标钮的底色跟随播放器背景模式：Obsidian 的 button 规则特异性更高，
+   必须用 .mw-player 前缀抬特异性（同下方 .mw-player .mw-chip 的理由） */
+.mw-player .mw-toolbtn {
+  border-color: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.mw-player .mw-toolbtn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.mw-player .mw-toolbtn.is-active {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+
+/* 芯片（样式 / 背景）：底色与文字全部走当前背景模式的变量。
+   注意必须写成 `.mw-player .mw-chip`：Obsidian 自带的
+   `button:not(.clickable-icon)` 特异性是 (0,1,1)，会盖掉 base.css 里的
+   `.mw-chip`(0,1,0)，导致浅色主题下出现「主题白底 + 播放器浅色字」的空白药丸。
+   作用域限定在 .mw-player 内，音乐墙工具栏的芯片不受影响。 */
+.mw-player .mw-chip {
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+.mw-player .mw-chip:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-normal);
+}
+.mw-player .mw-chip.is-active {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+.mw-player .mw-chip.is-active:hover {
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+
+.mw-player__body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 20px clamp(16px, 3vw, 36px);
+  overflow: hidden;
+}
+/* 窄屏同样不出滚动条（整页唯一可滚动的是曲目列表） */
+.mw-player--narrow .mw-player__body {
+  overflow: hidden;
+}
+
+/* 拖入高亮 */
+.mw-player.is-dragover .mw-player__body {
+  outline: 2px dashed var(--mw-accent, var(--interactive-accent));
+  outline-offset: -8px;
+  border-radius: 12px;
+}
+
+/* ---- 当前播放 ---- */
+.mw-player__now {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 左列统一宽度、并在可用高度内上下居中：
+   设备 / 信息 / 控制 上下对齐成一条竖线。
+   margin:auto 而非 justify-content:center —— 内容超高时不会裁掉顶部。 */
+.mw-np__stack {
+  width: 100%;
+  max-width: var(--mw-np-size);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.mw-np__stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.mw-np__disc {
+  position: relative;
+  width: 100%;
+  max-width: var(--mw-np-size);
+  flex: 0 0 auto;
+}
+.mw-np__disc.is-empty {
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  border: 2px dashed var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+.mw-np__disc-empty {
+  position: absolute;
+  inset: 0;
+}
+
+/* ================= 设备外观 =================
+   .mw-dev--vinyl 唱片机 / --cd CD 播放器 / --cover 大封面 */
+
+.mw-dev {
+  position: relative;
+  width: 100%;
+}
+.mw-dev__chassis {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+}
+
+/* 盘片转动：播放时转，暂停时停（各设备内部零件共用） */
+.mw-np__disc .mw-record__plate {
+  animation: mw-spin 6s linear infinite;
+}
+.mw-np__disc.is-paused .mw-record__plate {
+  animation-play-state: paused;
+}
+
+/* ---- 黑胶：唱片机（参考实物：深色盘座 + 银唱臂 + 调速旋钮） ---- */
+.mw-dev--vinyl .mw-dev__chassis {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(168deg, #3d4046, #26282d 48%, #16181b);
+  box-shadow:
+    0 26px 48px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    inset 0 -22px 36px rgba(0, 0, 0, 0.55);
+}
+/* 转盘凹槽 */
+.mw-dev--vinyl .mw-dev__chassis::before {
+  content: "";
+  position: absolute;
+  left: 3%;
+  top: 5%;
+  width: 76%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 46%, #131417, #090a0c 70%, #040506);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 14px 34px rgba(0, 0, 0, 0.85);
+}
+/* 防尘盖铰链（左上） */
+.mw-dev__hinge {
+  position: absolute;
+  left: 4%;
+  top: 2.5%;
+  width: 24%;
+  height: 2.6%;
+  border-radius: 2px;
+  background: linear-gradient(#4a4f57, #22252a);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.mw-dev__platter {
+  position: absolute;
+  left: 5%;
+  top: 7.5%;
+  width: 72%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mw-dev__platter .mw-disc--vinyl {
+  width: 100%;
+  height: 100%;
+}
+/* 中心轴 */
+.mw-dev__spindle {
+  position: absolute;
+  left: 41%;
+  top: 43.5%;
+  width: 3.4%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 32%, #ffffff, #b9bec7 55%, #5d626b);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.75);
+  z-index: 2;
+}
+/* 唱臂组：枢轴在区域右上角；臂管左下伸向唱片，配重向右上翘 */
+.mw-dev__arm {
+  position: absolute;
+  left: 44%;
+  top: 16%;
+  width: 40%;
+  height: 58%;
+}
+.mw-dev__arm-cw {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 32%;
+  height: 7%;
+  transform-origin: 100% 50%;
+  transform: translateY(-50%) rotate(122deg);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ccd1d9, #7d838c 58%, #3d424a);
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.65);
+}
+.mw-dev__arm-tube {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 125%;
+  height: 3.4%;
+  transform-origin: 100% 50%;
+  transform: translateY(-50%) rotate(-56deg);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #eef1f5, #b3b9c2 55%, #6a707a);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mw-dev__arm-head {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 26%;
+  height: 320%;
+  transform: translate(-30%, -50%) rotate(12deg);
+  border-radius: 2px;
+  background: linear-gradient(#33383f, #0f1114);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.7);
+}
+/* 暂停 = 唱臂摆到臂枕侧，离开唱片 */
+.mw-np__disc.is-paused .mw-dev__arm-tube {
+  transform: translateY(-50%) rotate(-76deg);
+}
+/* 臂枕 */
+.mw-dev__arm-rest {
+  position: absolute;
+  right: 5%;
+  top: 44%;
+  width: 5%;
+  height: 7%;
+  border-radius: 2px;
+  background: linear-gradient(#2b2e34, #101215);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+/* 调速旋钮 */
+.mw-dev__speedknob {
+  position: absolute;
+  right: 8%;
+  bottom: 8%;
+  width: 17%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 30%,
+    #f4f6f9,
+    #aab0ba 45%,
+    #6a7079 72%,
+    #2c2f34 100%
+  );
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.7),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.45),
+    inset 0 4px 8px rgba(255, 255, 255, 0.35),
+    0 0 0 3px #1b1d21;
+}
+.mw-dev__deckbtns {
+  position: absolute;
+  right: 28%;
+  bottom: 10%;
+  display: flex;
+  gap: 6px;
+}
+.mw-dev__deckbtn {
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(#4b5058, #23262b);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+}
+.mw-dev__panel--deck {
+  position: absolute;
+  left: 6%;
+  bottom: 8%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- CD：CD 播放器 ---- */
+.mw-dev--cd .mw-dev__chassis {
+  background:
+    radial-gradient(120% 100% at 22% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
+    linear-gradient(165deg, #444b54, #272c32 55%, #16191d);
+  box-shadow:
+    0 24px 46px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 -18px 30px rgba(0, 0, 0, 0.5);
+}
+.mw-dev__cdwell {
+  position: absolute;
+  left: 15%;
+  top: 6%;
+  width: 70%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 44%, #101317, #04050a 72%);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    inset 0 14px 30px rgba(0, 0, 0, 0.9);
+}
+.mw-dev__cdwell .mw-disc--cd {
+  width: 94%;
+  height: 94%;
+}
+.mw-dev__panel--cd {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 6%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* ---- 封面：大封面 + 模糊环境底 ---- */
+.mw-dev--cover .mw-dev__chassis {
+  background: transparent;
+  box-shadow: none;
+}
+.mw-dev--cover .mw-dev__chassis::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  border-radius: 28px;
+  background-image: var(--mw-np-art, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(34px) saturate(1.5);
+  opacity: 0.5;
+}
+.mw-dev__coverstage {
+  position: absolute;
+  inset: 0;
+}
+.mw-dev--cover .mw-disc--cover {
+  position: absolute;
+  inset: 0;
+}
+.mw-dev--cover .mw-cover--standalone {
+  box-shadow:
+    0 28px 54px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+/* 播放器里的唱片只是设备上的「盘片本体」，不需要音乐墙那套悬停交互：
+   黑胶缩放 + 盘片自转、CD 盘片自转、封面抬升 + 扫光。
+   这些 :hover 规则写在 vinyl.css / cd.css / cover.css 里，与音乐墙共用，
+   不能去改（改了会连带改掉墙上的悬停效果）。
+   做法：让播放器内的盘片不参与命中测试，所有 :hover 自然不再匹配——
+   比逐条覆盖 transform/animation/box-shadow（还要算特异性）更不易漏。
+   作用域限定在 .mw-player 内，音乐墙的悬停效果一行未动。 */
+.mw-player .mw-disc {
+  pointer-events: none;
+}
+
+/* ---- 设备共用零件 ---- */
+.mw-dev__readout {
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  /* 只显示转速 / 曲目号：给个统一的最小宽度，避免显示屏被压扁 */
+  min-width: 3.4em;
+  text-align: center;
+  color: #f2c97d;
+  background: #140f06;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 1px 7px;
+  box-shadow:
+    inset 0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 10px rgba(242, 201, 125, 0.12);
+}
+.mw-dev__led {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.9);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.mw-np__disc.is-paused .mw-dev__led {
+  background: #6b5327;
+  box-shadow: none;
+}
+.mw-dev__btnrow {
+  display: flex;
+  gap: 4px;
+}
+.mw-dev__btn {
+  width: 15px;
+  height: 10px;
+  border-radius: 2px;
+  background: linear-gradient(#3d424a, #22252a);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.mw-np__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+}
+.mw-np__title {
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.mw-np__artist {
+  color: var(--text-muted);
+}
+.mw-np__line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+/* 按钮自身的底色来自主题（--interactive-normal 未随背景模式变化），
+   若只沿用主题底色会出现「白底 + 近白字」不可读，故底色与文字都显式指定；
+   同样需要 .mw-player 前缀压过 Obsidian 自带的 button 规则。 */
+.mw-player .mw-np__jump {
+  font-size: 0.85em;
+  height: auto;
+  padding: 1px 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  box-shadow: none;
+}
+.mw-player .mw-np__jump:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.mw-np__source {
+  font-size: 0.72em;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mw-np__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  /* 进度条移除后，与上方专辑信息之间留出呼吸感 */
+  margin-top: 6px;
+}
+/* 传输键同样是 <button>：必须用 .mw-player 前缀压过 Obsidian 自带的
+   `button:not(.clickable-icon)`(0,1,1)，否则底色仍是主题色，文字却已随背景变浅。 */
+.mw-player .mw-np__ctrl {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: none;
+}
+.mw-player .mw-np__ctrl:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.mw-player .mw-np__ctrl--main,
+.mw-player .mw-np__ctrl--main:hover {
+  width: 46px;
+  height: 46px;
+  background: var(--mw-accent, var(--interactive-accent));
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+.mw-np__ctrl.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+/* 曲目列表开关：与三个传输键同排，展开时高亮 */
+.mw-np__ctrl--list {
+  margin-left: 6px;
+}
+.mw-np__ctrl--list.is-active {
+  border-color: var(--mw-accent, var(--interactive-accent));
+  color: var(--mw-accent, var(--interactive-accent));
+}
+
+/* 全页唯一的滚动区 */
+.mw-np__tracks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: 6px;
+}
+.mw-np__track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: var(--text-normal);
+}
+.mw-np__track.is-current {
+  background: var(--background-modifier-hover);
+  color: var(--mw-accent, var(--interactive-accent));
+  font-weight: 600;
+}
+.mw-np__trackNo {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.mw-np__trackName {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-np__trackDur {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mw-np__noTrack {
+  padding: 8px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* ---- 样式/背景抽屉：遮罩压在 body 之上、盖住上拉面板 ---- */
+.mw-player .mw-drawer__scrim {
+  z-index: 28;
+  background: rgba(0, 0, 0, 0.32);
+}
+.mw-player .mw-drawer {
+  z-index: 29;
+}
+
+/* ---- 上拉曲目面板（覆盖在 page 之上，纯查看） ---- */
+.mw-player__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.mw-player__scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* 上拉面板默认必须是「真隐藏」：早先用 transform: translateY(101%) 靠父节点裁剪，
+   但根节点的 height/overflow 与 Obsidian 的 .view-content 是同一档特异性，谁生效不稳定；
+   一旦父节点高度是内容撑开的、或裁剪没生效，滑出去的抽屉就会掉进下方可视区里露出来。
+   改为 display:none（正交、不依赖裁剪，也不占布局），展开时用动画滑入。 */
+.mw-player__playlist {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  max-height: 62%;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  /* 面板本身不滚动，纵向滚动只发生在内部的曲目列表里 */
+  overflow: hidden;
+  padding: 12px clamp(16px, 3vw, 32px) 18px;
+  background: var(--mw-player-panel-bg, var(--background-primary));
+  border-top: 1px solid var(--background-modifier-border);
+  box-shadow: 0 -16px 38px rgba(0, 0, 0, 0.4);
+}
+.mw-player__playlist.is-open {
+  display: flex;
+  animation: mw-panel-up 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mw-panel-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.mw-player__playlist-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mw-player__playlist-title {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.mw-player__playlist-note {
+  font-size: 0.95em;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+/* 同 .mw-np__jump：按钮底色不随背景模式走，这里显式指定 */
+.mw-player__playlist .mw-player__playlist-close {
+  margin-left: auto;
+  height: auto;
+  padding: 2px 8px;
+  font-size: 0.9em;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  box-shadow: none;
+}
+.mw-player__playlist .mw-player__playlist-close:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.mw-player .is-hidden {
+  display: none;
+}
+
+/* 状态栏迷你条 */
+.mw-statusbar {
+  cursor: pointer;
+}
+.mw-statusbar.is-active {
+  color: var(--text-accent);
+}
+
+/* ---- 墙上「正在播放」高亮环 + 角标 + 动效跟随 ---- */
+.mw-card.is-now-playing .mw-disc {
+  box-shadow: 0 0 0 3px var(--mw-accent, var(--interactive-accent)),
+    0 0 20px 2px rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+}
+.mw-card.is-now-playing .mw-disc--vinyl,
+.mw-card.is-now-playing .mw-disc--cd {
+  border-radius: 50%;
+}
+.mw-card.is-now-playing::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--mw-accent, var(--interactive-accent));
+  box-shadow: 0 0 8px var(--mw-accent, var(--interactive-accent));
+  z-index: 3;
+  animation: mw-np-pulse 1.6s ease-in-out infinite;
+}
+.mw-card.is-now-playing .mw-record__plate {
+  animation: mw-spin 6s linear infinite;
+}
+.mw-card.is-now-playing .mw-tape__hub {
+  animation: mw-spin-cd 2.4s linear infinite;
+}
+/* 列表布局：行内高亮 + 缩略图光环 */
+.mw-row.is-now-playing {
+  background: var(--background-modifier-hover);
+}
+.mw-row.is-now-playing .mw-row__thumb {
+  box-shadow: 0 0 0 3px var(--mw-accent, var(--interactive-accent));
+}
+.mw-view.mw-np-paused .mw-card.is-now-playing .mw-record__plate,
+.mw-view.mw-np-paused .mw-card.is-now-playing .mw-tape__hub {
+  animation-play-state: paused;
+}
+@keyframes mw-np-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}

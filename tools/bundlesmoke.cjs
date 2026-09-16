@@ -7,7 +7,7 @@ const path = require("path");
 // ---- 极简 DOM 元素（Proxy：任意方法返回新元素） ----
 function el() {
   const target = {
-    style: { setProperty() {} },
+    style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
     dataset: {},
     classList: { add() {}, remove() {}, toggle() {} },
     children: [],
@@ -46,9 +46,27 @@ function el() {
 }
 global.document = {
   createElement: () => el(),
+  createElementNS: () => el(),
   body: el(),
+  documentElement: el(),
+  addEventListener() {},
+  removeEventListener() {},
+  elementFromPoint: () => null,
+  querySelector: () => null,
+  querySelectorAll: () => [],
 };
-global.window = { setTimeout, open: () => null };
+global.window = {
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  addEventListener() {},
+  removeEventListener() {},
+  open: () => null,
+  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+  innerWidth: 1280,
+  innerHeight: 800,
+};
 Object.defineProperty(global, "navigator", {
   value: { clipboard: { writeText: async () => {} } },
   configurable: true,
@@ -76,12 +94,17 @@ class FakePlugin extends FakeComponent {
     this.manifest = manifest;
     FakePlugin.commands = [];
     FakePlugin.views = {};
+    FakePlugin.extensions = [];
   }
   addCommand(c) { FakePlugin.commands.push(c); }
   addRibbonIcon() { return el(); }
   addSettingTab() {}
   registerView(type, factory) { FakePlugin.views[type] = factory; }
-  registerExtensions(extensions, type) { FakePlugin.extType = type; }
+  registerExtensions(extensions, type) {
+    FakePlugin.extensions.push({ extensions, type });
+    FakePlugin.extType = type;
+  }
+  addStatusBarItem() { return el(); }
   async loadData() { return null; }
   async saveData() {}
 }
@@ -123,6 +146,7 @@ class FakeSetting {
   addText(cb) { cb({ setPlaceholder: () => ({ setValue: () => ({ onChange: () => {} }) }) }); return this; }
   addTextArea(cb) { cb({ setPlaceholder: () => ({ setValue: () => ({ onChange: () => {}, inputEl: {} }) }) }); return this; }
   addDropdown(cb) { cb({ addOption: () => ({}), setValue: () => ({ onChange: () => {} }) }); return this; }
+  addToggle(cb) { cb({ setValue: () => ({ onChange: () => {} }) }); return this; }
   addSlider(cb) { cb({ setLimits: () => ({ setValue: () => ({ setDynamicTooltip: () => ({ onChange: () => {} }) }) }) }); return this; }
   addButton(cb) { cb({ setButtonText: () => ({ setTooltip: () => ({ onClick: () => {} }) }) }); return this; }
 }
@@ -142,6 +166,7 @@ const fakeWorkspace = {
 const fakeVault = {
   adapter: { basePath: "/tmp/fake-vault" },
   on() { return {}; },
+  getFiles: () => [],
   getAbstractFileByPath: () => null,
   async create() {},
   async read() { return "{}"; },
@@ -162,7 +187,17 @@ const obsidianMock = {
   ItemView: FakeItemView,
   FileView: FakeFileView,
   Menu: class {
-    addItem(cb) { cb({ setTitle: () => ({ setIcon: () => ({ onClick: () => {} }) }) }); return this; }
+    addItem(cb) {
+      const mk = () => chain;
+      const chain = {
+        setTitle: mk,
+        setIcon: mk,
+        setDisabled: mk,
+        onClick: mk,
+      };
+      cb(chain);
+      return this;
+    }
     showAtPosition() {}
   },
   Platform: { isDesktopApp: true, isMobileOnly: false },
@@ -174,6 +209,7 @@ const obsidianMock = {
   FolderSuggestModal: FakeModal,
   MarkdownView: class {},
   normalizePath: (p) => p,
+  setIcon: () => {},
   requestUrl: async () => ({ status: 200, text: "{}" }),
 };
 
@@ -205,8 +241,18 @@ const origLoad = Module._load;
   console.log("注册命令:", cmds.join(", "));
   if (cmds.length < 6) throw new Error("命令注册数量不足");
   if (!FakePlugin.views["music-wall-view"]) throw new Error("视图未注册");
-  if (FakePlugin.extType !== "music-wall-view")
-    throw new Error("registerExtensions 必须映射到视图类型，实为: " + FakePlugin.extType);
+  if (!FakePlugin.views["music-wall-player"]) throw new Error("播放器视图未注册");
+  const extList = FakePlugin.extensions
+    .map((e) => `${e.extensions.join(",")}→${e.type}`)
+    .join(" | ");
+  const wallExtOk = FakePlugin.extensions.some(
+    (e) => e.extensions.includes("mw") && e.type === "music-wall-view"
+  );
+  const playerExtOk = FakePlugin.extensions.some(
+    (e) => e.extensions.includes("mwp") && e.type === "music-wall-player"
+  );
+  if (!wallExtOk || !playerExtOk)
+    throw new Error("registerExtensions 映射异常: " + extList);
 
   // 渲染冒烟：视图 onOpen（空状态）
   const leaf = { app: fakeApp, setEphemeralState: () => {} };
@@ -214,13 +260,17 @@ const origLoad = Module._load;
   await view.onOpen();
   // 渲染冒烟：带数据 + 四种墙级全局样式轮换（样式统一，不再按卡覆盖）
   view.data = {
-    version: 1,
+    version: 2,
     name: "t",
     style: "vinyl",
+    groups: [{ id: "g1", name: "分组一" }, { id: "g2", name: "分组二", collapsed: true }],
+    order: [3, 2, 1, 0],
+    view: { sortMode: "manual", sortAsc: true, filterArtists: ["B"] },
     items: [0, 1, 2, 3].map((i) => ({
       albumId: i,
       source: "search",
       locked: true,
+      groupId: i % 2 ? "g1" : "g2",
       meta: { albumId: i, name: "A", artist: "B", cover: "", trackCount: 2, year: "2020", tags: ["x"], tracks: [{ id: 1, name: "t", duration: 1000 }] },
       addedAt: new Date().toISOString(),
     })),
@@ -242,9 +292,86 @@ const origLoad = Module._load;
   view.data.layout = undefined;
   console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式 + 场景详情）未抛错");
 
+  // 分组 + 手动排序 + 抽屉：分区渲染、编辑态进出、面板构建都不应抛错
+  view.enterEditMode();
+  view.renderEditBar();
+  for (const key of ["style", "filter", "group", "sort", "search", "settings"]) {
+    view.drawer?.open(key);
+    view.drawer?.refresh();
+  }
+  view.drawer?.close();
+  view.exitEditMode(true);
+  console.log("分组分区 + 布局编辑态 + 六个抽屉面板 未抛错");
+
   const visible = view.getVisibleItems();
   console.log("getVisibleItems:", visible.length);
   if (visible.length !== 4) throw new Error("筛选逻辑异常");
+  // 手动排序：order = [3,2,1,0] + 升序 ⇒ 展示顺序 3,2,1,0
+  if (visible.map((i) => i.albumId).join(",") !== "3,2,1,0")
+    throw new Error("手动排序顺序异常: " + visible.map((i) => i.albumId).join(","));
+  console.log("手动排序顺序跟随 order：通过");
+
+  // 降序时应当整体反转
+  view.data.view.sortAsc = false;
+  const desc = view.getVisibleItems().map((i) => i.albumId).join(",");
+  if (desc !== "0,1,2,3") throw new Error("手动排序降序异常: " + desc);
+  view.data.view.sortAsc = true;
+  console.log("升降序与排序类型解耦：通过");
+
+  // 播放器视图：空态渲染 + 拖入一张（与墙上拖拽同路径）+ 点单曲
+  const player = FakePlugin.views["music-wall-player"](leaf);
+  await player.onOpen();
+  player.playInPlayer(
+    {
+      albumId: 7,
+      name: "P",
+      artist: "Q",
+      cover: "",
+      trackCount: 1,
+      tracks: [{ id: 9, name: "s", duration: 1000 }],
+    },
+    "walls/a.mw"
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  // 播放器设备外观：三种样式轮换渲染（磁带机因无法达到交付要求已移除）
+  for (const s of ["vinyl", "cd", "cover"]) {
+    player.discStyle = s;
+    await player.render();
+  }
+  const playerState = player.plugin?.nowPlaying?.state;
+  await player.onClose();
+  console.log(
+    "播放器视图（空态 + 拖入播放 + 三样式设备外观 + SMTC 状态）未抛错",
+    playerState?.supported === false ? "[空实现]" : ""
+  );
+
+  // 回归：打开标签页时必须主动读一次既有状态。
+  // nowPlaying 的事件按「状态变化」去重，on() 只会收到后续变化——
+  // 正在播放时状态不再变化，只靠订阅会一直显示「未在播放」。
+  const realProvider = plugin.nowPlaying;
+  plugin.nowPlaying = {
+    supported: true,
+    state: {
+      supported: true, active: true, title: "T", artist: "A", album: "",
+      status: "playing", positionMs: 0, durationMs: 0, seekable: false,
+      canPlay: true, canPause: true, canToggle: true, canNext: true, canPrev: true,
+    },
+    start() {}, stop() {}, on() { return () => {}; },
+    async play() { return true; },
+    async pause() { return true; },
+    async toggle() { return true; },
+    async next() { return true; },
+    async prev() { return true; },
+    async seek() { return true; },
+  };
+  const fresh = FakePlugin.views["music-wall-player"](leaf);
+  await fresh.onOpen();
+  const snapped = { active: fresh.now?.active, status: fresh.now?.status, title: fresh.now?.title };
+  await fresh.onClose();
+  plugin.nowPlaying = realProvider;
+  if (snapped.active !== true || snapped.status !== "playing" || snapped.title !== "T")
+    throw new Error("打开播放器未同步既有播放状态: " + JSON.stringify(snapped));
+  console.log("播放器打开时同步 SMTC 既有状态：通过");
 
   // getPlaybackDeps 形状
   const deps = plugin.getPlaybackDeps();

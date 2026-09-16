@@ -2,7 +2,12 @@
 
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
-import type { DiscStyle, ShelfCaption } from "./types";
+import {
+  PLAYER_BG_LABELS,
+  type DiscStyle,
+  type PlayerBackground,
+  type ShelfCaption,
+} from "./types";
 import { STYLE_LABELS } from "./ui/disc";
 
 export class MusicWallSettingTab extends PluginSettingTab {
@@ -154,6 +159,30 @@ export class MusicWallSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.plugin.refreshOpenViews();
           })
+      );
+
+    new Setting(containerEl)
+      .setName("播放器背景")
+      .setDesc("播放器页（.mwp）背景：白色 / 深色 / 跟随专辑封面动态取色 / 木地板。也可在播放器顶栏直接切换")
+      .addDropdown((d) => {
+        for (const [v, label] of Object.entries(PLAYER_BG_LABELS)) d.addOption(v, label);
+        d.setValue(this.plugin.settings.playerBackground).onChange(async (v) => {
+          this.plugin.settings.playerBackground = v as PlayerBackground;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("SMTC 正在播放")
+      .setDesc(
+        "仅 Windows 桌面端：读取系统媒体会话（需在网易云设置里开启「开启SMTC」），播放器页可显示与控制正在播放的内容，音乐墙上命中唱片会高亮。关闭后不再轮询系统。"
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.smtcEnabled).onChange(async (v) => {
+          this.plugin.settings.smtcEnabled = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshOpenViews();
+        })
       );
   }
 }
