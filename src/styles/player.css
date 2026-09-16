@@ -6,6 +6,12 @@
 .mw-player {
   --mw-np-size: clamp(190px, 38vh, 340px);
   position: relative;
+  /* 面板控件的强调色跟随当前背景模式，而不是主题强调色（第五轮 B1）：
+     深色与封面背景上，主题紫是唯一跳出来的异色——搜索/主按钮、排序高亮、
+     输入框聚焦边框都会变成紫色。各 mw-bg--* 已经定好 --mw-np-accent，
+     这里统一转接到 --mw-accent（面板控件的取色口）。
+     art 模式的 --mw-np-accent 由 JS 写入封面主色，取不到时回退 --interactive-accent。 */
+  --mw-accent: var(--mw-np-accent, var(--interactive-accent));
   /* color 是继承属性：主题在祖先节点上就把 color 算成了具体值，
      子元素继承的是那个已算好的颜色，只覆盖 --text-* 不会有任何效果。
      必须在本节点重新声明一次 color，下面各背景模式的覆盖才会真正生效。 */
@@ -82,12 +88,14 @@
   --background-secondary: rgba(255, 255, 255, 0.1);
   --background-modifier-border: rgba(255, 255, 255, 0.2);
   --background-modifier-hover: rgba(255, 255, 255, 0.16);
-  --mw-player-panel-bg: rgba(14, 16, 21, 0.92);
+  --mw-player-panel-bg: rgba(14, 16, 21, 0.62);
   /* 封面模式：主色由 JS 从封面提取后写到行内；取不到就用主题强调色 */
   --mw-np-accent: var(--interactive-accent);
   --mw-np-accent-fg: #ffffff;
-  /* 面板必须是实底：封面背景的 --background-primary 只有 14% 白，
-     直接拿来当面板底色会「开着像关着」（第三轮用户报的「按键全不见」） */
+  /* 面板是**磨砂玻璃**而不是实心黑板（第五轮 B2）：
+     原来是 92% 近黑实底，在封面背景上像贴了块黑板，「样式依然是暗的」。
+     现在 62% 深色 + backdrop-filter 模糊（见下面的磨砂规则），
+     既能看清面板内容，又留着封面透上来的颜色。 */
   --mw-panel-bg: var(--mw-player-panel-bg);
   --mw-panel-fg: #f2f4f8;
   --mw-panel-fg-dim: rgba(240, 244, 250, 0.72);
@@ -99,7 +107,10 @@
   --mw-ctrl-border: rgba(255, 255, 255, 0.2);
   --mw-ctrl-fg: #f2f4f8;
 }
-/* 封面动态取色：放大模糊的封面 + 压暗层，保证文字可读 */
+/* 封面动态取色：放大模糊的封面 + 底部局部压暗，保证文字可读。
+   ⚠️ 压暗层**绝不能铺满整页**（第六轮）：中性深色铺满 = 给彩色封面盖灰纱，
+   用户实测「只有封面背景会全屏盖一层灰，禁掉 ::after 就正常」。
+   现在 ::after 只压底部信息区，且用封面主色压（见下）。 */
 .mw-player.mw-bg--art::before {
   content: "";
   position: absolute;
@@ -107,7 +118,8 @@
   background-image: var(--mw-player-art, none);
   background-size: cover;
   background-position: center;
-  filter: blur(52px) saturate(1.6);
+  /* 高饱和 + 更少灰：模糊本身会掉色，saturate 补回来 */
+  filter: blur(52px) saturate(2.05) brightness(1.04);
   z-index: 0;
   pointer-events: none;
 }
@@ -115,14 +127,33 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 12, 17, 0.42),
-    rgba(10, 12, 17, 0.62) 60%,
-    rgba(10, 12, 17, 0.78)
-  );
+  /* 只压「底部信息区」，不铺满整页（第六轮）：
+     铺满的中性深色 = 给彩色封面盖一层灰纱，用户报的「全屏盖上灰色一层」就是它
+     （用户在 DevTools 里禁掉本伪元素验证过）。现在上半页完全透明，封面原色直出；
+     底部因为要放标题/状态/控制键，用**封面主色**去压（不是中性黑），
+     压暗也不会把颜色洗成灰。可读性另有文字阴影兜底（见下方 .mw-np__* 规则）。 */
+  background:
+    linear-gradient(
+      0deg,
+      rgba(6, 8, 12, 0.42),
+      rgba(6, 8, 12, 0.16) 26%,
+      rgba(6, 8, 12, 0) 54%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--mw-np-accent, #4c5bd4) 30%, transparent),
+      transparent 42%
+    );
   z-index: 0;
   pointer-events: none;
+}
+/* 文字阴影：薄纱之后封面亮度不再被压死，浅色封面上白字要靠它站住 */
+.mw-player.mw-bg--art .mw-np__title,
+.mw-player.mw-bg--art .mw-np__artist,
+.mw-player.mw-bg--art .mw-np__status,
+.mw-player.mw-bg--art .mw-np__source,
+.mw-player.mw-bg--art .mw-np__disc-empty {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 2px 16px rgba(0, 0, 0, 0.42);
 }
 /* 顶栏区域的深色渐变（只覆盖顶部 ~60px，不整体压暗封面）：
    封面模糊底亮暗不定，浅色封面上图标/标题会糊成一片（用户报过「按键不见了」）。
@@ -137,6 +168,22 @@
   background: linear-gradient(180deg, rgba(6, 8, 12, 0.72), rgba(6, 8, 12, 0));
   pointer-events: none;
   z-index: -1;
+}
+/* 封面背景下的磨砂玻璃：抽屉面板与上拉曲目表都要能透出封面的颜色，
+   否则「封面背景」实际只剩下顶栏一点渐变（第五轮 B2）。
+   文字对比度由面板底色（62% 深色）保证，模糊只是让底下的封面不成干扰。 */
+.mw-player.mw-bg--art .mw-drawer,
+.mw-player.mw-bg--art .mw-player__playlist {
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+/* 面板主按钮的文字色跟着强调色走（封面主色可能是浅色，白字会糊）。
+   同样要排除 × 清空钮：它也在搜索行里，不能跟着主按钮配色 */
+.mw-player .mw-drawer .mw-btn--primary,
+.mw-player .mw-drawer .mw-btn--primary:hover,
+.mw-player .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon),
+.mw-player .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon):hover {
+  color: var(--mw-np-accent-fg, var(--text-on-accent)) !important;
 }
 .mw-player.mw-bg--wood {
   background-color: #5c3f27;
@@ -184,7 +231,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 4px 12px;
+  /* 与 .mw-player__body 的左右内边距对齐（根节点内边距已归零，见 base.css 第五轮 A4） */
+  padding: 4px clamp(16px, 3vw, 36px);
   min-height: 48px;
   background: transparent;
   border-bottom: 0;

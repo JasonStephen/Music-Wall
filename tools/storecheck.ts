@@ -245,6 +245,23 @@ async function main() {
     "孤儿 groupId 落回未分组分区"
   );
 
+  // 未分组分区的收起状态（第五轮 A1）：它不在 groups 里，单独由 ungroupedCollapsed 承载
+  const ugCollapsed = resolveSections(gItems, [g1, g2], [1, 2, 3, 4], false, true);
+  assert(ugCollapsed[2].collapsed === true, "未分组分区也能收起（ungroupedCollapsed）");
+  assert(
+    ugCollapsed[0].collapsed === false && ugCollapsed[1].collapsed === true,
+    "未分组收起不影响其它分组（各自保留自己的状态）"
+  );
+  assert(
+    resolveSections(gItems, [g1, g2], [1, 2, 3, 4], false, false)[2].collapsed === false,
+    "缺省未分组是展开的"
+  );
+  // 没有任何分组时未分组分区是无头的：不落收起标记，否则用户没有任何入口再展开
+  assert(
+    resolveSections([mkItem(1)], [], [1], false, true)[0].collapsed === false,
+    "无分组时忽略未分组收起标记"
+  );
+
   // ================= 9. schema v2 迁移与往返 =================
   const v2: MusicWallData = {
     ...mkWall([1, 2]),
@@ -275,6 +292,14 @@ async function main() {
     "筛选数组去重去空"
   );
   assert(round.items[0].groupId === "g1", "条目分组归属往返一致");
+
+  // 未分组收起状态必须能往返（它不在 groups 里，序列化器单独处理的一位）
+  const ugRound = parseWall(serializeWall({ ...v2, ungroupedCollapsed: true }));
+  assert(ugRound.ungroupedCollapsed === true, "未分组收起状态往返一致");
+  const ugNoGroups = parseWall(
+    serializeWall({ ...mkWall([1]), groups: undefined, ungroupedCollapsed: true })
+  );
+  assert(ugNoGroups.ungroupedCollapsed === undefined, "无分组时不保留未分组收起状态");
 
   // v1 旧文件：不应凭空长出 order / groups / view
   const v1 = {

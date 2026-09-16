@@ -211,8 +211,10 @@
   margin-top: 8px;
 }
 /* 搜索面板的三个按钮同样是「双类作用域」：单类会被主题的
-   button:not(.clickable-icon) 刷成白底药丸（与 .mw-drawer 内的规则成对） */
-.mw-drawer .mw-search-panel__bar button,
+   button:not(.clickable-icon) 刷成白底药丸（与 .mw-drawer 内的规则成对）。
+   注意排除 × 清空钮：它也在 .mw-search-panel__bar 里，不排除会被主按钮色刷成实心圆。
+   更硬的一层兜底见 panel-controls.css（第五轮 B1：对真实主题的最终压制）。 */
+.mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon),
 .mw-drawer .mw-search-row__add,
 .mw-drawer .mw-search-more {
   background: var(--mw-panel-surface);
@@ -221,19 +223,19 @@
   box-shadow: none;
   height: auto;
 }
-.mw-drawer .mw-search-panel__bar button {
+.mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon) {
   background: var(--mw-accent, var(--interactive-accent));
   border-color: var(--mw-accent, var(--interactive-accent));
   color: var(--text-on-accent);
   padding: 4px 12px;
 }
-.mw-drawer .mw-search-panel__bar button:hover,
+.mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon):hover,
 .mw-drawer .mw-search-more:hover {
   background: var(--mw-panel-hover);
   border-color: var(--mw-accent, var(--interactive-accent));
   color: var(--mw-panel-fg);
 }
-.mw-drawer .mw-search-panel__bar button:hover {
+.mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon):hover {
   background: var(--mw-accent, var(--interactive-accent));
   color: var(--text-on-accent);
   filter: brightness(1.08);
@@ -323,6 +325,109 @@
 .mw-edit-textarea {
   min-height: 70px;
   resize: vertical;
+}
+
+/* ---- 展示架皮肤：模态框（第五轮 A3） ----
+   弹窗挂在 document.body 上，不在 .mw-view 子树里，拿不到展示架的木色 token，
+   于是「木墙 + 白色弹窗 + 紫色按钮」。这里按 .modal 上的 mw-modal--shelf 作用域
+   把同一套木色变量重新声明一遍：背景、文字、边框、强调色（琥珀）全部对齐展示架。
+   变量声明在 .modal 上，内部的原生控件（input / checkbox / 按钮）都会跟着取到。 */
+.modal.mw-modal--shelf {
+  --mw-accent: #d9a24a;
+  --interactive-accent: #d9a24a;
+  --interactive-accent-hover: #e8b45f;
+  --text-on-accent: #241b12;
+  --text-normal: #e6dcc9;
+  --text-muted: #a89a86;
+  --text-faint: #8b7d6b;
+  --background-primary: #2a1f16;
+  --background-primary-alt: #241b14;
+  --background-secondary: rgba(255, 226, 180, 0.06);
+  --background-secondary-alt: rgba(0, 0, 0, 0.24);
+  --background-modifier-border: rgba(255, 226, 180, 0.2);
+  --background-modifier-hover: rgba(255, 226, 180, 0.12);
+  --background-modifier-form-field: rgba(0, 0, 0, 0.28);
+  --background-modifier-form-field-highlighted: rgba(255, 226, 180, 0.12);
+  --background-modifier-border-focus: rgba(255, 226, 180, 0.4);
+  --text-accent: #d9a24a;
+  --text-accent-hover: #e8b45f;
+  /* !important：主题常写 `.theme-light .modal`（与我们同档特异性，靠加载顺序决胜负），
+     不能赌顺序——弹窗整块变白是本轮被反馈的问题本身 */
+  background: linear-gradient(180deg, #2a1f16, #211812 60%, #1a120c) !important;
+  border: 1px solid rgba(255, 226, 180, 0.22) !important;
+  color: #e6dcc9 !important;
+}
+/* 弹窗本体与内部文本一律暖色（主题常常直接写 color: var(--text-normal)） */
+.modal.mw-modal--shelf .modal-title,
+.modal.mw-modal--shelf h1,
+.modal.mw-modal--shelf h2,
+.modal.mw-modal--shelf h3,
+.modal.mw-modal--shelf p,
+.modal.mw-modal--shelf li,
+.modal.mw-modal--shelf .mw-panel__v {
+  color: #e6dcc9;
+}
+.modal.mw-modal--shelf .mw-confirm__msg,
+.modal.mw-modal--shelf .mw-confirm__details,
+.modal.mw-modal--shelf .mw-picker__detail,
+.modal.mw-modal--shelf .mw-choice__desc,
+.modal.mw-modal--shelf .mw-edit-label,
+.modal.mw-modal--shelf .mw-panel__k,
+.modal.mw-modal--shelf .mw-panel__desc {
+  color: #a89a86;
+}
+.modal.mw-modal--shelf .mw-picker__row:hover,
+.modal.mw-modal--shelf .mw-choice__option:hover {
+  background: rgba(255, 226, 180, 0.12);
+}
+.modal.mw-modal--shelf .mw-choice__option {
+  border-color: rgba(255, 226, 180, 0.2);
+}
+.modal.mw-modal--shelf .mw-choice__option:hover {
+  border-color: #d9a24a;
+}
+/* 弹窗里的原生按钮：主题的 button:not(.clickable-icon) 会刷白底，
+   这里统一成木色面板控件（与抽屉里的面板控件同语言） */
+.modal.mw-modal--shelf button:not(.clickable-icon) {
+  background-color: rgba(255, 226, 180, 0.08) !important;
+  border: 1px solid rgba(255, 226, 180, 0.2) !important;
+  border-radius: 6px !important;
+  color: #e6dcc9 !important;
+  box-shadow: none !important;
+}
+.modal.mw-modal--shelf button:not(.clickable-icon):hover {
+  background-color: rgba(255, 226, 180, 0.16) !important;
+  border-color: #d9a24a !important;
+  color: #e6dcc9 !important;
+}
+.modal.mw-modal--shelf button.mod-cta,
+.modal.mw-modal--shelf button.mod-cta:hover,
+.modal.mw-modal--shelf button.mw-btn--primary {
+  background-color: #d9a24a !important;
+  border-color: #d9a24a !important;
+  color: #241b12 !important;
+}
+.modal.mw-modal--shelf input[type="text"],
+.modal.mw-modal--shelf input[type="search"],
+.modal.mw-modal--shelf input[type="number"],
+.modal.mw-modal--shelf textarea {
+  background-color: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 226, 180, 0.2) !important;
+  border-radius: 6px !important;
+  color: #e6dcc9 !important;
+  box-shadow: none !important;
+}
+.modal.mw-modal--shelf input:hover,
+.modal.mw-modal--shelf textarea:hover,
+.modal.mw-modal--shelf input:focus,
+.modal.mw-modal--shelf textarea:focus {
+  background-color: rgba(0, 0, 0, 0.34) !important;
+  border-color: #d9a24a !important;
+  color: #e6dcc9 !important;
+}
+.modal.mw-modal--shelf input::placeholder,
+.modal.mw-modal--shelf textarea::placeholder {
+  color: #8b7d6b !important;
 }
 
 /* ---- 移动端：面板改纵向 ---- */

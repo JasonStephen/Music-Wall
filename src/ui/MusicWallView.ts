@@ -62,8 +62,9 @@ import { PickerModal } from "./smallModals";
 import { AlbumSearchPanel, type WallHost } from "./AlbumSearchPanel";
 import { SideDrawer, type DrawerKey } from "./SideDrawer";
 import { buildLayoutTile, buildStyleTile, firstCover } from "./viewPrefs";
-import { handleZoomWheel } from "./zoom";
+import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
 import { openShelfMenu, type ShelfMenuItem } from "./ShelfMenu";
+import { setModalTheme } from "./modalTheme";
 
 /** "2015" → "2010s"；无效返回 "" */
 function decadeOf(y?: string): string {
@@ -206,6 +207,24 @@ type DropTarget =
   | { kind: "item"; target: WallItem | null; place: Place; groupId: string }
   | { kind: "group"; anchorId: string; place: Place };
 
+/**
+ * 右键菜单项：只描述一次语义，渲染交给 showCtxMenu——
+ * 普通布局走 Obsidian 原生 Menu，展示架走自绘木质菜单（见 ShelfMenu.ts）。
+ */
+interface CtxItem {
+  /** 分隔线项：只有 sep，没有标题 */
+  title?: string;
+  /** lucide 图标名（原生菜单与木质菜单都支持） */
+  icon?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  /** 分隔线 */
+  sep?: boolean;
+  /** 小标题行（不可点，用来给成组条目分节） */
+  heading?: boolean;
+  onPick?: () => void;
+}
+
 export class MusicWallView extends FileView implements WallHost {
   private plugin: MusicWallPlugin;
   private data: MusicWallData | null = null;
@@ -228,9 +247,8 @@ export class MusicWallView extends FileView implements WallHost {
   private toolbarEl: HTMLElement | null = null;
   private toolbarObserver: ResizeObserver | null = null;
 
-  /** 布局编辑态（手动排序 / 分组换序） */
+  /** 布局编辑态（手动排序 / 分组换序）：拖动实时落盘，退出即「完成」，没有回滚 */
   private editMode = false;
-  private editSnapshot = "";
 
   /** 指针拖拽状态（仅触屏走这条路径） */
   private dragPayload: DragPayload | null = null;
@@ -383,6 +401,7 @@ export class MusicWallView extends FileView implements WallHost {
     this.toolbarObserver = null;
     this.toolbarEl = null;
     this.disposeDrag();
+    disposeZoomBox(this.contentEl);
     // registerEvent 随组件自动卸载
   }
 
@@ -633,6 +652,8 @@ export class MusicWallView extends FileView implements WallHost {
     // 墙面类名：驱动顶栏与墙面同一张画布（展示架的木纹底挂在根上，见 base.css）
     root.removeClass("mw-wall--grid", "mw-wall--list", "mw-wall--shelf");
     root.addClass(`mw-wall--${layout}`);
+    // 模态框挂在 body 上，不在本子树里：渲染时登记皮肤，弹窗自己来取（见 modalTheme.ts）
+    setModalTheme(layout === "shelf" ? "shelf" : "default");
     const stage = box.createDiv({ cls: "mw-stage" });
     const grid = stage.createDiv({
       cls:
@@ -658,8 +679,12 @@ export class MusicWallView extends FileView implements WallHost {
     this.renderGrid(grid);
     grid.scrollTop = prevScroll;
     if (layout === "shelf") {
-      // 开盒详情 overlay（懒填充）：点唱片推镜放大后绕书脊 3D 翻开
-      stage.createDiv({ cls: "mw-shelf-detail" });
+      // 开盒详情 overlay（懒填充）：点唱片推镜放大后绕书脊 3D 翻开。
+      // 必须挂在**缩放盒**上而不是 .mw-stage 里：.mw-stage 带 contain: layout 会形成
+      // 堆叠上下文，overlay 的 inset:0 只能盖住「顶栏以下」，顶栏那一条（墙名 + 6 个图标）
+      // 会露在黑底之上（用户报的「背景黑色没能覆盖全屏」）。与抽屉/浮层同理。
+      // 尺寸参照随之改为缩放盒的尺寸容器（见 base.css 的 `container: mw-pane / size`）。
+      box.createDiv({ cls: "mw-shelf-detail" });
     }
     // 抽屉（侧边）与浮层（右上角）挂在缩放盒上（absolute 覆盖层）：
     // 两者必须与遮罩同层，才能既压暗顶栏与四周、又让面板盖在遮罩之上
@@ -674,6 +699,9 @@ export class MusicWallView extends FileView implements WallHost {
     // 重建后重新施加「正在播放」高亮 + 编辑态提示条
     this.applyNowPlaying(this.plugin.nowPlaying.state);
     if (this.editMode) this.renderEditBar();
+    // 缩放盒尺寸兜底（见 zoom.ts syncZoomBox）：CSS 的 calc 反除补偿一旦退化，
+    // 表现就是「右侧 + 底部留白」，这里用像素把尺寸钉死
+    syncZoomBox(root, this.zoom);
   }
 
   // ---- 顶部工具栏（固定，不随网格滚动） ----
@@ -1061,80 +1089,145 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   /**
+   * 当前墙是否为展示架布局（决定右键菜单与弹窗用木质皮肤还是主题原生外观）
+   */
+  private isShelf(): boolean {
+    return (this.data?.layout ?? "grid") === "shelf";
+  }
+
+  /**
+   * 统一右键菜单入口：菜单项只描述一次，皮肤按布局选。
+   *
+   * 展示架用自绘木质菜单——原生 Menu 是「白色圆角底 + 主题紫高亮」，
+   * 与木墙是两套语言（第五轮反馈 A3）；其它布局保持原生菜单。
+   */
+  private showCtxMenu(evt: MouseEvent, items: CtxItem[]): void {
+    // 两种调用方式都要兼容：真实事件用 clientX/Y，触屏长按传的是 {x, y} 合成对象
+    const x = num(evt.clientX ?? evt.x);
+    const y = num(evt.clientY ?? evt.y);
+    if (this.isShelf()) {
+      const shelfItems: ShelfMenuItem[] = items.map((it) => ({
+        title: it.title ?? "",
+        icon: it.icon,
+        danger: it.danger,
+        disabled: it.disabled,
+        heading: it.heading,
+        separator: it.sep,
+        onClick: it.onPick,
+      }));
+      openShelfMenu(x, y, shelfItems);
+      return;
+    }
+    const menu = new Menu();
+    for (const it of items) {
+      if (it.sep) {
+        menu.addSeparator();
+        continue;
+      }
+      menu.addItem((mi) => {
+        mi.setTitle(it.title ?? "");
+        if (it.icon) mi.setIcon(it.icon);
+        if (it.disabled) mi.setDisabled(true);
+        mi.onClick(() => it.onPick?.());
+      });
+    }
+    menu.showAtPosition({ x, y });
+  }
+
+  /**
    * 墙空白处右键菜单：分组的创建与整体展开/收起都在这里
    * （顶部不再有分组图标；分组头本身也可直接拖拽换序）。
    */
   private openWallMenu(evt: MouseEvent): void {
     const groups = this.data?.groups ?? [];
-    const menu = new Menu();
-    menu.addItem((it) =>
-      it
-        .setTitle("新建分组…")
-        .setIcon("folder-plus")
-        .onClick(() => this.createGroup())
-    );
+    const items: CtxItem[] = [
+      { title: "新建分组…", icon: "folder-plus", onPick: () => this.createGroup() },
+    ];
     if (groups.length) {
-      menu.addSeparator();
-      menu.addItem((it) =>
-        it.setTitle("展开全部分组").setIcon("chevrons-down-up").onClick(() =>
-          this.setAllGroupsCollapsed(false)
-        )
-      );
-      menu.addItem((it) =>
-        it.setTitle("收起全部分组").setIcon("chevrons-up-down").onClick(() =>
-          this.setAllGroupsCollapsed(true)
-        )
+      items.push(
+        { sep: true },
+        {
+          title: "展开全部分区",
+          icon: "chevrons-down-up",
+          onPick: () => this.setAllGroupsCollapsed(false),
+        },
+        {
+          title: "收起全部分区",
+          icon: "chevrons-up-down",
+          onPick: () => this.setAllGroupsCollapsed(true),
+        }
       );
     }
-    menu.addSeparator();
-    menu.addItem((it) =>
-      it
-        .setTitle(this.editMode ? "退出布局编辑" : "编辑布局（拖动排序）")
-        .setIcon("move")
-        .onClick(() => (this.editMode ? this.exitEditMode() : this.enterEditMode()))
+    items.push(
+      { sep: true },
+      {
+        title: this.editMode ? "退出布局编辑" : "编辑布局（拖动排序）",
+        icon: "move",
+        onPick: () => (this.editMode ? this.exitEditMode() : this.enterEditMode()),
+      }
     );
-    menu.showAtPosition({ x: evt.clientX, y: evt.clientY });
+    this.showCtxMenu(evt, items);
   }
 
   /** 分组头右键菜单：重命名 / 删除 / 展开收起（含全部） */
   private openGroupMenu(evt: MouseEvent, groupId: string): void {
     const group = this.data?.groups?.find((g) => g.id === groupId);
     if (!group) return;
-    const menu = new Menu();
-    menu.addItem((it) =>
-      it.setTitle("重命名分组…").setIcon("pencil").onClick(() => this.renameGroup(groupId))
-    );
-    menu.addItem((it) =>
-      it
-        .setTitle(group.collapsed ? "展开本组" : "收起本组")
-        .setIcon(group.collapsed ? "chevron-right" : "chevron-down")
-        .onClick(() => this.toggleGroup(groupId))
-    );
-    menu.addSeparator();
-    menu.addItem((it) =>
-      it.setTitle("展开全部分组").setIcon("chevrons-down-up").onClick(() =>
-        this.setAllGroupsCollapsed(false)
-      )
-    );
-    menu.addItem((it) =>
-      it.setTitle("收起全部分组").setIcon("chevrons-up-down").onClick(() =>
-        this.setAllGroupsCollapsed(true)
-      )
-    );
-    menu.addSeparator();
-    menu.addItem((it) =>
-      it
-        .setTitle("删除分组…")
-        .setIcon("trash")
-        .onClick(() => this.confirmDeleteGroup(groupId))
-    );
-    menu.showAtPosition({ x: evt.clientX, y: evt.clientY });
+    this.showCtxMenu(evt, [
+      { title: "重命名分组…", icon: "pencil", onPick: () => this.renameGroup(groupId) },
+      {
+        title: group.collapsed ? "展开本组" : "收起本组",
+        icon: group.collapsed ? "chevron-right" : "chevron-down",
+        onPick: () => this.toggleGroup(groupId),
+      },
+      { sep: true },
+      {
+        title: "展开全部分区",
+        icon: "chevrons-down-up",
+        onPick: () => this.setAllGroupsCollapsed(false),
+      },
+      {
+        title: "收起全部分区",
+        icon: "chevrons-up-down",
+        onPick: () => this.setAllGroupsCollapsed(true),
+      },
+      { sep: true },
+      { title: "删除分组…", icon: "trash", danger: true, onPick: () => this.confirmDeleteGroup(groupId) },
+    ]);
   }
 
-  /** 一键展开 / 收起全部分组 */
+  /**
+   * 未分组分区标题的右键菜单：只有展开/收起。
+   * 「未分组」不是一条 WallGroup 记录，重命名/删除都无从谈起（第五轮反馈 A1）。
+   */
+  private openUngroupedMenu(evt: MouseEvent): void {
+    const collapsed = !!this.data?.ungroupedCollapsed;
+    this.showCtxMenu(evt, [
+      {
+        title: collapsed ? "展开本组" : "收起本组",
+        icon: collapsed ? "chevron-right" : "chevron-down",
+        onPick: () => this.toggleGroup(UNGROUPED_ID),
+      },
+      { sep: true },
+      {
+        title: "展开全部分区",
+        icon: "chevrons-down-up",
+        onPick: () => this.setAllGroupsCollapsed(false),
+      },
+      {
+        title: "收起全部分区",
+        icon: "chevrons-up-down",
+        onPick: () => this.setAllGroupsCollapsed(true),
+      },
+    ]);
+  }
+
+  /** 一键展开 / 收起全部分组（未分组分区一起，它同样有分组头） */
   private setAllGroupsCollapsed(collapsed: boolean): void {
-    const groups = this.data?.groups ?? [];
-    if (!groups.length) return;
+    const data = this.data;
+    const groups = data?.groups ?? [];
+    // 无分组时未分组分区是无头的，没有可收起的东西
+    if (!data || !groups.length) return;
     let changed = false;
     for (const g of groups) {
       const next = collapsed ? true : undefined;
@@ -1143,10 +1236,16 @@ export class MusicWallView extends FileView implements WallHost {
         changed = true;
       }
     }
+    const nextUngrouped = collapsed ? true : undefined;
+    if (data.ungroupedCollapsed !== nextUngrouped) {
+      if (collapsed) data.ungroupedCollapsed = true;
+      else delete data.ungroupedCollapsed;
+      changed = true;
+    }
     if (!changed) return;
     void this.persist();
     this.rerenderGrid();
-    new Notice(collapsed ? "已收起全部分组" : "已展开全部分组");
+    new Notice(collapsed ? "已收起所有分区" : "已展开所有分区");
   }
 
   /** 把唱片移动到指定分组（null = 未分组）；顺序按 moveInto 保持稳定 */
@@ -1219,7 +1318,7 @@ export class MusicWallView extends FileView implements WallHost {
       cls: "mw-panel__hint",
       text:
         this.sortMode === "manual"
-          ? "当前为手动排序：长按唱片或分组头即可拖动，按「完成」保存、「取消」还原。"
+          ? "当前为手动排序：长按唱片或分组头即可拖动，改动实时保存，点 ✓ 或按 Esc 结束。"
           : "选择「手动排序」后可用拖动的方式排列唱片；也可以随时点上面的按钮进入编辑布局。",
     });
   }
@@ -1297,9 +1396,21 @@ export class MusicWallView extends FileView implements WallHost {
     }).open();
   }
 
-  /** 展开/收起：局部重建该分区，不整页重绘（避免闪白与滚动跳动） */
+  /**
+   * 展开/收起：局部重建该分区，不整页重绘（避免闪白与滚动跳动）。
+   * 未分组分区没有 WallGroup 记录，收起状态存在 data.ungroupedCollapsed 上。
+   */
   private toggleGroup(id: string): void {
     const data = this.data!;
+    if (id === UNGROUPED_ID) {
+      // 本墙没有任何分组时未分组分区是无头的（连标题都不渲染），无从收起
+      if (!(data.groups ?? []).length) return;
+      if (data.ungroupedCollapsed) delete data.ungroupedCollapsed;
+      else data.ungroupedCollapsed = true;
+      void this.persist();
+      this.rerenderGrid();
+      return;
+    }
     const group = data.groups?.find((g) => g.id === id);
     if (!group) return;
     group.collapsed = !group.collapsed;
@@ -1403,7 +1514,8 @@ export class MusicWallView extends FileView implements WallHost {
       items,
       data.groups ?? [],
       order,
-      this.filtering
+      this.filtering,
+      !!data.ungroupedCollapsed
     );
     for (const section of sections) this.buildSection(grid, section, data.groups ?? []);
     grid.scrollTop = prevScroll;
@@ -1436,8 +1548,10 @@ export class MusicWallView extends FileView implements WallHost {
       });
 
       const title = head.createSpan({ cls: "mw-section__title", text: section.name });
-      title.setAttr("title", "双击重命名分组");
-      title.addEventListener("dblclick", () => this.renameGroup(section.id));
+      if (section.id !== UNGROUPED_ID) {
+        title.setAttr("title", "双击重命名分组");
+        title.addEventListener("dblclick", () => this.renameGroup(section.id));
+      }
       head.createSpan({
         cls: "mw-section__count",
         text: `${section.items.length} 张`,
@@ -1470,6 +1584,15 @@ export class MusicWallView extends FileView implements WallHost {
           e.preventDefault();
           e.stopPropagation();
           this.openGroupMenu(e as MouseEvent, section.id);
+        });
+      } else {
+        // 未分组分区同样能收起/展开（第五轮反馈 A1 的修复点）：
+        // 它不是一条 WallGroup 记录，状态存在 data.ungroupedCollapsed 上，
+        // 菜单因此只有展开/收起——重命名、删除对它没有意义。
+        head.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openUngroupedMenu(e as MouseEvent);
         });
       }
     }
@@ -1587,7 +1710,7 @@ export class MusicWallView extends FileView implements WallHost {
         pressTimer = 0;
         if (this.dragActive) return;
         this.longPressFired = true;
-        this.openShelfCardMenu(x, y, item);
+        this.openCardMenu({ x, y } as MouseEvent, item);
       }, LONG_PRESS_MS_TOUCH);
     });
     const cancelPress = () => {
@@ -1614,7 +1737,7 @@ export class MusicWallView extends FileView implements WallHost {
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       cancelPress();
-      this.openShelfCardMenu((e as MouseEvent).x, (e as MouseEvent).y, item);
+      this.openCardMenu(e as MouseEvent, item);
     });
     this.wireCardReorder(card, item);
     return card;
@@ -2012,6 +2135,11 @@ export class MusicWallView extends FileView implements WallHost {
     return clampZoom(this.plugin.settings.zoomScale ?? 1);
   }
 
+  /** 缩放变化时重算缩放盒像素尺寸（plugin.applyZoom 会调，见 zoom.ts syncZoomBox） */
+  syncZoomBox(): void {
+    syncZoomBox(this.contentEl, this.zoom);
+  }
+
   private positionGhost(x: number, y: number): void {
     if (!this.dragGhost) return;
     // 浮标是缩放盒里的 absolute 元素：原点 = 缩放盒的左上角（rect 是视觉像素），
@@ -2319,10 +2447,12 @@ export class MusicWallView extends FileView implements WallHost {
    * 进入编辑态。刻意「不整页重绘」：长按手势此刻正在拖同一张卡片，
    * render() 会把卡片与拖拽浮标一起换掉（旧节点成孤儿），拖动随之失效。
    * 这里只切状态 + 挂类名 + 插操作条，DOM 结构保持不变。
+   *
+   * 拖动**实时生效**：每次落点都直接写数据并落盘（见 commitDrop / moveItemToGroup），
+   * 所以这里不再存快照，退出编辑态也没有「取消并还原」这条路（第五轮反馈 A2）。
    */
   private enterEditMode(): void {
     if (this.editMode || !this.data) return;
-    this.editSnapshot = JSON.stringify(this.data);
     this.editMode = true;
     this.contentEl.addClass("mw-edit-layout");
     // 手动排序之外的排序模式下拖动没有意义：自动切到手动排序（用当前可视顺序初始化）。
@@ -2334,19 +2464,10 @@ export class MusicWallView extends FileView implements WallHost {
     void this.persist();
   }
 
-  private exitEditMode(revert = false): void {
-    if (!this.editMode && !revert) return;
+  private exitEditMode(): void {
+    if (!this.editMode) return;
     this.disposeDrag();
-    if (revert && this.editSnapshot && this.data) {
-      try {
-        this.data = JSON.parse(this.editSnapshot) as MusicWallData;
-      } catch {
-        /* 快照损坏：保持现状 */
-      }
-      void this.persist();
-    }
     this.editMode = false;
-    this.editSnapshot = "";
     this.contentEl.removeClass("mw-edit-layout");
     this.contentEl.querySelector(".mw-editbar")?.remove();
     this.render();
@@ -2362,26 +2483,16 @@ export class MusicWallView extends FileView implements WallHost {
     host.insertBefore(bar, host.firstChild);
     bar.createDiv({
       cls: "mw-editbar__text",
-      text: "布局编辑中：拖动唱片调整顺序，拖动分组头调整分组顺序",
+      text: "布局编辑中：拖动唱片调整顺序，拖动分组头调整分组顺序（改动实时保存）",
     });
-    const done = bar.createEl("button", {
-      cls: "mw-btn mw-btn--primary mw-editbar__btn",
-      text: "完成",
-    });
+    // 只有一个「完成」图标：拖动已经实时落盘，没有需要再确认的提交，
+    // 也没有可回滚的取消（第五轮反馈 A2：两个按钮收成一个 ✓）
+    const done = bar.createEl("button", { cls: "clickable-icon mw-editbar__done" });
     done.setAttr("type", "button");
-    done.addEventListener("click", () => {
-      this.exitEditMode();
-      new Notice("布局已保存");
-    });
-    const cancel = bar.createEl("button", {
-      cls: "mw-btn mw-editbar__btn",
-      text: "取消",
-    });
-    cancel.setAttr("type", "button");
-    cancel.addEventListener("click", () => {
-      this.exitEditMode(true);
-      new Notice("已取消布局编辑，顺序已还原");
-    });
+    done.setAttr("aria-label", "完成（改动已实时保存）");
+    done.setAttr("title", "完成（改动已实时保存）");
+    setIcon(done, "check");
+    done.addEventListener("click", () => this.exitEditMode());
     // 编辑条占了顶部一行，顶栏被推下去：面板/浮层的定位要跟着重算
     this.watchTopbarHeight();
   }
@@ -2394,58 +2505,6 @@ export class MusicWallView extends FileView implements WallHost {
       source: item.source,
       deps: this.plugin.getPlaybackDeps(),
     }).open();
-  }
-
-  // ---- 展示架：自绘风格菜单（右键 / 触屏长按共用） ----
-
-  private openShelfCardMenu(x: number, y: number, item: WallItem): void {
-    const items: ShelfMenuItem[] = [
-      {
-        title: "播放",
-        onClick: () => void playAlbum(item.meta, this.plugin.getPlaybackDeps()),
-      },
-      {
-        title: "加入播放器",
-        disabled: !this.plugin.firstPlayerView(),
-        onClick: () => {
-          if (this.file) this.plugin.addToPlayer(item, this.file.path);
-        },
-      },
-      { title: "编辑布局", onClick: () => this.enterEditMode() },
-    ];
-    const groups = this.data?.groups ?? [];
-    if (groups.length) {
-      const current = item.groupId ?? UNGROUPED_ID;
-      items.push({ title: "移动到分组", heading: true });
-      const targets: { id: string; label: string }[] = [
-        { id: UNGROUPED_ID, label: UNGROUPED_LABEL },
-        ...groups.map((g) => ({ id: g.id, label: g.name })),
-      ];
-      for (const t of targets) {
-        items.push({
-          title: t.id === current ? `${t.label} ✓` : t.label,
-          disabled: t.id === current,
-          onClick: () => this.moveItemToGroup(item, t.id === UNGROUPED_ID ? null : t.id),
-        });
-      }
-    }
-    if (!item.locked) {
-      items.push({ title: "编辑元数据", onClick: () => this.editItemMeta(item, false) });
-    }
-    items.push(
-      { title: "迁移到其他墙…", onClick: () => this.migrateCard(item) },
-      {
-        title: "复制专辑链接",
-        onClick: async () => {
-          await navigator.clipboard.writeText(
-            `https://music.163.com/album?id=${item.albumId}`
-          );
-          new Notice("已复制");
-        },
-      },
-      { title: "删除", danger: true, onClick: () => this.confirmDelete(item) }
-    );
-    openShelfMenu(x, y, items);
   }
 
   /** 解锁后元数据编辑；reopenDetail = 编辑保存后回到场景内详情 */
@@ -3009,79 +3068,63 @@ export class MusicWallView extends FileView implements WallHost {
     };
   }
 
-  private openCardMenu(evt: MouseEvent, item: WallItem): void {
-    const menu = new Menu();
-    menu.addItem((it) =>
-      it
-        .setTitle("播放")
-        .setIcon("play")
-        .onClick(() => void playAlbum(item.meta, this.plugin.getPlaybackDeps()))
-    );
-    menu.addItem((it) =>
-      it
-        .setTitle("加入播放器")
-        .setIcon("disc")
-        .setDisabled(!this.plugin.firstPlayerView())
-        .onClick(() => {
-          if (this.file) this.plugin.addToPlayer(item, this.file.path);
-        })
-    );
-    menu.addItem((it) =>
-      it.setTitle("编辑布局").setIcon("move").onClick(() => this.enterEditMode())
-    );
-    this.addMoveToGroupItems(menu, item);
-    if (!item.locked) {
-      menu.addItem((it) =>
-        it.setTitle("编辑元数据").setIcon("edit").onClick(() => {
-          new EditMetaModal(this.app, item.meta, async (meta) => {
-            item.meta = meta;
-            item.metaEdited = true;
-            await this.persist();
-            this.render();
-            new Notice("元数据已保存");
-          }).open();
-        })
-      );
-    }
-    menu.addItem((it) =>
-      it
-        .setTitle("迁移到其他墙…")
-        .setIcon("arrow-right")
-        .onClick(() => this.migrateCard(item))
-    );
-    menu.addItem((it) =>
-      it.setTitle("复制专辑链接").setIcon("link").onClick(async () => {
-        await navigator.clipboard.writeText(
-          `https://music.163.com/album?id=${item.albumId}`
-        );
-        new Notice("已复制");
-      })
-    );
-    menu.addItem((it) =>
-      it
-        .setTitle("删除")
-        .setIcon("trash")
-        .onClick(() => this.confirmDelete(item))
-    );
-    menu.showAtPosition({ x: evt.x, y: evt.y });
-  }
+  // ---- 卡片右键菜单（网格 / 列表 / 展示架共用一份描述，皮肤按布局选） ----
 
   /**
-   * 卡片菜单里的「移动到分组…」。
-   *
-   * 第四轮改成**模态选择框**（复用「迁移到其他墙…」同一套 PickerModal）：
-   * 原来是菜单内联子菜单，分组一多就把菜单撑得比屏幕还长，极难选。
-   * 没有分组时不显示该项（没有可选目标）。
+   * 卡片右键菜单：三种布局共用同一份菜单项。
+   * 以前展示架另有一份自绘菜单，两边各写一遍导致能力漂移
+   * （展示架那份把「移动到分组」内联成一长列分组，第五轮反馈 B3）。
    */
-  private addMoveToGroupItems(menu: Menu, item: WallItem): void {
-    const groups = this.data?.groups ?? [];
-    if (!groups.length) return;
-    menu.addItem((it) =>
-      it
-        .setTitle("移动到分组…")
-        .setIcon("folder-input")
-        .onClick(() => this.pickGroupFor(item))
+  private openCardMenu(evt: MouseEvent, item: WallItem): void {
+    this.showCtxMenu(evt, this.cardMenuItems(item));
+  }
+
+  private cardMenuItems(item: WallItem): CtxItem[] {
+    const items: CtxItem[] = [
+      {
+        title: "播放",
+        icon: "play",
+        onPick: () => void playAlbum(item.meta, this.plugin.getPlaybackDeps()),
+      },
+      {
+        title: "加入播放器",
+        icon: "disc",
+        disabled: !this.plugin.firstPlayerView(),
+        onPick: () => {
+          if (this.file) this.plugin.addToPlayer(item, this.file.path);
+        },
+      },
+      { title: "编辑布局", icon: "move", onPick: () => this.enterEditMode() },
+    ];
+    // 「移动到分组…」走模态选择框（分组一多内联列表就比屏幕还长）
+    if ((this.data?.groups ?? []).length) {
+      items.push({
+        title: "移动到分组…",
+        icon: "folder-input",
+        onPick: () => this.pickGroupFor(item),
+      });
+    }
+    if (!item.locked) {
+      items.push({
+        title: "编辑元数据",
+        icon: "edit",
+        onPick: () => this.editItemMeta(item, false),
+      });
+    }
+    items.push(
+      { title: "迁移到其他墙…", icon: "arrow-right", onPick: () => this.migrateCard(item) },
+      {
+        title: "复制专辑链接",
+        icon: "link",
+        onPick: () => {
+          void navigator.clipboard
+            .writeText(`https://music.163.com/album?id=${item.albumId}`)
+            .then(() => new Notice("已复制"));
+        },
+      },
+      { title: "删除", icon: "trash", danger: true, onPick: () => this.confirmDelete(item) }
     );
+    return items;
   }
 
   /** 分组选择框：未分组 + 全部分组，当前所在项标 ✓ 且不可选 */

@@ -3,6 +3,8 @@
 import { App, Modal, Notice } from "obsidian";
 import type { AlbumMeta } from "../types";
 
+import { applyModalTheme } from "./modalTheme";
+
 export class EditMetaModal extends Modal {
   private meta: AlbumMeta;
   private onSave: (meta: AlbumMeta) => void;
@@ -16,6 +18,7 @@ export class EditMetaModal extends Modal {
   onOpen(): void {
     // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
     this.modalEl.addClass("mw-modal-zoom");
+    applyModalTheme(this.modalEl);
     const { contentEl } = this;
     contentEl.addClass("mw-edit-modal");
     contentEl.createEl("h2", { text: `编辑元数据 · 专辑 ${this.meta.albumId}` });

@@ -9,6 +9,7 @@ import {
   PLAYER_BG_LABELS,
   PLAYER_VIEW_TYPE,
   WALL_DRAG_MIME,
+  clampZoom,
   type AlbumMeta,
   type DiscStyle,
   type PlayerBackground,
@@ -22,8 +23,9 @@ import { STYLE_LABELS } from "./disc";
 import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
-import { handleZoomWheel } from "./zoom";
+import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
 import { coverAccent, onAccentFor } from "./accent";
+import { setModalTheme } from "./modalTheme";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -161,9 +163,15 @@ export class MusicPlayerView extends FileView {
     this.albumKey = "";
     this.iconPaused = null;
     this.playlistOpen = false;
+    disposeZoomBox(this.contentEl);
   }
 
   // ---- 对外：拖入 / 加入播放器即播 ----
+
+  /** 缩放变化时重算缩放盒像素尺寸（plugin.applyZoom 会调，见 zoom.ts syncZoomBox） */
+  syncZoomBox(): void {
+    syncZoomBox(this.contentEl, clampZoom(this.plugin.settings.zoomScale ?? 1));
+  }
 
   /** 拖入或菜单「加入播放器」：替换当前专辑并立即整专播放 */
   playInPlayer(meta: AlbumMeta, srcPath: string): void {
@@ -244,6 +252,8 @@ export class MusicPlayerView extends FileView {
     this.drawer = null;
     root.empty();
     root.addClass("mw-view", "mw-player");
+    // 播放器的弹窗一律用默认皮肤（展示架的木色只属于音乐墙）
+    setModalTheme("default");
     this.el = {};
     this.trackRows = [];
     this.albumKey = "";
@@ -275,6 +285,9 @@ export class MusicPlayerView extends FileView {
     this.syncLayout();
     this.updateNow();
     this.togglePlaylist(this.playlistOpen);
+    // 缩放盒尺寸兜底（与音乐墙同一套，见 zoom.ts syncZoomBox）：
+    // CSS 的 calc 反除补偿若退化成 auto，内容会缩在左上角、右/下留白
+    this.syncZoomBox();
   }
 
   /** 背景模式落成类名；「封面」模式额外注入当前专辑封面做动态取色 */

@@ -109,6 +109,9 @@ function migrate(data: any): MusicWallData {
     layout: data?.layout === "list" || data?.layout === "shelf" ? data.layout : undefined,
     items,
     groups,
+    // 「未分组」分区没有 WallGroup 记录，它的收起状态单独存一位。
+    // 没有分组时未分组分区是无头的（连标题都不渲染），这时不保留该状态。
+    ungroupedCollapsed: groups && data?.ungroupedCollapsed === true ? true : undefined,
     order,
     view: cleanView(data?.view),
   };

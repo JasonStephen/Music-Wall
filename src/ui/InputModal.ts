@@ -2,6 +2,8 @@
 
 import { App, Modal, Notice } from "obsidian";
 
+import { applyModalTheme } from "./modalTheme";
+
 export class InputModal extends Modal {
   private title: string;
   private placeholder: string;
@@ -25,6 +27,7 @@ export class InputModal extends Modal {
   onOpen(): void {
     // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
     this.modalEl.addClass("mw-modal-zoom");
+    applyModalTheme(this.modalEl);
     const { contentEl } = this;
     contentEl.addClass("mw-input-modal");
     contentEl.createEl("h2", { text: this.title });

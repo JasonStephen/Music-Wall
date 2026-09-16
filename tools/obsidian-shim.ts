@@ -70,6 +70,13 @@ export async function requestUrl(req: { url: string }): Promise<{
     const buf = probePng(`#${m[1]}`);
     return { status: 200, arrayBuffer: buf, text: "", headers: {} };
   }
+  // probeCoverUri 的纯色 SVG data URI：同样合成一张同色 PNG。
+  // 这样「背景层能被浏览器画出来」与「取色链路能跑通」可以同时成立。
+  const svg = /fill=["']?#([0-9a-f]{6})/i.exec(decodeURIComponent(url));
+  if (svg && /^data:image\/svg\+xml/i.test(url)) {
+    const buf = probePng(`#${svg[1]}`);
+    return { status: 200, arrayBuffer: buf, text: "", headers: {} };
+  }
   throw new Error(`requestUrl unavailable in harness: ${url}`);
 }
 
@@ -86,6 +93,27 @@ function probePng(color: string): ArrayBuffer {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out.buffer as ArrayBuffer;
+}
+
+/**
+ * 纯色封面的 data URI（SVG）。给「封面背景」这类会被写进 CSS `url()` 的场景用：
+ * 用 `https://example.invalid/...` 那种假 URL 时浏览器拉不到图（无网），
+ * 背景层实际什么都没画，截图会得到一块近黑——看起来像产品 bug，其实只是垫片没图。
+ *
+ * 尾部那个 `#param=800y800` 片段是给产品的 sizedCover 看的：
+ * 它见到 URL 里含 `param=` 就原样返回，否则会往尾巴拼 `?param=800y800` 把 data URI 弄坏。
+ * 片段不会被图片解析器当成数据（实测 Chrome 正常按 600×600 解码）。
+ */
+export function probeCoverUri(hex: string): string {
+  const c = `#${hex.replace(/^#/, "")}`;
+  return (
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">` +
+        `<rect width="600" height="600" fill="${c}"/></svg>`
+    ) +
+    "#param=800y800"
+  );
 }
 
 export function normalizePath(p: string): string {
@@ -194,6 +222,9 @@ export class ItemView extends Component {
     this.leaf = leaf;
     this.app = leaf.app;
     this.contentEl = document.createElement("div");
+    // 真实 Obsidian 里 ItemView.contentEl 就是 `.view-content`（主题大量规则挂在它上面：
+    // 内边距、底色、overflow）。不给这个类名，e2e 就测不到「主题给根节点加留白」这类问题。
+    this.contentEl.className = "view-content";
   }
   getViewType(): string {
     return "";
@@ -227,26 +258,36 @@ export class FileView extends ItemView {
   async onUnloadFile(_f: TFile): Promise<void> {}
 }
 
+/**
+ * 结构必须与真实 Obsidian 一致（否则样式断言会「在测试里成立、在真机上不成立」）：
+ *   containerEl = .modal-container（铺满窗口的层）
+ *   modalEl     = .modal（对话框本体，插件换肤/缩放都作用在它上面）
+ *   contentEl   = .modal-content（内容区）
+ */
 export class Modal extends Component {
   app: unknown;
+  containerEl: HTMLElement;
   modalEl: HTMLElement;
   contentEl: HTMLElement;
   shouldRestoreSelection = true;
   constructor(app?: unknown) {
     super();
     this.app = app;
+    this.containerEl = document.createElement("div");
+    this.containerEl.className = "modal-container";
     this.modalEl = document.createElement("div");
-    this.modalEl.className = "modal-container";
+    this.modalEl.className = "modal";
     this.contentEl = document.createElement("div");
-    this.contentEl.className = "modal";
+    this.contentEl.className = "modal-content";
     this.modalEl.appendChild(this.contentEl);
+    this.containerEl.appendChild(this.modalEl);
   }
   open(): void {
-    document.body.appendChild(this.modalEl);
+    document.body.appendChild(this.containerEl);
     this.onOpen();
   }
   close(): void {
-    this.modalEl.remove();
+    this.containerEl.remove();
     this.onClose();
   }
   onOpen(): void {}

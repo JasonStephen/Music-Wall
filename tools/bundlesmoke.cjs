@@ -67,6 +67,14 @@ global.window = {
   innerWidth: 1280,
   innerHeight: 800,
 };
+// 视图 render 里会用 ResizeObserver 跟随窗格尺寸（src/ui/zoom.ts syncZoomBox）。
+// 产品代码有 `typeof ResizeObserver !== "undefined"` 守卫，这里也补一个空实现，
+// 让冒烟把「挂了观察者」这条路径也走一遍。
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 Object.defineProperty(global, "navigator", {
   value: { clipboard: { writeText: async () => {} } },
   configurable: true,
@@ -310,7 +318,7 @@ const origLoad = Module._load;
     view.floater?.refresh();
   }
   view.floater?.close();
-  view.exitEditMode(true);
+  view.exitEditMode();
   console.log("分组分区 + 布局编辑态 + 侧边抽屉/右上浮层 未抛错");
 
   // 全局缩放：设置项 → body 变量 → 视图尺寸补偿
@@ -396,6 +404,78 @@ const origLoad = Module._load;
   if (!deps || typeof deps.isDesktop !== "boolean" || !deps.request)
     throw new Error("getPlaybackDeps 返回异常");
   console.log("getPlaybackDeps 正常");
+
+  /*
+   * styles.css 静态契约（第五轮）。
+   *
+   * 为什么放在这里而不是浏览器 e2e：这些是「样式表里必须存在/必须不存在」的
+   * 形式化断言——尤其是 hover 一类状态，无头 Chrome 没有真实指针，触发不了
+   * :hover；file:// 页面又读不到 <link> 样式表的 cssRules（跨源）。
+   * Node 直接读 styles.css 文本是最可靠的层。
+   * 注意样式已压缩：属性名后可能没有空格，单位会省略前导 0（0.62 → .62）。
+   */
+  const cssText = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf-8");
+  const mustMatch = [
+    // A4：.view-content 就是 .mw-view 根，主题加的内边距必须被压掉
+    [/\.view-content\.mw-view[^{]*\{[^}]*padding:0!important/, "A4 根节点内边距归零"],
+    [/\.view-content\.mw-view[^{]*\{[^}]*margin:0!important/, "A4 根节点外边距归零"],
+    [
+      /\.workspace-leaf-content\[data-type=music-wall-(view|player)\][^{]*\{[^}]*padding:0!important/,
+      "A4 叶子容器内边距归零",
+    ],
+    // A2：编辑条只剩 ✓ 图标
+    [/\.mw-editbar \.mw-editbar__done\{/, "A2 ✓ 完成图标样式存在"],
+    // A3：展示架强调色 = 琥珀；木质菜单与展示架弹窗皮肤都在
+    [/\.mw-view\.mw-wall--shelf\{[^}]*--mw-accent: ?#d9a24a/, "A3 展示架强调色改为琥珀"],
+    [/\.modal\.mw-modal--shelf\{[^}]*--interactive-accent: ?#d9a24a/, "A3 弹窗展示架皮肤"],
+    [/\.mw-shelf-menu__sep\{/, "A3 木质菜单分隔线"],
+    [/\.mw-shelf-menu__icon\{/, "A3 木质菜单图标位"],
+    // B1：面板输入框三态 + × 清空钮 + 主按钮排除 ×
+    [
+      /\.mw-view \.mw-drawer \.mw-panel__input:hover[^{]*\{[^}]*background-color:var\(--mw-panel-hover\)!important/,
+      "B1 输入框 hover 规则带 !important",
+    ],
+    [
+      /\.mw-view \.mw-drawer \.mw-panel__input,?[^{]*\{[^}]*background-color:var\(--mw-panel-surface\)!important/,
+      "B1 输入框静息规则带 !important",
+    ],
+    [
+      /\.mw-view \.mw-drawer \.mw-panel__clearicon\{[^}]*background-color:transparent!important/,
+      "B1 × 清空钮透明底",
+    ],
+    [
+      /\.mw-view \.mw-drawer \.mw-panel__clearicon\{[^}]*border-radius:0!important/,
+      "B1 × 清空钮无圆角",
+    ],
+    [
+      /\.mw-search-panel__bar button:not\(\.mw-panel__clearicon\)/,
+      "B1 搜索行主按钮规则排除 × 清空钮",
+    ],
+    [/\.mw-view \.mw-drawer \.mw-preset\{[^}]*background-color:[^;}]*!important/, "B1 预设瓷砖有兜底"],
+    // B2：封面背景的面板是磨砂玻璃
+    [
+      /--mw-player-panel-bg: ?rgba\(14, ?16, ?21, ?\.62\)/,
+      "B2 封面模式面板底色 62% 半透明",
+    ],
+    [/\.mw-player\.mw-bg--art \.mw-drawer[^{]*\{[^}]*backdrop-filter:blur\(18px\)/, "B2 面板磨砂"],
+    [
+      /\.mw-player\.mw-bg--art \.mw-player__playlist[^{]*\{[^}]*backdrop-filter/,
+      "B2 上拉曲目表磨砂",
+    ],
+    // 播放器面板强调色跟随背景模式
+    [/\.mw-player\{[^}]*--mw-accent: ?var\(--mw-np-accent/, "B1 播放器强调色跟随背景模式"],
+  ];
+  const mustNotMatch = [
+    [/\.mw-editbar \.mw-editbar__btn\{/, "A2 旧的「完成/取消」按钮样式已删除"],
+    [/\.mw-drawer__scrim\s*\{/, "侧边抽屉不存在遮罩样式"],
+  ];
+  for (const [re, label] of mustMatch) {
+    if (!re.test(cssText)) throw new Error("styles.css 契约缺失: " + label + " (" + re + ")");
+  }
+  for (const [re, label] of mustNotMatch) {
+    if (re.test(cssText)) throw new Error("styles.css 残留: " + label + " (" + re + ")");
+  }
+  console.log(`styles.css 静态契约：${mustMatch.length + mustNotMatch.length} 条通过`);
 
   console.log("\n== main.js 冒烟测试通过 ==");
   process.exit(0);

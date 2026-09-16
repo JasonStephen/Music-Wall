@@ -125,6 +125,8 @@ export interface MusicWallData {
   items: WallItem[];
   /** 分组定义；缺省 = 未分组 */
   groups?: WallGroup[];
+  /** 「未分组」分区的收起状态（落盘，重开保持；它没有 WallGroup 记录，单独存一位） */
+  ungroupedCollapsed?: boolean;
   /** 手动排序顺序（albumId 列表）；缺省时按视图排序，首次拖动时补齐 */
   order?: number[];
   /** 视图状态（排序/筛选） */

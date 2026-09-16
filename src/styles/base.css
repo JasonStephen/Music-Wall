@@ -1,5 +1,28 @@
 /* ===== Music Wall 基础布局 ===== */
 
+/*
+ * 根节点必须铺满窗格（第五轮 A4）。
+ *
+ * 主题普遍会给 .view-content（**就是我们的 .mw-view 根**）加内边距，
+ * Perspective 是 `padding: 12px 12px 32px`。音乐墙与播放器是「一整块画布」，
+ * 那圈内边距会把墙/地板缩进去、四周露出一圈底色 —— 用户从第二轮起反复
+ * 指着截图里的那片「留白」就是这个。
+ *
+ * 这里把外边距与内边距一并归零（!important：主题用的是 .view-content 单类，
+ * 与我们同档特异性，谁生效取决于加载顺序，不能赌），呼吸感全部搬到内部：
+ * 顶栏各自留内边距、网格留左右与底部内边距（见 .mw-toolbar / .mw-grid）。
+ */
+.view-content.mw-view {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+/* 少数主题把内边距加在叶子上而不是 .view-content 上，一并归零 */
+.workspace-leaf-content[data-type="music-wall-view"],
+.workspace-leaf-content[data-type="music-wall-player"] {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
 .mw-view {
   --mw-accent: var(--interactive-accent);
   --mw-radius: 10px;
@@ -54,6 +77,11 @@
   /* 定位上下文：拖拽浮标与抽屉都以缩放盒为原点。
      注意 transform 会成为 fixed 后代的包含块，浮标因此必须用 absolute（见 .mw-drag-ghost）。 */
   position: relative;
+  /* 尺寸容器锚（第六轮）：开盒详情等覆盖层挂在缩放盒上（要盖住顶栏与四周，
+     挂在 .mw-stage 里会被它的 contain 困在卡片那一层），所以窄屏降级的
+     @container 查询与 cq 单位要以缩放盒为参照。
+     宽度与 .mw-stage 相同，因此触发阈值与原行为一致（缩放盒宽 = 窗格 / 缩放系数）。 */
+  container: mw-pane / size;
 }
 
 /* 图片不得成为原生拖拽源：按住封面移动会启动浏览器原生图片拖拽并取消指针事件，
@@ -116,6 +144,14 @@
   --text-normal: #e6dcc9;
   --text-muted: #a89a86;
   --text-faint: #8b7d6b;
+  /* 强调色也从主题紫换成「木墙上的琥珀」（第五轮 A3）：
+     抽屉里的排序/方向高亮、主按钮、输入框聚焦边框原本全是紫的，
+     在整面木墙上非常跳。原生控件（复选框/滑块的选中态）读同一批变量，一并跟上。
+     弹窗挂在 body 上拿不到这些变量，由 .mw-modal--shelf 单独上色。 */
+  --mw-accent: #d9a24a;
+  --interactive-accent: #d9a24a;
+  --interactive-accent-hover: #e8b45f;
+  --text-on-accent: #241b12;
   --mw-wall-bg:
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
     radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
@@ -140,7 +176,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  padding: 4px 12px;
+  /* 左右内边距与 .mw-grid 对齐：根节点归零后，顶栏标题与网格首列要成一条竖线 */
+  padding: 4px clamp(18px, 4vw, 52px);
   min-height: 48px;
   background: transparent;
   border-bottom: 0;
@@ -615,7 +652,8 @@
   grid-template-columns: minmax(0, 1fr);
   /* 分区之间要留出可见间距（曾经只有 4px，分组头几乎贴着上一组最后一张） */
   gap: 18px;
-  padding: 18px clamp(16px, 4vw, 48px) 30px;
+  /* 呼吸感全在这里（第五轮 A4 把根节点内边距归零后，这里是唯一的左右留白） */
+  padding: 18px clamp(18px, 4vw, 52px) 34px;
   align-content: start;
 }
 .mw-section {
@@ -816,7 +854,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px;
+  padding: 6px clamp(18px, 4vw, 52px);
   background: transparent;
   border-bottom: 1px solid var(--mw-wall-line);
   color: var(--mw-wall-fg);
@@ -829,27 +867,30 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 双类作用域：Obsidian 的 button:not(.clickable-icon) 是 (0,1,1)，
-   单类 (0,1,0) 会被它刷成白底药丸（编辑条上的完成/取消曾经就是白的） */
-.mw-editbar .mw-editbar__btn {
+/* 「完成」是一个 ✓ 图标（第五轮 A2）：拖动实时保存，不需要「完成/取消」两个按钮。
+   仍是双类作用域 + clickable-icon：主题的 button:not(.clickable-icon) 会刷白底药丸 */
+.mw-editbar .mw-editbar__done {
   flex: 0 0 auto;
-  border: 0;
-  border-radius: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--mw-wall-line);
+  border-radius: 8px;
   background: transparent;
   box-shadow: none;
-  color: var(--mw-accent, var(--interactive-accent));
-  font-size: 0.85em;
-  padding: 2px 6px;
-  height: auto;
+  color: var(--mw-wall-fg);
 }
-.mw-editbar .mw-editbar__btn:hover {
-  background: transparent;
-  box-shadow: none;
-  transform: none;
-  text-decoration: underline;
+.mw-editbar .mw-editbar__done:hover {
+  border-color: var(--mw-accent, var(--interactive-accent));
+  background: color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 18%, transparent);
+  color: var(--mw-wall-fg);
 }
-.mw-editbar .mw-editbar__btn:not(.mw-btn--primary) {
-  color: var(--mw-wall-fg-dim);
+.mw-editbar .mw-editbar__done svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ---- 卡片 ---- */
@@ -1048,11 +1089,21 @@
 /* 模态框也跟随缩放（弹窗挂在 body 上，继承 body 的 --mw-zoom）。
    这里同样不能用 zoom（见 .mw-zoombox 的说明：zoom 对百分比尺寸的元素已失效，
    .modal 的宽度来自 Obsidian/主题，多半不是显式长度）。
-   改用 transform：以中心为原点整体放大，容器仍按 flex 居中，放大后依旧居中；
-   代价是内部排版不重排，所以用 vw/vh 的上限要按 z 反除，避免高倍放大跑出屏幕。 */
+   改用 transform：以中心为原点整体放大，容器仍按 flex 居中，放大后依旧居中。
+
+   两个选择器都要写：真实的 Obsidian 里 modalEl 自己就是 .modal（类挂在它身上，
+   是同一个元素，不是后代），而容器层才是 .modal-container —— 只写后代选择器
+   在真机上根本匹配不到，弹窗缩放形同虚设。 */
+.modal.mw-modal-zoom,
 .mw-modal-zoom .modal {
   transform: scale(var(--mw-zoom, 1));
   transform-origin: center center;
+}
+/* 尺寸上限只在**确实放大**时生效（body.mw-zoomed 由 applyZoom 维护）。
+   z = 1 时不能设上限：`max-width: 92vw` 会盖掉每个弹窗自己的宽度
+   （.mw-album-modal 的 680px、主题给弹窗的默认 560px 都会被顶成 1177px）。 */
+body.mw-zoomed .modal.mw-modal-zoom,
+body.mw-zoomed .mw-modal-zoom .modal {
   max-width: calc(92vw / var(--mw-zoom, 1));
   max-height: calc(88vh / var(--mw-zoom, 1));
 }

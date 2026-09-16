@@ -55,6 +55,66 @@
   }
   #result .ok { color: #8fd98f; }
   #result .bad { color: #ff9090; }
+
+  /*
+   * 模拟 Perspective：真实主题的特异性比上面的基线高得多，第五轮反馈的
+   * 「输入框 hover 变白 / 清空图标紫色圆 / 搜索按钮紫色」全都来自这里：
+   *   .theme-light input[type='search']:hover   (0,3,1)  → 压过我们的单/双类规则
+   *   .theme-light button:not(.clickable-icon)  (0,2,1)  → 白底药丸
+   *   .theme-light .clickable-icon              (0,2,0)  → 强调色实心圆
+   * 只在 body.mw-theme-strict 下生效：其它场景保持低特异性基线，
+   * theme-resist 场景专门验证「面板控件能否压过真实主题」。
+   */
+  body.mw-theme-strict input[type="search"],
+  body.mw-theme-strict input[type="text"] {
+    background-color: #ffffff;
+    border: 1px solid #d8dbe2;
+    color: #222;
+  }
+  body.mw-theme-strict input[type="search"]:hover,
+  body.mw-theme-strict input[type="text"]:hover {
+    background-color: #ffffff;
+    border-color: #b9c0cc;
+  }
+  body.mw-theme-strict button:not(.clickable-icon) {
+    background-color: #eef0f4;
+    border: 1px solid #d8dbe2;
+    color: #222;
+  }
+  body.mw-theme-strict button:not(.clickable-icon):hover {
+    background-color: #e2e6ee;
+  }
+  body.mw-theme-strict .clickable-icon {
+    background-color: #7c5cff;
+    color: #ffffff;
+    border-radius: 50%;
+  }
+  body.mw-theme-strict .clickable-icon:hover {
+    background-color: #6b4bf0;
+  }
+
+  /* 模拟主题给 .view-content 加的内边距（第五轮 A4「留白」的根因）。
+     只在 body.mw-viewpad 下生效，由 wall-edges 场景单独开关。 */
+  body.mw-viewpad .view-content {
+    padding: 12px 12px 32px;
+  }
+
+  /* 模拟 Obsidian 的模态层（真实环境由 Obsidian 基础样式提供；harness 里没有，
+     弹窗会掉进普通文档流、跑到页面底部）。有它才能测弹窗的居中、宽度与缩放。 */
+  .modal-container {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .modal {
+    position: relative;
+    width: 100%; max-width: 560px;
+    padding: 20px 22px;
+    border-radius: 12px;
+    background: var(--background-primary, #fff);
+    color: var(--text-normal, #222);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  }
 </style>
 </head>
 <body>

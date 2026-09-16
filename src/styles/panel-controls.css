@@ -1,0 +1,199 @@
+/* ===== 面板内控件：对主题样式的最终压制（第五轮 B1） =====
+ *
+ * 背景：面板（侧边抽屉 / 右上浮层 / 播放器抽屉）里的控件与「墙」是同一套皮肤，
+ * 但 Obsidian 主题会用自己的规则把原生控件刷回主题外观，实测三种情况：
+ *   1. `button:not(.clickable-icon)`                     → (0,1,1)，白底圆角药丸；
+ *   2. `.theme-light input[type='search']:hover`（Perspective）→ (0,3,1)，输入框悬停变白；
+ *   3. `.clickable-icon` 被主题刷上强调色实心底     → × 清空钮变成「紫色实心圆」。
+ *
+ * 我们此前写的是 `.mw-drawer .mw-btn` 这类 (0,2,0) 规则，1 压得住、2 压不住，
+ * 于是「输入框 hover 依然变白、清空钮依然是紫圆」（第五轮用户截图）。
+ * 这里统一升到 `.mw-view .mw-drawer …`（≥(0,3,0)）+ `!important` 收口：
+ * 面板不是主题控件的地盘——面板底色由 --mw-panel-* 决定，主题不该插手。
+ *
+ * 注意：只作用于 `.mw-drawer` 子树（侧边抽屉 + 右上浮层都是 .mw-drawer），
+ * 不影响墙上的卡片、模态框与其它插件。
+ */
+
+/* ---- 文本输入：静止 / 悬停 / 聚焦三态显式写全（不留任何一态给主题） ---- */
+/* 面板输入框（搜索行）：单独再写一遍 .mw-panel__input 作用域，
+   一是特异性更高，二是让「输入框 hover」这条规则在样式表里可被检索与断言 */
+.mw-view .mw-drawer .mw-panel__input,
+.mw-view .mw-drawer input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.mw-view .mw-drawer textarea,
+.mw-view .mw-drawer select {
+  background-color: var(--mw-panel-surface) !important;
+  border: 1px solid var(--mw-panel-line) !important;
+  border-radius: 6px !important;
+  color: var(--mw-panel-fg) !important;
+  box-shadow: none !important;
+}
+.mw-view .mw-drawer .mw-panel__input:hover,
+.mw-view .mw-drawer input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):hover,
+.mw-view .mw-drawer textarea:hover,
+.mw-view .mw-drawer select:hover {
+  background-color: var(--mw-panel-hover) !important;
+  border-color: var(--mw-panel-line) !important;
+  color: var(--mw-panel-fg) !important;
+}
+.mw-view .mw-drawer .mw-panel__input:focus,
+.mw-view .mw-drawer input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.mw-view .mw-drawer input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
+.mw-view .mw-drawer textarea:focus,
+.mw-view .mw-drawer select:focus {
+  background-color: var(--mw-panel-surface) !important;
+  border-color: var(--mw-accent, var(--interactive-accent)) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.mw-view .mw-drawer input::placeholder,
+.mw-view .mw-drawer textarea::placeholder {
+  color: var(--mw-panel-fg-dim) !important;
+}
+/* search 类型自带清除装饰：去掉，统一用我们的 × 按钮 */
+.mw-view .mw-drawer input[type="search"]::-webkit-search-cancel-button,
+.mw-view .mw-drawer input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ---- 按钮族：底色 / 边框 / 文字 / 圆角一次性锁死 ----
+   注意 `.mw-search-panel__bar button` 必须排除 × 清空钮：它就是搜索行里的一个 button，
+   不排除的话会被主按钮规则刷成「强调色实心圆」——用户报的「清空图标显示为紫色圆」
+   正是这条链路的产物（主题把它刷成紫的，我们自己的规则也会把它刷成琥珀的）。 */
+.mw-view .mw-drawer .mw-btn,
+.mw-view .mw-drawer .mw-dirbtn,
+.mw-view .mw-drawer .mw-chip,
+.mw-view .mw-drawer .mw-panel__add,
+.mw-view .mw-drawer .mw-panel__reset,
+.mw-view .mw-drawer .mw-search-more,
+.mw-view .mw-drawer .mw-search-row__add,
+.mw-view .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon),
+.mw-view .mw-drawer .mw-preset {
+  background-color: var(--mw-panel-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--mw-panel-line) !important;
+  border-radius: 6px !important;
+  color: var(--mw-panel-fg) !important;
+  box-shadow: none !important;
+}
+.mw-view .mw-drawer .mw-preset {
+  border-radius: 10px !important;
+}
+.mw-view .mw-drawer .mw-btn:hover,
+.mw-view .mw-drawer .mw-dirbtn:hover,
+.mw-view .mw-drawer .mw-chip:hover,
+.mw-view .mw-drawer .mw-panel__add:hover,
+.mw-view .mw-drawer .mw-panel__reset:hover,
+.mw-view .mw-drawer .mw-search-more:hover,
+.mw-view .mw-drawer .mw-search-row__add:hover,
+.mw-view .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon):hover,
+.mw-view .mw-drawer .mw-preset:hover {
+  background-color: var(--mw-panel-hover) !important;
+  border-color: var(--mw-accent, var(--interactive-accent)) !important;
+  color: var(--mw-panel-fg) !important;
+  transform: none;
+}
+/* 主按钮 / 选中态：强调色（展示架 = 木色琥珀，播放器 = 当前背景模式的强调色） */
+.mw-view .mw-drawer .mw-btn--primary,
+.mw-view .mw-drawer .mw-btn--primary:hover,
+.mw-view .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon),
+.mw-view .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon):hover,
+.mw-view .mw-drawer .mw-dirbtn.is-active,
+.mw-view .mw-drawer .mw-dirbtn.is-active:hover,
+.mw-view .mw-drawer .mw-chip.is-active,
+.mw-view .mw-drawer .mw-chip.is-active:hover {
+  background-color: var(--mw-accent, var(--interactive-accent)) !important;
+  border-color: var(--mw-accent, var(--interactive-accent)) !important;
+  color: var(--text-on-accent) !important;
+}
+.mw-view .mw-drawer .mw-preset.is-active {
+  border-color: var(--mw-accent, var(--interactive-accent)) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--mw-accent, var(--interactive-accent)) 16%,
+    transparent
+  ) !important;
+}
+.mw-view .mw-drawer .mw-search-row__add:disabled {
+  background-color: var(--mw-panel-surface) !important;
+  border-color: var(--mw-panel-line) !important;
+  color: var(--mw-panel-fg-dim) !important;
+  opacity: 0.5;
+}
+
+/* ---- 顶栏图标与编辑条 ✓：只许有图标本身，不许被主题画出底/圆角 ----
+   主题普遍会给 `.clickable-icon` 上底色（Perspective 甚至是强调色实心圆），
+   单类规则 (0,1,0) 或 `.theme-light .clickable-icon` (0,2,0) 都可能压过 `.mw-toolbtn`，
+   而「顶栏图标只有图标」是本插件的硬性观感要求，所以这里同样用 !important 收口。 */
+.mw-view .mw-toolbar .mw-toolbtn,
+.mw-view .mw-toolbar .mw-toolbtn:hover,
+.mw-view .mw-toolbar .mw-toolbtn:active {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.mw-view .mw-toolbar .mw-toolbtn svg {
+  width: 25px;
+  height: 25px;
+}
+/* 编辑条右侧的 ✓：设计上有一个细描边 + 悬停淡底，只把「底色」这一项收口 */
+.mw-view .mw-editbar .mw-editbar__done {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.mw-view .mw-editbar .mw-editbar__done:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--mw-accent, var(--interactive-accent)) 18%,
+    transparent
+  ) !important;
+}
+.mw-view .mw-editbar .mw-editbar__done svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- × 清空钮：绝不能有底色/圆角（主题会给 .clickable-icon 刷强调色实心底） ---- */
+.mw-view .mw-drawer .mw-panel__clearicon {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--mw-panel-fg-dim) !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  width: 22px !important;
+  height: 22px !important;
+}
+.mw-view .mw-drawer .mw-panel__clearicon:hover,
+.mw-view .mw-drawer .mw-panel__clearicon:active {
+  background-color: transparent !important;
+  background-image: none !important;
+  color: var(--mw-panel-fg) !important;
+}
+.mw-view .mw-drawer .mw-panel__clearicon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- 纯文字型按钮（「清空」链接态）不该有底与框 ---- */
+.mw-view .mw-drawer .mw-panel__clear {
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--mw-accent, var(--interactive-accent)) !important;
+}
+.mw-view .mw-drawer .mw-panel__clear:hover {
+  background-color: transparent !important;
+  color: var(--mw-panel-fg) !important;
+}
+.mw-view .mw-drawer .mw-panel__clear.is-disabled {
+  color: var(--mw-panel-fg-dim) !important;
+}

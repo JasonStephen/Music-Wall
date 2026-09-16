@@ -145,13 +145,15 @@ export function removeGroup(groups: WallGroup[], id: string): WallGroup[] {
  * 切分展示分区。
  * @param order 已排好的条目 id 顺序（getVisibleItems 的输出必须是这个顺序）
  * @param filtering 是否处于筛选/搜索态：筛选态下不显示空分区（避免一堆空标题）
+ * @param ungroupedCollapsed 未分组分区是否收起（它不在 groups 里，状态单独存一位）
  * @returns 分组顺序 = groups 声明顺序 + 末尾「未分组」（仅当确实有未分组条目）
  */
 export function resolveSections(
   items: WallItem[],
   groups: WallGroup[],
   order: number[],
-  filtering = false
+  filtering = false,
+  ungroupedCollapsed = false
 ): WallSection[] {
   const byId = new Map<number, WallItem>();
   for (const it of items) byId.set(it.albumId, it);
@@ -181,11 +183,12 @@ export function resolveSections(
   }
   // 未分组分区：有未分组条目时必出；本墙没有任何分组时也要出（作为列容器，
   // 且空墙需要它承载空态）。筛选态下没有未分组命中就不出。
+  // 注意：无分组（headless）时不落收起标记——那时没有分组头，收起了就再也展不开。
   if (ungrouped.length || (!groups.length && !filtering)) {
     sections.push({
       id: UNGROUPED_ID,
       name: UNGROUPED_LABEL,
-      collapsed: false,
+      collapsed: groups.length ? ungroupedCollapsed : false,
       items: ungrouped,
     });
   }

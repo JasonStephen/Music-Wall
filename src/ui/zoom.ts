@@ -22,6 +22,63 @@ export interface ZoomHost {
   saveZoom(scale: number): void;
 }
 
+/**
+ * 缩放盒尺寸兜底（第六轮 B1）。
+ *
+ * CSS 里 `.mw-zoombox` 已经用 `width/height: calc(100% / var(--mw-zoom))` 做反除补偿，
+ * 但**百分比一旦在任何环节解析不成**（父级高度不确定、变量晚于样式表到达、引擎差异……），
+ * 该声明会静默退化成 `auto`：
+ *   - `width: auto` → 铺满窗格宽度，再被 scale 压成 90% ⇒ **右侧一条空白**；
+ *   - `height: auto` → 变成内容高度，再被 scale 压低 ⇒ **底部一大片空白**。
+ * 用户实测的「右侧 + 底部大量留白」正是这个形状（右边窄、下边宽），
+ * 而本地在任意缩放下都复现不出来（CSS calc 正常生效）。
+ *
+ * 所以这里按窗格**像素**把尺寸写进行内样式（行内优先级高于样式表），
+ * 并用 ResizeObserver 跟随窗格尺寸变化。CSS 那条仍是基础实现，本函数只负责「保证」。
+ */
+const zoomObservers = new WeakMap<HTMLElement, ResizeObserver>();
+
+function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): void {
+  const z = clampZoom(scale);
+  const w = root.clientWidth;
+  const h = root.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  const px = (v: number) => `${Math.round(v * 1000) / 1000}px`;
+  box.style.width = px(w / z);
+  box.style.height = px(h / z);
+  // 记下当前缩放，ResizeObserver 回调里要复用（回调不接参数）
+  root.dataset.mwZoom = String(z);
+}
+
+/**
+ * 同步缩放盒尺寸并在首次调用时挂上 ResizeObserver。
+ * 视图 `render()` 末尾、缩放变化（plugin.applyZoom）与窗格尺寸变化时都要走一遍。
+ */
+export function syncZoomBox(root: HTMLElement, scale: number): void {
+  const box = root.querySelector<HTMLElement>(":scope > .mw-zoombox");
+  if (!box) return;
+  // 观察者是「跟随窗格尺寸」的增强，拿不到就算了（render 绝不能因为环境缺 API 而抛错）。
+  // Obsidian 桌面/移动端都有 ResizeObserver，这里的守卫是给离线冒烟等非浏览器环境留的。
+  if (!zoomObservers.has(root) && typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => {
+      const z = Number(root.dataset.mwZoom ?? "1") || 1;
+      applyZoomBoxSize(root, box, z);
+    });
+    ro.observe(root);
+    zoomObservers.set(root, ro);
+  }
+  applyZoomBoxSize(root, box, scale);
+}
+
+/** 视图关闭时断开观察者（视图会被反复创建，不清理会攒住已废弃的根节点） */
+export function disposeZoomBox(root: HTMLElement): void {
+  const ro = zoomObservers.get(root);
+  if (ro) {
+    ro.disconnect();
+    zoomObservers.delete(root);
+  }
+}
+
 /** 显示当前缩放的小提示（复用同一个元素，1.2s 后淡出） */
 export function showZoomToast(host: HTMLElement, scale: number): void {
   let toast = host.querySelector<HTMLElement>(".mw-zoomtoast");

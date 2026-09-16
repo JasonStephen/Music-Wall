@@ -32,6 +32,28 @@
   }
   #result .ok { color: #8fd98f; }
   #result .bad { color: #ff9090; }
+
+  /* 模拟主题给 .view-content 加的内边距（第五轮 A4：「留白」的根因）。
+     wall-edges 场景会打开它，验证播放器根节点同样把外边距/内边距归零。 */
+  body.mw-viewpad .view-content {
+    padding: 12px 12px 32px;
+  }
+
+  /* 模拟 Obsidian 的模态层（真实环境由 Obsidian 基础样式提供） */
+  .modal-container {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .modal {
+    position: relative;
+    width: 100%; max-width: 560px;
+    padding: 20px 22px;
+    border-radius: 12px;
+    background: var(--background-primary, #fff);
+    color: var(--text-normal, #222);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  }
 </style>
 </head>
 <body>

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <title>svg-data-uri</title>
+  </head>
+  <body>
+    <div id="result"></div>
+    <script>
+      const box = document.getElementById("result");
+      const enc = encodeURIComponent;
+      const cases = {
+        "gf 同款（utf8，无 param）":
+          "data:image/svg+xml;utf8," +
+          enc('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="#5b6ee1"/></svg>'),
+        "带 data-param": 
+          "data:image/svg+xml;utf8," +
+          enc('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" data-param="800y800"><rect width="600" height="600" fill="#5b6ee1"/></svg>'),
+        "charset=utf-8 + data-param":
+          "data:image/svg+xml;charset=utf-8," +
+          enc('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" data-param="800y800"><rect width="600" height="600" fill="#5b6ee1"/></svg>'),
+        "带 desc 注释式 param":
+          "data:image/svg+xml;utf8," +
+          enc('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><desc>param=800y800</desc><rect width="600" height="600" fill="#5b6ee1"/></svg>'),
+        "尾部 #param=800y800 片段":
+          "data:image/svg+xml;utf8," +
+          enc('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#5b6ee1"/></svg>') +
+          "#param=800y800",
+      };
+      const done = [];
+      const run = (name, url) =>
+        new Promise((res) => {
+          const img = new Image();
+          img.onload = () => {
+            done.push("OK   " + name + " " + img.naturalWidth + "x" + img.naturalHeight);
+            res();
+          };
+          img.onerror = () => {
+            done.push("ERR  " + name);
+            res();
+          };
+          img.src = url;
+          setTimeout(() => res(), 1200);
+        });
+      (async () => {
+        for (const [n, u] of Object.entries(cases)) await run(n, u);
+        box.textContent = done.join(" | ");
+        document.title = done.join(" | ");
+      })();
+    </script>
+  </body>
+</html>

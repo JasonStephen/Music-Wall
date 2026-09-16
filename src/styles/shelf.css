@@ -679,8 +679,10 @@
   color: #fff5e6;
 }
 
-/* ---- 窄容器（分屏/手机）：禁用 3D，上下堆叠 ---- */
-@container mw-stage (max-width: 640px) {
+/* ---- 窄容器（分屏/手机）：禁用 3D，上下堆叠。
+   容器是**缩放盒**（mw-pane）而不是 .mw-stage：开盒 overlay 挂在缩放盒上，
+   已经不是 stage 的后代了（见 base.css 的 container 说明）。宽度同值，阈值不变。 ---- */
+@container mw-pane (max-width: 640px) {
   .mw-shelf-detail {
     perspective: none;
   }
@@ -800,11 +802,38 @@
   user-select: none;
 }
 .mw-shelf-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 14px;
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s;
+}
+/* 图标占位与原生菜单一致：没有图标的项（如「移动到分组…」以外的自绘项）不缩进 */
+.mw-shelf-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: #c9b79a;
+}
+.mw-shelf-menu__icon svg {
+  width: 15px;
+  height: 15px;
+}
+.mw-shelf-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 分隔线（对应原生菜单的 addSeparator） */
+.mw-shelf-menu__sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(255, 226, 180, 0.16);
 }
 /* 小标题行（如「移动到分组」）：不可点，只做分节标签 */
 .mw-shelf-menu__heading {

@@ -104,13 +104,22 @@ function makeData(count: number) {
   };
 }
 
+/**
+ * 落盘记录：vault.modify 的每次写入都推进这里。
+ * 「拖动实时保存」这类断言必须看到真实写入，不能只看内存里的 data。
+ */
+const WRITE_LOG: string[] = [];
+
 function makeApp() {
   return {
     vault: {
       on: () => ({}),
       getAbstractFileByPath: () => null,
       read: async () => "{}",
-      modify: async () => undefined,
+      modify: async (_f: unknown, text: string) => {
+        WRITE_LOG.push(String(text));
+        return undefined;
+      },
     },
     workspace: { on: () => ({}), getLeavesOfType: () => [], revealLeaf() {} },
     fileManager: { renameFile: async () => undefined },
@@ -192,9 +201,13 @@ function makePlugin() {
     firstPlayerView: () => null,
     addToPlayer() {},
     // 缩放：产品把它们放在插件实例上（缩放变量写在 body 上，两个视图共享）
+    // openViews 是 e2e 侧的最小替身：产品 applyZoom 会遍历已打开的视图并
+    // 让它们重算缩放盒像素尺寸（见 src/ui/zoom.ts syncZoomBox），这里照做
+    openViews: [] as { syncZoomBox?: () => void }[],
     applyZoom() {
       const scale = this.settings.zoomScale ?? 1;
       document.body.style.setProperty("--mw-zoom", String(scale));
+      for (const v of this.openViews) v.syncZoomBox?.();
     },
     async saveZoom(scale: number) {
       this.settings.zoomScale = scale;
@@ -264,6 +277,41 @@ async function caseBootHold(): Promise<void> {
 /** 开盒完成后：盘面切换交互 + 图标钮硬重置（对抗注入的 Obsidian 默认按钮样式） */
 async function caseSwap(): Promise<void> {
   await openAndWait(7);
+  // 遮罩必须盖住**整个窗格**（含顶栏那一条）：
+  // overlay 原来挂在 .mw-stage 里，inset:0 只到「顶栏以下」，用户看到顶栏那一条
+  // 露在黑底之上（「背景黑色没能覆盖全屏」）。现在挂在缩放盒上。
+  const rootRect = view.contentEl.getBoundingClientRect();
+  const scrimRect = detailEl()
+    .querySelector<HTMLElement>(".mw-gf__scrim")!
+    .getBoundingClientRect();
+  const covers = (a: number, b: number) => Math.abs(a - b) <= 1.5;
+  result(
+    covers(scrimRect.top, rootRect.top) &&
+      covers(scrimRect.left, rootRect.left) &&
+      covers(scrimRect.width, rootRect.width) &&
+      covers(scrimRect.height, rootRect.height),
+    "开盒遮罩盖满整个窗格（含顶栏）",
+    {
+      scrim: [Math.round(scrimRect.left), Math.round(scrimRect.top), Math.round(scrimRect.width), Math.round(scrimRect.height)],
+      root: [Math.round(rootRect.left), Math.round(rootRect.top), Math.round(rootRect.width), Math.round(rootRect.height)],
+    }
+  );
+  // 顶栏图标必须被遮罩压在下面（点它等于关详情，不能穿过去点到按钮）
+  const iconHit = Array.from(
+    view.contentEl.querySelectorAll<HTMLElement>(".mw-toolbar .mw-toolbtn")
+  ).map((b) => {
+    const r = b.getBoundingClientRect();
+    const el = document.elementFromPoint(
+      Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1),
+      Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1)
+    ) as HTMLElement | null;
+    return String(el?.className ?? el?.tagName ?? "null");
+  });
+  result(
+    iconHit.every((c) => c.includes("mw-gf__scrim")),
+    "顶栏图标在遮罩之下（不会被穿透点中）",
+    iconHit.join(" | ")
+  );
   const faces = document.querySelectorAll<HTMLElement>(".mw-gf__discface");
   result(faces.length === 2, "双盘面就绪", faces.length);
   const btns = document.querySelectorAll<HTMLElement>(".mw-gf__swap button");
@@ -597,15 +645,33 @@ async function caseTotalDur(): Promise<void> {
 
 /** 私有成员的测试视图口（e2e 需要直接读 data / 驱动抽屉） */
 interface AnyView {
-  data: unknown;
+  data: {
+    items: { albumId: number; groupId?: string }[];
+    order?: number[];
+    groups?: { id: string; name: string; collapsed?: boolean }[];
+    ungroupedCollapsed?: boolean;
+    layout?: string;
+    view?: { sortMode?: string; sortAsc?: boolean };
+  };
+  q: string;
+  sortMode: string;
+  sortAsc: boolean;
+  editMode: boolean;
   drawer: {
     open(k: string): void;
     close(): void;
     isOpen(): boolean;
     currentKey(): string | null;
   } | null;
+  floater: {
+    open(k: string): void;
+    close(): void;
+    isOpen(): boolean;
+    currentKey(): string | null;
+  } | null;
   enterEditMode(): void;
-  exitEditMode(revert?: boolean): void;
+  exitEditMode(): void;
+  pickGroupFor(item: unknown): void;
 }
 
 const anyViewOf = (v: MusicWallView): AnyView => v as unknown as AnyView;
@@ -1162,7 +1228,7 @@ async function caseManualOrder(): Promise<void> {
     "编辑态自动切到手动排序"
   );
 
-  // 编辑态内原生拖拽：把 1 拖到 3 之前
+  // 编辑态内原生拖拽：把 1 拖到 3 之前（第五轮起**实时生效**：落点即写数据 + 落盘）
   const info = await nativeDrag(cardOf(1), cardOf(3), (r) => ({ x: r.left + 6, y: r.top + r.height / 2 }));
   result(info.overPrevented, "编辑态：本墙接收拖拽（dragover 被 preventDefault）", info);
   result(orderOf().join(",") === "2,1,3,4,5,6", "拖拽换位写回 order", orderOf().join(","));
@@ -1170,14 +1236,27 @@ async function caseManualOrder(): Promise<void> {
     document.querySelectorAll<HTMLElement>(".mw-section__cards .mw-card")
   ).map((el) => el.dataset.mwAlbum);
   result(domOrder.join(",") === "2,1,3,4,5,6", "DOM 顺序与 order 一致", domOrder.join(","));
-
-  // 取消：恢复到进入编辑态时的顺序
-  document.querySelectorAll<HTMLButtonElement>(".mw-editbar__btn")[1].click();
-  await wait(200);
-  result(orderOf().join(",") === "1,2,3,4,5,6", "取消还原为编辑前的顺序", orderOf().join(","));
+  // 第五轮 A2 的核心：落点即写盘（还在编辑态里就已经保存，不需要点「完成」）
+  const persisted = WRITE_LOG.filter((t) => t.includes('"order"')).at(-1) ?? "";
   result(
-    !document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-    "取消后退出编辑态"
+    persisted.includes("2,") && persisted.includes("1,"),
+    "拖拽后立即写盘（编辑态未退出）",
+    persisted.slice(persisted.indexOf('"order"'), persisted.indexOf('"order"') + 40)
+  );
+
+  // 第五轮 A2：编辑条只有一个 ✓ 图标，没有「完成 / 取消」两个按钮，也没有回滚路径
+  const barBtns = Array.from(document.querySelectorAll<HTMLElement>(".mw-editbar button"));
+  result(barBtns.length === 1, "编辑条只有一个按钮", barBtns.length);
+  result(
+    barBtns[0]?.classList.contains("mw-editbar__done") === true &&
+      !!barBtns[0]?.querySelector("svg"),
+    "该按钮是 ✓ 图标（不是文字按钮）",
+    barBtns[0]?.className
+  );
+  result(
+    !/\b取消\b/.test(document.querySelector(".mw-editbar")?.textContent ?? ""),
+    "编辑条不再有「取消」入口",
+    document.querySelector(".mw-editbar")?.textContent
   );
 
   // 触屏：长按 350ms 后走指针拖拽（HTML5 DnD 在触屏不可用）
@@ -1188,18 +1267,24 @@ async function caseManualOrder(): Promise<void> {
   );
   result(orderOf().join(",") === "2,1,3,4,5,6", "触屏指针拖拽换位生效", orderOf().join(","));
 
-  // 完成按钮
+  // ✓ 退出编辑态：顺序保持（改动是实时保存的，不存在「还原」）
   anyView.enterEditMode();
   await wait(120);
-  document.querySelectorAll<HTMLButtonElement>(".mw-editbar__btn")[0].click();
-  await wait(200);
+  document.querySelector<HTMLButtonElement>(".mw-editbar__done")!.click();
+  await wait(220);
   result(
     !document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-    "「完成」退出编辑态"
+    "点 ✓ 退出编辑态"
+  );
+  result(!document.querySelector(".mw-editbar"), "退出后编辑条移除");
+  result(
+    orderOf().join(",") === "2,1,3,4,5,6",
+    "退出后顺序保持（实时保存，无回滚）",
+    orderOf().join(",")
   );
   result(
     ((anyView.data as { view?: { sortMode?: string } }).view?.sortMode ?? "") === "manual",
-    "完成后保留手动排序模式"
+    "退出后保留手动排序模式"
   );
 }
 
@@ -1253,7 +1338,7 @@ async function caseDragGate(): Promise<void> {
     ),
     "仅 dragover 不会误落库"
   );
-  anyView.exitEditMode(true);
+  anyView.exitEditMode();
   await wait(120);
 
   // 长按抖动容差：移动 20px 视为不是长按
@@ -1312,13 +1397,13 @@ async function caseGroupMenus(): Promise<void> {
   const wallMenu = MENU_LOG.at(-1)?.items.map((i) => i.title) ?? [];
   result(wallMenu.includes("新建分组…"), "墙右键菜单可新建分组", wallMenu.join("|"));
   result(
-    wallMenu.includes("展开全部分组") && wallMenu.includes("收起全部分组"),
+    wallMenu.includes("展开全部分区") && wallMenu.includes("收起全部分区"),
     "墙右键菜单含展开/收起全部",
     wallMenu.join("|")
   );
 
   // 收起全部 → 所有分区收起且不再渲染卡片
-  MENU_LOG.at(-1)!.items.find((i) => i.title === "收起全部分组")!.run!();
+  MENU_LOG.at(-1)!.items.find((i) => i.title === "收起全部分区")!.run!();
   await wait(200);
   const collapsed = Array.from(document.querySelectorAll<HTMLElement>(".mw-section")).every(
     (s) => s.classList.contains("is-collapsed")
@@ -1347,7 +1432,7 @@ async function caseGroupMenus(): Promise<void> {
     "分组头右键菜单含重命名/删除",
     headMenu.join("|")
   );
-  MENU_LOG.at(-1)!.items.find((i) => i.title === "展开全部分组")!.run!();
+  MENU_LOG.at(-1)!.items.find((i) => i.title === "展开全部分区")!.run!();
   await wait(200);
   result(
     document.querySelectorAll(".mw-card").length === 6,
@@ -1737,11 +1822,81 @@ async function caseZoom(): Promise<void> {
   });
   modal.open();
   await wait(150);
-  const modalEl = document.querySelector<HTMLElement>(".mw-modal-zoom .modal");
+  // 模态框一起缩放。
+  // 注意选择器：真实 Obsidian 里 modalEl 自己就是 .modal（类挂在它身上），
+  // 因此 `.mw-modal-zoom .modal`（后代）与 `.modal.mw-modal-zoom`（自身）都要能命中——
+  // 只写后代选择器在真机上匹配不到，弹窗缩放会形同虚设（本轮已修）。
+  const modalEl =
+    document.querySelector<HTMLElement>(".modal.mw-modal-zoom") ??
+    document.querySelector<HTMLElement>(".mw-modal-zoom .modal");
   result(!!modalEl, "模态框挂上了缩放作用域类");
   const mr2 = modalEl!.getBoundingClientRect();
   result(mr2.width > 560 * 1.5, "模态框随 200% 一起放大", Math.round(mr2.width));
+  // 自身带类时样式必须真的生效（transform 与实际尺寸一致）
+  const scaleApplied = getComputedStyle(modalEl!).transform;
+  result(
+    scaleApplied !== "none" && !scaleApplied.startsWith("matrix(1,"),
+    "模态框的缩放 transform 真实生效",
+    scaleApplied
+  );
   modal.close();
+
+  // 兜底回归（第六轮 B1）：把 CSS 的 `calc(100% / var(--mw-zoom))` 反除补偿
+  // 「人为打掉」——这正是用户环境里的现象（补偿静默退化成 auto）：
+  //   width: auto ⇒ 铺满窗格宽度再被 scale 压成 90% ⇒ 右侧一条空白
+  //   height: auto ⇒ 内容高度再被压低 ⇒ 底部一大片空白
+  // 断言：JS 写死的像素尺寸必须仍然让缩放盒精确等于窗格（右侧/底部无留白）。
+  // 注意这里**不能加 !important**：真实的 calc 失效是「声明被丢弃」，
+  // 不会去压行内样式；加了 !important 反而会连行内兜底一起压掉（测出假失败）。
+  {
+    const broken = document.createElement("style");
+    broken.id = "mw-break-zoombox";
+    broken.textContent = ".mw-zoombox{width:auto;height:auto}";
+    document.head.appendChild(broken);
+    plugin.settings.zoomScale = 0.9;
+    plugin.applyZoom();
+    await wait(160);
+    const pane = root.getBoundingClientRect();
+    const zb = document.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect();
+    result(
+      Math.abs(zb.width - pane.width) <= 2 && Math.abs(zb.height - pane.height) <= 2,
+      "90%：CSS 反除补偿失效时仍由 JS 像素尺寸兜底铺满（无右/下留白）",
+      {
+        pane: [Math.round(pane.width), Math.round(pane.height)],
+        zoombox: [Math.round(zb.width), Math.round(zb.height)],
+        inline: [
+          (document.querySelector<HTMLElement>(".mw-zoombox") as HTMLElement).style.width,
+          (document.querySelector<HTMLElement>(".mw-zoombox") as HTMLElement).style.height,
+        ],
+      }
+    );
+    // 四角命中：内容（网格/缩放盒）必须覆盖窗格右下角
+    const probe = document.elementFromPoint(
+      Math.min(pane.right - 4, window.innerWidth - 4),
+      Math.min(pane.bottom - 4, window.innerHeight - 4)
+    );
+    result(
+      !!probe && root.contains(probe),
+      "90%：补偿失效时窗格右下角仍落在视图内",
+      probe ? String((probe as HTMLElement).className || probe.tagName) : "null"
+    );
+    // 同一个失效条件下切到「展示架」再验一次：用户报的就是展示架布局的右/下留白
+    await resetView(gridData({ layout: "shelf" }));
+    plugin.settings.zoomScale = 0.9;
+    plugin.applyZoom();
+    await wait(200);
+    const zbShelf = document.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect();
+    result(
+      Math.abs(zbShelf.width - pane.width) <= 2 && Math.abs(zbShelf.height - pane.height) <= 2,
+      "90%：展示架布局同样由 JS 兜底铺满（无右/下留白）",
+      {
+        pane: [Math.round(pane.width), Math.round(pane.height)],
+        zoombox: [Math.round(zbShelf.width), Math.round(zbShelf.height)],
+      }
+    );
+    broken.remove();
+    await resetView(gridData());
+  }
 
   plugin.settings.zoomScale = 1;
   plugin.applyZoom();
@@ -2403,13 +2558,12 @@ async function caseInteractionWalk(): Promise<void> {
   const barRect = document.querySelector<HTMLElement>(".mw-editbar")!.getBoundingClientRect();
   const tbRect = document.querySelector<HTMLElement>(".mw-toolbar")!.getBoundingClientRect();
   result(barRect.bottom <= tbRect.top + 1, "编辑条不压工具栏");
-  const doneBtn = Array.from(
-    root.querySelectorAll<HTMLElement>(".mw-editbar .mw-editbar__btn")
-  ).find((b) => b.textContent === "完成")!;
-  clickable(doneBtn, "完成按钮");
+  const doneBtn = root.querySelector<HTMLElement>(".mw-editbar__done")!;
+  result(!!doneBtn?.querySelector("svg"), "编辑条只有 ✓ 图标（第五轮 A2）");
+  clickable(doneBtn, "完成图标");
   doneBtn.click();
   await wait(280);
-  result(anyV.editMode === false, "点「完成」退出编辑");
+  result(anyV.editMode === false, "点 ✓ 退出编辑");
   result(!root.querySelector(".mw-editbar"), "编辑条已移除");
   // ④ 卡片右键 → 移动到分组… → 模态框选择
   MENU_LOG.length = 0;
@@ -2455,6 +2609,825 @@ async function caseInteractionWalk(): Promise<void> {
   result(steps.every((s) => s.endsWith("ok")), "收尾命中检查", steps.join(" "));
 }
 
+/**
+ * 第五轮 A1：未分组分区也要能收起。
+ *
+ * 它没有 WallGroup 记录，状态存在 data.ungroupedCollapsed 上；
+ * 此前 toggleGroup 只查 data.groups，于是未分组的分组头箭头点了没反应。
+ */
+async function caseUngroupedCollapse(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 2 ? "g1" : i < 4 ? "g2" : undefined,
+      })),
+    })
+  );
+  const anyV = anyViewOf(view);
+  const sections = () => Array.from(document.querySelectorAll<HTMLElement>(".mw-section"));
+  const ungrouped = (): HTMLElement => {
+    const el = sections().find((s) => s.dataset.mwGroup === "");
+    if (!el) throw new Error("找不到未分组分区");
+    return el;
+  };
+  result(sections().length === 3, "三个分区：两个分组 + 未分组", sections().length);
+  const head = ungrouped().querySelector<HTMLElement>(".mw-section__head")!;
+  result(!!head, "未分组分区有分组头（可操作）");
+  result(
+    !head.querySelector(".mw-section__actions button"),
+    "未分组分区没有重命名/删除按钮（它不是一个分组）"
+  );
+  const cardsBefore = ungrouped().querySelectorAll("[data-mw-album]").length;
+  result(cardsBefore === 2, "未分组分区里有两张唱片", cardsBefore);
+
+  // 点分组头箭头 → 收起
+  head.querySelector<HTMLElement>(".mw-section__chevron")!.click();
+  await wait(220);
+  result(anyV.data.ungroupedCollapsed === true, "点箭头后写入 ungroupedCollapsed");
+  const collapsed = ungrouped();
+  result(collapsed.classList.contains("is-collapsed"), "分区进入收起态（类名）");
+  result(
+    collapsed.querySelectorAll("[data-mw-album]").length === 0,
+    "收起后不再渲染卡片",
+    collapsed.querySelectorAll("[data-mw-album]").length
+  );
+  result(
+    WRITE_LOG.some((t) => t.includes("ungroupedCollapsed")),
+    "收起状态落盘（重开保持）"
+  );
+  // 其余分组不受影响
+  result(
+    sections()[0].classList.contains("is-collapsed") === false,
+    "收起未分组不影响其它分组"
+  );
+
+  // 再点一次 → 展开
+  ungrouped().querySelector<HTMLElement>(".mw-section__chevron")!.click();
+  await wait(220);
+  result(
+    anyV.data.ungroupedCollapsed === undefined &&
+      ungrouped().querySelectorAll("[data-mw-album]").length === 2,
+    "再点箭头展开（缺省值不落盘）"
+  );
+
+  // 「收起全部分区」也要带上未分组
+  const menuHead = ungrouped().querySelector<HTMLElement>(".mw-section__head")!;
+  MENU_LOG.length = 0;
+  const hr = menuHead.getBoundingClientRect();
+  menuHead.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: hr.left + 30,
+      clientY: hr.top + 6,
+    })
+  );
+  await wait(120);
+  const menu = MENU_LOG.at(-1);
+  const titles = menu?.items.map((i) => i.title).join("|") ?? "";
+  result(titles.includes("收起本组"), "未分组头右键菜单有「收起本组」", titles);
+  result(!titles.includes("重命名") && !titles.includes("删除"), "菜单里没有重命名/删除", titles);
+  menu?.items.find((i) => i.title === "收起全部分区")?.run?.();
+  await wait(250);
+  result(
+    anyV.data.ungroupedCollapsed === true &&
+      sections().every((s) => s.classList.contains("is-collapsed")),
+    "「收起全部分区」未分组一起收起"
+  );
+  menu?.items.find((i) => i.title === "展开全部分区")?.run?.();
+  await wait(250);
+  result(
+    anyV.data.ungroupedCollapsed === undefined &&
+      sections().every((s) => !s.classList.contains("is-collapsed")),
+    "「展开全部分区」未分组一起展开"
+  );
+}
+
+/**
+ * 第五轮 A3：展示架布局的右键菜单必须是自绘木质菜单。
+ * 原生 Menu 是「白底圆角 + 主题紫高亮」，在木墙上是另一套语言。
+ */
+async function caseShelfMenus(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  await wait(220);
+  const woodMenu = () => document.querySelector<HTMLElement>(".mw-shelf-menu");
+  const rightClick = async (el: HTMLElement, dx = 6, dy = 6): Promise<void> => {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: r.left + dx,
+        clientY: r.top + dy,
+      })
+    );
+    await wait(150);
+  };
+
+  // ① 卡片菜单
+  MENU_LOG.length = 0;
+  await rightClick(document.querySelector<HTMLElement>(".mw-shelf-card")!);
+  const cardMenu = woodMenu();
+  result(!!cardMenu, "展示架：卡片右键弹出木质菜单");
+  result(MENU_LOG.length === 0, "展示架：没有再弹原生菜单", MENU_LOG.length);
+  if (cardMenu) {
+    const cs = getComputedStyle(cardMenu);
+    const bg = parseRgb(cs.backgroundColor);
+    // 木质底是一组渐变（background 简写），backgroundColor 因此是透明的：
+    // 真正要看的是「有没有铺木纹渐变」，以及不是主题的白底
+    result(
+      cs.backgroundImage.includes("gradient"),
+      "菜单铺的是木纹渐变底（不是主题白底）",
+      cs.backgroundImage.slice(0, 48)
+    );
+    result(bg[3] === 0 || (bg[0] < 120 && bg[0] >= bg[2]), "菜单底色不是亮色", cs.backgroundColor);
+    const purple = /#7c5cff|124,\s*92,\s*255|rgb\(124, 92, 255\)/i.test(
+      cs.backgroundImage + cs.backgroundColor
+    );
+    result(!purple, "菜单里没有主题紫");
+    const items = Array.from(cardMenu.querySelectorAll<HTMLElement>(".mw-shelf-menu__item"));
+    result(items.length >= 5, "菜单项齐全", items.map((i) => i.textContent).join("|"));
+    result(
+      items.every((i) => !!i.querySelector(".mw-shelf-menu__icon svg")),
+      "每一项都有图标（与原生菜单观感一致）",
+      items.filter((i) => !i.querySelector(".mw-shelf-menu__icon svg")).length
+    );
+    const r = cardMenu.getBoundingClientRect();
+    result(
+      r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight,
+      "菜单整体在视口内",
+      [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]
+    );
+    // 命中检查：菜单不能被别的层盖住
+    const hit = document.elementFromPoint(r.left + 10, r.top + 10) as HTMLElement | null;
+    result(!!hit && cardMenu.contains(hit), "菜单可点（没有被覆盖层挡住）", String(hit?.className));
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    await wait(120);
+    result(!woodMenu(), "点外部关闭菜单");
+  }
+
+  // ② 分组头菜单
+  MENU_LOG.length = 0;
+  const headEl = document.querySelector<HTMLElement>('.mw-section[data-mw-group="g1"] .mw-section__head')!;
+  await rightClick(headEl, 40, 8);
+  const groupMenu = woodMenu();
+  result(!!groupMenu, "展示架：分组头右键也是木质菜单");
+  const groupTitles = Array.from(
+    groupMenu?.querySelectorAll<HTMLElement>(".mw-shelf-menu__item") ?? []
+  ).map((i) => i.textContent ?? "");
+  result(groupTitles.includes("重命名分组…"), "分组菜单有重命名", groupTitles.join("|"));
+  result(groupTitles.includes("删除分组…"), "分组菜单有删除");
+  result(
+    (groupMenu?.querySelectorAll(".mw-shelf-menu__sep").length ?? 0) >= 2,
+    "分隔线渲染出来了（对应原生菜单的 addSeparator）",
+    groupMenu?.querySelectorAll(".mw-shelf-menu__sep").length
+  );
+  const collapseItem = Array.from(
+    groupMenu?.querySelectorAll<HTMLElement>(".mw-shelf-menu__item") ?? []
+  ).find((i) => i.textContent === "收起本组");
+  result(!!collapseItem, "分组菜单有「收起本组」");
+  collapseItem?.click();
+  await wait(250);
+  result(
+    document
+      .querySelector<HTMLElement>('.mw-section[data-mw-group="g1"]')!
+      .classList.contains("is-collapsed"),
+    "点木质菜单项真的收起分组"
+  );
+
+  // ③ 墙空白菜单
+  MENU_LOG.length = 0;
+  const gridEl = document.querySelector<HTMLElement>(".mw-grid")!;
+  const gr = gridEl.getBoundingClientRect();
+  gridEl.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: gr.right - 30,
+      clientY: gr.bottom - 30,
+    })
+  );
+  await wait(150);
+  const blankMenu = woodMenu();
+  result(!!blankMenu, "展示架：墙空白右键也是木质菜单");
+  const blankTitles = Array.from(
+    blankMenu?.querySelectorAll<HTMLElement>(".mw-shelf-menu__item") ?? []
+  ).map((i) => i.textContent ?? "");
+  result(blankTitles.includes("新建分组…"), "空白菜单有新建分组", blankTitles.join("|"));
+  result(
+    blankTitles.includes("收起全部分区") && blankTitles.includes("展开全部分区"),
+    "空白菜单有整体展开/收起"
+  );
+  document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  await wait(120);
+
+  // ④ 网格布局仍然是原生菜单（不越界改皮肤）
+  await resetView(gridData({ groups: [{ id: "g1", name: "组一" }] }));
+  MENU_LOG.length = 0;
+  await rightClick(document.querySelector<HTMLElement>(".mw-card[data-mw-album]")!);
+  result(MENU_LOG.length === 1 && !woodMenu(), "网格布局：仍是原生菜单", MENU_LOG.length);
+  document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  await wait(100);
+}
+
+/**
+ * 第五轮 A3：展示架布局的模态框换成木质皮肤（弹窗挂在 body 上，拿不到墙的 token）。
+ * 同时确认「移动到分组」是模态选择框，而不是把分组列表塞进菜单（B3）。
+ */
+async function caseShelfModalTheme(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [
+        { id: "g1", name: "组一" },
+        { id: "g2", name: "组二" },
+      ],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  await wait(220);
+  const card = document.querySelector<HTMLElement>(".mw-shelf-card")!;
+  const r = card.getBoundingClientRect();
+  card.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: r.left + 6,
+      clientY: r.top + 6,
+    })
+  );
+  await wait(150);
+  const menu = document.querySelector<HTMLElement>(".mw-shelf-menu")!;
+  const labels = Array.from(menu.querySelectorAll<HTMLElement>(".mw-shelf-menu__item")).map(
+    (i) => i.textContent ?? ""
+  );
+  // B3：菜单里只应有「移动到分组…」一项，而不是把全部分组平铺出来
+  result(labels.includes("移动到分组…"), "菜单有「移动到分组…」", labels.join("|"));
+  result(
+    !labels.some((t) => t === "组一" || t === "组二" || t.startsWith("未分组")),
+    "菜单里不再平铺分组列表（B3）",
+    labels.join("|")
+  );
+  const pick = Array.from(menu.querySelectorAll<HTMLElement>(".mw-shelf-menu__item")).find((i) =>
+    (i.textContent ?? "").startsWith("移动到分组")
+  )!;
+  pick.click();
+  await wait(250);
+  const modal = document.querySelector<HTMLElement>(".modal.mw-modal--shelf")!;
+  result(!!modal, "弹出的是模态选择框，并带上展示架皮肤");
+  result(!document.querySelector(".mw-shelf-menu"), "选完菜单已关闭");
+  if (modal) {
+    const cs = getComputedStyle(modal);
+    // 木质底是渐变（background 简写）⇒ backgroundColor 透明，要看渐变本身
+    result(
+      cs.backgroundImage.includes("gradient"),
+      "弹窗铺的是木色渐变（不是主题白底）",
+      cs.backgroundImage.slice(0, 48)
+    );
+    const bg = parseRgb(cs.backgroundColor);
+    result(bg[3] === 0 || (bg[0] < 120 && bg[0] >= bg[2]), "弹窗底色不是亮色", cs.backgroundColor);
+    const accent = getComputedStyle(modal).getPropertyValue("--interactive-accent").trim();
+    result(accent.toLowerCase() === "#d9a24a", "弹窗内强调色是琥珀（不是主题紫）", accent);
+    const row = modal.querySelector<HTMLElement>(".mw-picker__row")!;
+    result(!!row, "选择框列出分组");
+    const rowTxt = getComputedStyle(row).color;
+    result(parseRgb(rowTxt)[0] > 150, "选项文字是暖浅色", rowTxt);
+    result(
+      contrast(parseRgb(rowTxt), [0x2a, 0x1f, 0x16]) >= 3,
+      "弹窗正文与木色底对比度 ≥ 3",
+      { fg: rowTxt, bg: "#2a1f16", contrast: Math.round(contrast(parseRgb(rowTxt), [0x2a, 0x1f, 0x16]) * 100) / 100 }
+    );
+    const btn = modal.querySelector<HTMLElement>("button");
+    if (btn) {
+      const bcs = getComputedStyle(btn);
+      const bb = parseRgb(bcs.backgroundColor);
+      result(
+        !(bb[0] > 225 && bb[1] > 225 && bb[2] > 225),
+        "弹窗按钮不是主题白底药丸",
+        bcs.backgroundColor
+      );
+    }
+    // 选中一个目标分组：真的能移动
+    const rows = Array.from(modal.querySelectorAll<HTMLElement>(".mw-picker__row"));
+    rows[2]?.click();
+    await wait(300);
+    const data = anyViewOf(view).data as { items: { albumId: number; groupId?: string }[] };
+    result(
+      data.items.some((i) => i.groupId === "g2" && i.albumId === 1),
+      "选择后归属变更（组二）",
+      JSON.stringify(data.items.map((i) => [i.albumId, i.groupId]))
+    );
+  }
+  // 默认皮肤：网格布局下弹窗不带展示架类
+  await resetView(gridData({ groups: [{ id: "g1", name: "组一" }] }));
+  anyViewOf(view).pickGroupFor?.((anyViewOf(view).data as { items: unknown[] }).items[0]);
+  await wait(200);
+  result(
+    !!document.querySelector(".modal:not(.mw-modal--shelf)") &&
+      !document.querySelector(".modal.mw-modal--shelf"),
+    "网格布局：弹窗保持默认皮肤"
+  );
+  document.querySelector<HTMLElement>(".modal-container")?.remove();
+  await wait(100);
+}
+
+/**
+ * 第五轮 A4：窗格四周不能再有留白。
+ *
+ * 主题（Perspective）给 .view-content 加了 padding: 12px 12px 32px，
+ * 而 .view-content 就是我们的 .mw-view 根 —— 那圈内边距就是用户反复指的「留白」。
+ * 这里打开模拟内边距，验证：根节点 padding/margin 归零、顶栏左缘与网格右缘顶到窗格边。
+ */
+async function caseWallEdges(): Promise<void> {
+  const root = view.contentEl;
+  document.body.classList.add("mw-viewpad");
+  try {
+    for (const layout of ["grid", "shelf"] as const) {
+      await resetView(gridData({ layout: layout === "grid" ? undefined : layout }));
+      await wait(260);
+      const cs = getComputedStyle(root);
+      const pads = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft];
+      const margins = [cs.marginTop, cs.marginRight, cs.marginBottom, cs.marginLeft];
+      result(
+        pads.every((p) => p === "0px"),
+        `${layout}：根节点内边距为 0（主题的 12px/32px 留白被压掉）`,
+        pads.join("|")
+      );
+      result(
+        margins.every((m) => m === "0px"),
+        `${layout}：根节点外边距为 0`,
+        margins.join("|")
+      );
+      const rr = root.getBoundingClientRect();
+      const box = root.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect();
+      result(
+        Math.abs(box.left - rr.left) < 2 && Math.abs(box.right - rr.right) < 2,
+        `${layout}：缩放盒左右都顶到窗格边`,
+        { box: [Math.round(box.left), Math.round(box.right)], root: [Math.round(rr.left), Math.round(rr.right)] }
+      );
+      const toolbar = root.querySelector<HTMLElement>(".mw-toolbar")!.getBoundingClientRect();
+      result(
+        Math.abs(toolbar.left - rr.left) < 2,
+        `${layout}：顶栏左缘与窗格左缘对齐`,
+        { toolbar: Math.round(toolbar.left), root: Math.round(rr.left) }
+      );
+      const gridEl = root.querySelector<HTMLElement>(".mw-grid")!.getBoundingClientRect();
+      result(
+        Math.abs(gridEl.right - rr.right) < 2,
+        `${layout}：网格右缘与窗格右缘对齐（右侧没有空带）`,
+        { grid: Math.round(gridEl.right), root: Math.round(rr.right) }
+      );
+      // 呼吸感必须由内部提供：网格自己要有左右内边距
+      const gcs = getComputedStyle(root.querySelector<HTMLElement>(".mw-grid")!);
+      result(
+        parseFloat(gcs.paddingLeft) >= 12 && parseFloat(gcs.paddingBottom) >= 24,
+        `${layout}：内部保留左右与底部内边距（留白搬到里面）`,
+        `${gcs.paddingLeft}/${gcs.paddingBottom}`
+      );
+      // 四角探针：不能命中窗格底下的东西（内容真的铺满了）
+      const probes: [number, number][] = [
+        [rr.left + 3, rr.top + 3],
+        [rr.right - 3, rr.top + 3],
+        [rr.left + 3, rr.bottom - 3],
+        [rr.right - 3, rr.bottom - 3],
+      ];
+      const hits = probes.map(([x, y]) => {
+        const el = document.elementFromPoint(
+          Math.min(Math.max(x, 2), window.innerWidth - 2),
+          Math.min(Math.max(y, 2), window.innerHeight - 2)
+        ) as HTMLElement | null;
+        return String(el?.className ?? el?.tagName ?? "null");
+      });
+      result(
+        hits.every((h) => !h.includes("body") && h !== "null"),
+        `${layout}：窗格四角都命中墙内元素（没有露出页底）`,
+        hits.join(" | ")
+      );
+    }
+  } finally {
+    document.body.classList.remove("mw-viewpad");
+  }
+}
+
+/**
+ * 第五轮 B1：面板控件必须压过真实主题（Perspective 级特异性）。
+ *
+ * 本场景临时打开 body.mw-theme-strict：输入框白底 + 白底药丸按钮 +
+ * .clickable-icon 被刷成强调色实心圆。面板里的控件都不该被它带走。
+ *
+ * 说明：无头环境无法真的把指针悬停在元素上（:hover 只由真实指针触发），
+ * 因此 hover 态通过「样式表里确实存在带 !important 的 hover 规则」来验证，
+ * 静息/聚焦态则是真实计算值。
+ */
+async function caseThemeResist(): Promise<void> {
+  document.body.classList.add("mw-theme-strict");
+  try {
+    await resetView(gridData({ layout: "shelf" }));
+    const anyV = anyViewOf(view);
+    anyV.floater.open("add");
+    await wait(300);
+    const panel = document.querySelector<HTMLElement>(".mw-drawer--float")!;
+    result(!!panel, "添加专辑悬浮框已打开");
+
+    const nearWhite = (c: string): boolean => {
+      const [r, g, b] = parseRgb(c);
+      return r > 225 && g > 225 && b > 225;
+    };
+    const isPurple = (c: string): boolean => {
+      const [r, g, b] = parseRgb(c);
+      return b > 150 && b - r > 40 && b - g > 40;
+    };
+
+    // 输入框：静息不是白的，聚焦也不是白的
+    const input = panel.querySelector<HTMLInputElement>(".mw-panel__input")!;
+    const rest = getComputedStyle(input).backgroundColor;
+    result(!nearWhite(rest), "输入框静息底色不是主题白", rest);
+    input.focus();
+    await wait(120);
+    result(!nearWhite(getComputedStyle(input).backgroundColor), "输入框聚焦底色不是主题白");
+    input.blur();
+
+    // hover 态在无头环境里无法真实触发（:hover 只由真实指针产生），
+    // 而 file:// 页面读不到 <link> 样式表的 cssRules —— 这条契约改由
+    // tools/bundlesmoke.cjs 直接读 styles.css 文本来断言（见「styles.css 静态契约」）。
+    const sheets = Array.from(document.styleSheets);
+    let readable = 0;
+    for (const s of sheets) {
+      try {
+        void s.cssRules.length;
+        readable++;
+      } catch {
+        /* 跨源样式表读不到规则（file:// 下的 <link> 就是这种） */
+      }
+    }
+    result(
+      readable > 0,
+      "至少能读到一份样式表（hover 契约的浏览器侧兜底）",
+      `${readable}/${sheets.length}`
+    );
+    const hoverRule = findRule(
+      (sel) =>
+        sel.includes(".mw-drawer") && sel.includes("mw-panel__input") && sel.includes(":hover"),
+      "background-color"
+    );
+    if (hoverRule) {
+      result(hoverRule.important === true, "输入框 hover 规则带 !important", hoverRule.value);
+    }
+
+    // × 清空钮：透明底、无圆角 —— 绝不能是主题的紫色实心圆
+    input.value = "ab";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await wait(150);
+    const clear = panel.querySelector<HTMLElement>(".mw-panel__clearicon")!;
+    const ccs = getComputedStyle(clear);
+    result(
+      ccs.backgroundColor === "rgba(0, 0, 0, 0)" || ccs.backgroundColor === "transparent",
+      "清空 × 没有底色（不是紫色实心圆）",
+      ccs.backgroundColor
+    );
+    result(!isPurple(ccs.backgroundColor), "清空 × 不是紫色", ccs.backgroundColor);
+    result(ccs.borderTopLeftRadius === "0px", "清空 × 无圆角", ccs.borderTopLeftRadius);
+
+    // 搜索按钮：走强调色（展示架 = 琥珀），而不是主题白药丸，也不是主题紫
+    // 注意：搜索行里第一个 button 是 × 清空钮（它在 field 内部），这里要取主按钮本身
+    const searchBtn = panel.querySelector<HTMLElement>(".mw-search-panel__bar .mw-btn--primary")!;
+    result(!!searchBtn, "找到搜索主按钮");
+    const sbg = getComputedStyle(searchBtn).backgroundColor;
+    const [sr, sg, sb2] = parseRgb(sbg);
+    result(!nearWhite(sbg), "搜索按钮不是主题白底", sbg);
+    result(
+      sr > 150 && sr > sb2 && sg > sb2 - 40,
+      "搜索按钮是暖琥珀（展示架强调色）",
+      sbg
+    );
+    result(!isPurple(sbg), "搜索按钮不是主题紫", sbg);
+    // 其余按钮族
+    const more = panel.querySelector<HTMLElement>(".mw-search-more");
+    if (more) {
+      result(!nearWhite(getComputedStyle(more).backgroundColor), "「加载更多」不是主题白底");
+    }
+    // 抽屉里的预设瓷砖与方向按钮
+    anyV.floater.close();
+    anyV.drawer.open("sort");
+    await wait(250);
+    const tiles = Array.from(document.querySelectorAll<HTMLElement>(".mw-drawer .mw-dirbtn"));
+    const tileBgs = tiles.map((t) => getComputedStyle(t).backgroundColor);
+    result(tileBgs.length === 2, "排序面板两个方向按钮", tileBgs.length);
+    result(!tileBgs.some(nearWhite), "方向按钮没有被刷成白底", tileBgs.join(" | "));
+    result(
+      !tileBgs.some(isPurple),
+      "方向按钮的高亮是琥珀而不是主题紫",
+      tileBgs.join(" | ")
+    );
+    const presetRule = findRule(
+      (sel) => sel.includes(".mw-drawer") && sel.includes(".mw-preset"),
+      "background-color"
+    );
+    if (presetRule) {
+      result(presetRule.important === true, "预设瓷砖同样有 !important 兜底", presetRule.value);
+    }
+
+    // 顶栏图标在强主题下也不能被画出底色/圆角（「只有图标」是硬性观感要求）
+    const toolIcons = Array.from(
+      document.querySelectorAll<HTMLElement>(".mw-view .mw-toolbar .mw-toolbtn")
+    );
+    result(toolIcons.length === 6, "顶栏 6 个图标存在", toolIcons.length);
+    const iconBgs = toolIcons.map((b) => getComputedStyle(b).backgroundColor);
+    result(
+      iconBgs.every((c) => c === "rgba(0, 0, 0, 0)" || c === "transparent"),
+      "顶栏图标在强主题下依然没有底色",
+      iconBgs.join(" | ")
+    );
+    result(
+      !iconBgs.some(isPurple),
+      "顶栏图标没有被刷成强调色实心圆",
+      iconBgs.join(" | ")
+    );
+    result(
+      toolIcons.every((b) => getComputedStyle(b).borderTopLeftRadius === "0px"),
+      "顶栏图标无圆角",
+      toolIcons.map((b) => getComputedStyle(b).borderTopLeftRadius).join(" | ")
+    );
+    // 编辑条 ✓ 同样只有描边，没有实心底
+    await resetView(gridData({ layout: "shelf" }));
+    anyV.enterEditMode();
+    await wait(200);
+    const done = document.querySelector<HTMLElement>(".mw-editbar__done")!;
+    result(!!done, "编辑条 ✓ 存在");
+    const dcs = getComputedStyle(done);
+    result(
+      dcs.backgroundColor === "rgba(0, 0, 0, 0)" || dcs.backgroundColor === "transparent",
+      "编辑条 ✓ 没有实心底",
+      dcs.backgroundColor
+    );
+    anyV.exitEditMode();
+    await wait(150);
+
+    // 网格布局下强调色回到主题色（不越界改皮肤），但依旧不能是白药丸
+    await resetView(gridData());
+    anyV.drawer.open("sort");
+    await wait(250);
+    const gTiles = Array.from(document.querySelectorAll<HTMLElement>(".mw-drawer .mw-dirbtn"));
+    result(
+      gTiles.every((t) => !nearWhite(getComputedStyle(t).backgroundColor)),
+      "网格布局：方向按钮仍不是白底"
+    );
+    const activeTile = gTiles.find((t) => t.classList.contains("is-active"));
+    result(
+      !!activeTile && isPurple(getComputedStyle(activeTile).backgroundColor),
+      "网格布局：激活态用主题强调色（保留主题一致性）",
+      activeTile ? getComputedStyle(activeTile).backgroundColor : "none"
+    );
+  } finally {
+    document.body.classList.remove("mw-theme-strict");
+  }
+}
+
+/** 在文档样式表里找第一条匹配的规则（用于验证 hover 这类无法在无头里触发的状态） */
+function findRule(
+  match: (sel: string) => boolean,
+  prop: string
+): { selector: string; important: boolean; value: string } | null {
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRule[] = [];
+    try {
+      rules = Array.from(sheet.cssRules);
+    } catch {
+      continue;
+    }
+    for (const rule of rules) {
+      const sr = rule as CSSStyleRule;
+      if (!sr.selectorText || !match(sr.selectorText)) continue;
+      const value = sr.style.getPropertyValue(prop);
+      if (!value) continue;
+      return {
+        selector: sr.selectorText,
+        important: sr.style.getPropertyPriority(prop) === "important",
+        value,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * shot-shelf：**只为截图**的布景（不在 run-all 的用例清单里，结果面板会挡住一部分画面）。
+ * 展示架 + 打开抽屉 + 打开卡片右键菜单，用于人工核对木质观感。
+ */
+async function caseShotShelf(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [
+        { id: "g1", name: "华语" },
+        { id: "g2", name: "欧美" },
+      ],
+      items: makeData(8).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 4 ? "g1" : i < 6 ? "g2" : undefined,
+      })),
+    })
+  );
+  await wait(400);
+  // 收起结果浮层，别挡住墙
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  anyViewOf(view).drawer.open("style");
+  await wait(300);
+  const card = document.querySelector<HTMLElement>(".mw-shelf-card")!;
+  const r = card.getBoundingClientRect();
+  card.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: r.left + r.width / 2,
+      clientY: r.top + 20,
+    })
+  );
+  await wait(300);
+}
+
+/** shot-modal：截图用布景——展示架 + 「移动到分组」模态框 */
+async function caseShotModal(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [
+        { id: "g1", name: "华语" },
+        { id: "g2", name: "欧美" },
+      ],
+      items: makeData(8).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 4 ? "g1" : undefined,
+      })),
+    })
+  );
+  await wait(400);
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  const anyV = anyViewOf(view);
+  const data = anyV.data as { items: unknown[] };
+  anyV.pickGroupFor(data.items[0]);
+  await wait(400);
+}
+
+/** shot-edit：截图用布景——进入布局编辑态（看编辑条上的单个 ✓） */
+async function caseShotEdit(): Promise<void> {
+  await resetView(
+    gridData({
+      groups: [{ id: "g1", name: "华语" }],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  await wait(300);
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  anyViewOf(view).enterEditMode();
+  await wait(400);
+}
+
+/**
+ * shot-zoom90：复现用户实测环境——缩放 90%（1/z = 1.111…）+ 展示架。
+ * 并且**人为打掉 CSS 的反除补偿**（width/height: auto），模拟用户环境里
+ * 补偿静默失效的情形：这正是「右侧 + 底部留白」的来源。JS 像素兜底必须照样铺满。
+ * ?plain=1 时不注入（看正常状态）。
+ */
+async function caseShotZoom90(): Promise<void> {
+  const plugin = (view as unknown as {
+    plugin: { settings: { zoomScale: number }; applyZoom(): void };
+  }).plugin;
+  const plain = new URLSearchParams(location.search).get("plain") === "1";
+  // ?force=1：连 JS 兜底一起压掉（!important 压得过行内样式），
+  // 用来复现用户截图里的「右侧 + 底部留白」原样，做 before/after 对照
+  const force = new URLSearchParams(location.search).get("force") === "1";
+  if (!plain) {
+    const broken = document.createElement("style");
+    broken.id = "mw-break-zoombox";
+    broken.textContent = force
+      ? ".mw-zoombox{width:auto !important;height:auto !important}"
+      : ".mw-zoombox{width:auto;height:auto}";
+    document.head.appendChild(broken);
+  }
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [{ id: "g1", name: "华语" }],
+      items: makeData(8).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 4 ? "g1" : undefined,
+      })),
+    })
+  );
+  plugin.settings.zoomScale = 0.9;
+  plugin.applyZoom();
+  await wait(300);
+  const resultBox = document.getElementById("result");
+  if (resultBox) resultBox.style.display = "none";
+  // 记录几何（截图布景不参与 run-all）：pane vs zoombox 的视觉矩形
+  const pane = view.contentEl.getBoundingClientRect();
+  const zb = document.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect();
+  const info = document.createElement("div");
+  info.id = "diag";
+  info.textContent = JSON.stringify({
+    broken: !plain,
+    pane: [Math.round(pane.width), Math.round(pane.height)],
+    zoombox: [Math.round(zb.width), Math.round(zb.height)],
+  });
+  document.body.appendChild(info);
+  await openAndWait(2);
+}
+
+/** shot-detail：截图用布景——展示架开盒详情（看遮罩到底盖到哪一层） */
+async function caseShotDetail(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      groups: [{ id: "g1", name: "华语" }],
+      items: makeData(6).items.map((it, i) => ({
+        ...it,
+        artist: `artist-${it.albumId % 2}`,
+        groupId: i < 3 ? "g1" : undefined,
+      })),
+    })
+  );
+  await wait(400);
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  await openAndWait(2);
+}
+
+/**
+ * 窄容器（分屏/手机）开盒：容器查询锚从 .mw-stage 改成缩放盒（mw-pane）后，
+ * 这套降级规则最容易「静默失效」——所以单独盯一次。
+ */
+async function caseNarrowDetail(): Promise<void> {
+  const mount = document.getElementById("mount")!;
+  const prevW = mount.style.width;
+  mount.style.width = "560px";
+  await resetView(gridData({ layout: "shelf" }));
+  await wait(400);
+  await openAndWait(2);
+  const book = bookEl();
+  const cs = getComputedStyle(book);
+  result(cs.display === "flex", "窄容器：盒子改为上下堆叠（flex 列）", cs.display);
+  result(cs.aspectRatio === "auto" || cs.aspectRatio === "", "窄容器：不再锁定 2:1", cs.aspectRatio);
+  const coverFace = document.querySelector<HTMLElement>(".mw-gf__face--cover");
+  result(
+    !coverFace || getComputedStyle(coverFace).display === "none",
+    "窄容器：隐藏封面页/封底页（只留信息页 + 盘面）",
+    coverFace ? getComputedStyle(coverFace).display : "no-cover-face"
+  );
+  const rootRect = view.contentEl.getBoundingClientRect();
+  const scrimRect = detailEl()
+    .querySelector<HTMLElement>(".mw-gf__scrim")!
+    .getBoundingClientRect();
+  result(
+    Math.abs(scrimRect.width - rootRect.width) <= 1.5 &&
+      Math.abs(scrimRect.top - rootRect.top) <= 1.5,
+    "窄容器：遮罩同样盖满窗格",
+    { scrim: [Math.round(scrimRect.width), Math.round(scrimRect.height)], root: [Math.round(rootRect.width), Math.round(rootRect.height)] }
+  );
+  const br = book.getBoundingClientRect();
+  result(
+    br.width <= rootRect.width + 1.5 && br.height <= rootRect.height + 1.5,
+    "窄容器：盒子不超出窗格",
+    { book: [Math.round(br.width), Math.round(br.height)] }
+  );
+  view.closeShelfDetail();
+  await wait(1600);
+  mount.style.width = prevW || "";
+}
+
 // ---- 入口 ----
 (async () => {
   const caseName = new URLSearchParams(location.search).get("case") ?? "boot-hold";
@@ -2492,6 +3465,9 @@ async function caseInteractionWalk(): Promise<void> {
       document.getElementById("mount")!.style.width = `${wParam}px`;
     }
     view = new MusicWallView(new WorkspaceLeaf(app), makePlugin());
+    (
+      (view as unknown as { plugin: { openViews: unknown[] } }).plugin.openViews
+    ).push(view as unknown as { syncZoomBox?: () => void });
     (view as unknown as { file: TFile | null }).file = new TFile("Epics.mw");
     (view as unknown as { data: unknown }).data = makeData(14);
     document.getElementById("mount")!.appendChild(view.contentEl);
@@ -2523,6 +3499,18 @@ async function caseInteractionWalk(): Promise<void> {
       "interaction-walk": caseInteractionWalk,
       "drag-gate": caseDragGate,
       "group-menus": caseGroupMenus,
+      "ungrouped-collapse": caseUngroupedCollapse,
+      "shelf-menus": caseShelfMenus,
+      "shelf-modal-theme": caseShelfModalTheme,
+      "wall-edges": caseWallEdges,
+      "theme-resist": caseThemeResist,
+      "narrow-detail": caseNarrowDetail,
+      // 截图布景（人工核对观感用；不在 run-all 的用例清单里）
+      "shot-shelf": caseShotShelf,
+      "shot-modal": caseShotModal,
+      "shot-edit": caseShotEdit,
+      "shot-detail": caseShotDetail,
+      "shot-zoom90": caseShotZoom90,
       previews: casePreviews,
       "float-panels": caseFloatPanels,
       zoom: caseZoom,

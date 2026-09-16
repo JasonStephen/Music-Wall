@@ -17,6 +17,8 @@ tools/mwp-e2e.bundle.js
 tools/_dump_*.txt
 tools/_err_*.txt
 tools/_e2e_*.txt
+# 截图布景输出（tools/shot.ps1 可再生）
+tools/shots/
 
 # 临时/缓存
 .obsidian-git-cache/

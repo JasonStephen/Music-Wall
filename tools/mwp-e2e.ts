@@ -9,7 +9,7 @@
 // 结果读 <title>：PASS / FAIL:<明细>
 
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
-import { installDomHelpers, TFile, WorkspaceLeaf } from "./obsidian-shim";
+import { installDomHelpers, probeCoverUri, TFile, WorkspaceLeaf } from "./obsidian-shim";
 
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 const fails: string[] = [];
@@ -108,11 +108,19 @@ const coverSvg = (label: string): string =>
 
 (async () => {
   const box = document.getElementById("result")!;
+  // 截图布景（?case=shot*）：隐藏结果浮层，否则它盖住大半个播放器。
+  // 断言照常执行，只是不显示——不影响 run-all（那边不带 case 参数）。
+  const shotMode = !!new URLSearchParams(location.search).get("case")?.startsWith("shot");
+  if (shotMode) {
+    box.style.display = "none";
+  }
+  let viewRef: MusicPlayerView | null = null;
   try {
     installDomHelpers();
     const mount = document.getElementById("mount")!;
     const app = { vault: { on: () => ({}) }, workspace: { on: () => ({}) } };
     const view = new MusicPlayerView(new WorkspaceLeaf(app), makePlugin() as never);
+    viewRef = view;
     (view as unknown as { file: TFile | null }).file = new TFile("Player.mwp");
     mount.appendChild(view.contentEl);
     await view.onOpen();
@@ -531,8 +539,278 @@ const coverSvg = (label: string): string =>
       "根节点锁死高度并裁剪",
       view.contentEl.getBoundingClientRect().height
     );
+
+    // ---- 第五轮 A4：根节点必须铺满窗格（主题给的 .view-content 内边距要归零） ----
+    document.body.classList.add("mw-viewpad");
+    await wait(180);
+    const rootCs = getComputedStyle(view.contentEl);
+    check(
+      [rootCs.paddingTop, rootCs.paddingRight, rootCs.paddingBottom, rootCs.paddingLeft].every(
+        (p) => p === "0px"
+      ),
+      "根节点内边距归零（主题的 12px/32px 留白被压掉）",
+      [rootCs.paddingTop, rootCs.paddingRight, rootCs.paddingBottom, rootCs.paddingLeft].join("|")
+    );
+    check(
+      [rootCs.marginTop, rootCs.marginRight, rootCs.marginBottom, rootCs.marginLeft].every(
+        (m) => m === "0px"
+      ),
+      "根节点外边距归零",
+      [rootCs.marginTop, rootCs.marginRight, rootCs.marginBottom, rootCs.marginLeft].join("|")
+    );
+    const pRoot = view.contentEl.getBoundingClientRect();
+    const pBox = view.contentEl.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect();
+    check(
+      Math.abs(pBox.left - pRoot.left) < 2 && Math.abs(pBox.right - pRoot.right) < 2,
+      "缩放盒左右顶到窗格边（左右都没有空带）",
+      { box: [Math.round(pBox.left), Math.round(pBox.right)], root: [Math.round(pRoot.left), Math.round(pRoot.right)] }
+    );
+    const pBar = view.contentEl.querySelector<HTMLElement>(".mw-player__bar")!.getBoundingClientRect();
+    check(
+      Math.abs(pBar.left - pRoot.left) < 2 && Math.abs(pBar.right - pRoot.right) < 2,
+      "顶栏左右与窗格对齐",
+      { bar: [Math.round(pBar.left), Math.round(pBar.right)], root: [Math.round(pRoot.left), Math.round(pRoot.right)] }
+    );
+    const pBody = view.contentEl.querySelector<HTMLElement>(".mw-player__body")!;
+    check(
+      parseFloat(getComputedStyle(pBody).paddingLeft) >= 12,
+      "内部保留左右内边距（留白搬到播放器内部）",
+      getComputedStyle(pBody).paddingLeft
+    );
+    document.body.classList.remove("mw-viewpad");
+    await wait(120);
+
+    // ---- 第五轮 B2：封面背景的面板是磨砂玻璃（不是近黑实心板） ----
+    (view as unknown as { current: unknown }).current = {
+      meta: {
+        albumId: 9,
+        name: "封面背景",
+        artist: "a",
+        cover: coverSvg("art"),
+        trackCount: 0,
+        tracks: [],
+      },
+      srcPath: "walls/a.mw",
+    };
+    await view["render"]();
+    // 抽屉的正文是「打开时才构建」的：render 之后 prevDrawer 为空 ⇒ 抽屉里没有瓷砖。
+    // 要走真实的点按路径（点顶栏图标打开抽屉），后面的取色断言才有元素可查。
+    view.contentEl.querySelector<HTMLElement>(".mw-toolbtn")!.click();
+    await wait(220);
+    await pickBg("art");
+    await wait(300);
+    const artDrawer = view.contentEl.querySelector<HTMLElement>(".mw-drawer")!;
+    const artCs = getComputedStyle(artDrawer);
+    const am = /rgba?\(([^)]+)\)/.exec(artCs.backgroundColor);
+    const aparts = am ? am[1].split(",").map((x) => parseFloat(x)) : [0, 0, 0, 1];
+    const artAlpha = aparts.length > 3 ? aparts[3] : 1;
+    check(
+      artAlpha >= 0.5 && artAlpha <= 0.85,
+      "封面模式：面板是半透明磨砂底（不是实心黑板，也不是看不见的浅色）",
+      { alpha: artAlpha, bg: artCs.backgroundColor }
+    );
+    check(
+      artCs.backdropFilter.includes("blur"),
+      "封面模式：面板带背景模糊（磨砂玻璃）",
+      artCs.backdropFilter
+    );
+    // 封面背景的「压暗层」：**上半页必须完全透明**（原先是铺满整页的中性深色，
+    // 等于给彩色封面盖一层灰纱；用户实测禁掉 ::after 就正常）。
+    // 断言方式：::after 的每条渐变里必须有 alpha = 0 的 stop，且最大 alpha 有上限。
+    const artVeil = getComputedStyle(view.contentEl, "::after").backgroundImage;
+    const veilStops = Array.from(artVeil.matchAll(/rgba?\(([^)]+)\)/g)).map((m) => {
+      const parts = m[1].split(",").map((x) => parseFloat(x));
+      return parts.length > 3 ? parts[3] : 1;
+    });
+    const maxVeil = veilStops.length ? Math.max(...veilStops) : 0;
+    check(
+      veilStops.includes(0),
+      "封面背景：压暗层由透明起手（上半页不吃灰）",
+      { stops: veilStops.join("/"), max: maxVeil }
+    );
+    check(
+      maxVeil <= 0.7,
+      "封面背景：最深处压暗 ≤ 70%（不是整屏灰纱）",
+      maxVeil
+    );
+    // 压暗必须带封面主色（不是中性黑 → 不会把颜色洗成灰）
+    check(
+      /color-mix|color\(/.test(artVeil) || !/rgb\(6, 8, 12\)/.test(artVeil),
+      "封面背景：底部压暗用封面主色而不是中性黑",
+      artVeil.slice(0, 120)
+    );
+    const artBlur = getComputedStyle(view.contentEl, "::before").filter;
+    check(
+      /saturate\(([\d.]+)\)/.test(artBlur) &&
+        parseFloat(/saturate\(([\d.]+)\)/.exec(artBlur)![1]) >= 1.8,
+      "封面背景：模糊层提高饱和度补回颜色",
+      artBlur
+    );
+    check(
+      artBlur.includes("blur"),
+      "封面背景：封面被放大模糊（动态取色底）",
+      artBlur
+    );
+    const artArtVar = getComputedStyle(view.contentEl)
+      .getPropertyValue("--mw-player-art")
+      .trim();
+    check(
+      artArtVar.startsWith("url("),
+      "封面背景：底图变量已指向封面（不是空的）",
+      artArtVar.slice(0, 48)
+    );
+    // 文字对比度：面板底 62% 深色叠在封面上，取最坏情况（封面全白）估算
+    const artFg = (() => {
+      const c = artCs.color;
+      const mm = /rgba?\(([^)]+)\)/.exec(c);
+      return mm ? mm[1].split(",").map((x) => parseFloat(x)) : [255, 255, 255];
+    })();
+    const worstBg = [0, 0, 0].map((_, i) => 0.62 * aparts[i] + 0.38 * 255);
+    const cRatio = (() => {
+      const lin = (v: number): number => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      const l1 = 0.2126 * lin(artFg[0]) + 0.7152 * lin(artFg[1]) + 0.0722 * lin(artFg[2]);
+      const l2 = 0.2126 * lin(worstBg[0]) + 0.7152 * lin(worstBg[1]) + 0.0722 * lin(worstBg[2]);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    })();
+    check(cRatio >= 3, "封面模式：最坏情况下正文对比度 ≥ 3", Math.round(cRatio * 100) / 100);
+    // 上拉曲目表同样磨砂
+    const sheetCs = getComputedStyle(
+      view.contentEl.querySelector<HTMLElement>(".mw-player__playlist")!
+    );
+    check(
+      sheetCs.backdropFilter.includes("blur"),
+      "封面模式：上拉曲目表同样磨砂",
+      sheetCs.backdropFilter
+    );
+    // ---- 第五轮 B1（播放器）：面板强调色跟随背景模式，而不是主题紫 ----
+    // 注意 getPropertyValue("--mw-accent") 返回的是**替换后**的 token 文本，
+    // 因此这里断言的是各背景模式自己的强调色，而不是 var() 字面量。
+    const accentOf = (): string =>
+      getComputedStyle(view.contentEl).getPropertyValue("--mw-accent").trim();
+    await pickBg("white");
+    await wait(200);
+    check(accentOf() === "#4c5bd4", "白色背景：面板强调色 = 白色模式配色", accentOf());
+    await pickBg("dark");
+    await wait(200);
+    check(accentOf() === "#d9a24a", "深色背景：面板强调色 = 暖金（不是主题紫）", accentOf());
+    // 面板高亮瓷砖的描边色：必须量在「刚重建出来的元素」上——
+    // .mw-preset 带 border-color 过渡（0.15s），无头+虚拟时间下过渡时钟不推进，
+    // 在既有元素上改类名会读到过渡起点值（上一模式的颜色），断言就会假失败。
+    const tileBorderOf = async (mode: string): Promise<string> => {
+      await pickBg(mode);
+      await view["render"]();
+      // 抽屉正文是「打开时才构建」的：重建后必须先确保它是开着的（点顶栏图标是切换，
+      // 已经开着时再点会关掉，因此要先判断状态）
+      const d = view.contentEl.querySelector<HTMLElement>(".mw-drawer");
+      if (!d?.classList.contains("is-open")) {
+        view.contentEl.querySelector<HTMLElement>(".mw-toolbtn")?.click();
+        await wait(220);
+      }
+      const tile = view.contentEl.querySelector<HTMLElement>(
+        `.mw-drawer .mw-preset[data-mw-bg="${mode}"]`
+      );
+      return tile ? getComputedStyle(tile).borderTopColor : "none";
+    };
+    const darkBorder = await tileBorderOf("dark");
+    check(
+      darkBorder === "rgb(217, 162, 74)",
+      "深色背景：激活瓷砖用暖金描边（不是主题紫）",
+      darkBorder
+    );
+    const woodBorder = await tileBorderOf("wood");
+    check(
+      woodBorder === "rgb(185, 119, 59)",
+      "木地板：激活瓷砖用木色描边（不是主题紫）",
+      woodBorder
+    );
+    check(accentOf() === "#b9773b", "木地板：面板强调色 = 木色琥珀", accentOf());
+    // 封面模式：强调色跟随封面主色（探针封面 #c0392b）。
+    // 这里必须用「假 URL + 垫片 requestUrl」：产品取色走 requestUrl，
+    // data URI 在真机 Obsidian 上同样取不到（requestUrl 只发 http(s)），
+    // 用 data URI 会让这条断言退化成「回退主题强调色」。
+    // 想让**截图**里的底色真有颜色，见脚本末尾的 shot 分支（换 data URI 再渲染一次）。
+    (view as unknown as { current: unknown }).current = {
+      meta: {
+        albumId: 7,
+        name: "取色专辑",
+        artist: "a",
+        cover: "https://example.invalid/accent-probe-c0392b.png",
+        trackCount: 0,
+        tracks: [],
+      },
+      srcPath: "walls/a.mw",
+    };
+    await view["render"]();
+    await pickBg("art");
+    await wait(420);
+    check(
+      accentOf() === "#c0392b",
+      "封面背景：面板强调色跟随封面主色",
+      accentOf()
+    );
+    // 面板高亮按钮（主按钮 / 激活瓷砖）不得是主题紫 #7c5cff
+    const purpleHit = Array.from(
+      view.contentEl.querySelectorAll<HTMLElement>(".mw-drawer .mw-preset.is-active, .mw-drawer .mw-preset__stage")
+    ).some((el) => getComputedStyle(el).borderTopColor === "rgb(124, 92, 255)");
+    check(!purpleHit, "封面背景：面板高亮没有主题紫");
   } catch (e) {
     check(false, "场景异常", String((e as Error)?.stack ?? e));
+  }
+  // ---- 截图布景专用收尾（?case=shot*）：把封面换成 data URI 再渲染一次 ----
+  // 背景层是 CSS url()，垫片的 requestUrl 拦不到假 URL，浏览器也拉不到图，
+  // 截图会是一块近黑（看起来像「封面背景根本没上色」）。断言已经在上面跑完，
+  // 这里只影响截图画面。
+  if (shotMode && viewRef) {
+    const view = viewRef;
+    try {
+      const v = view as unknown as { current: unknown; render: () => Promise<void> };
+    v.current = {
+      meta: {
+        albumId: 7,
+        name: "取色专辑",
+        artist: "Phildeb",
+        cover: probeCoverUri("5b6ee1"),
+        trackCount: 6,
+        tracks: [
+          { name: "Ice-Float", duration: 139000 },
+          { name: "Icarus", duration: 240000 },
+          { name: "Dragonfly Keeper", duration: 130000 },
+        ],
+      },
+      srcPath: "walls/a.mw",
+    };
+    await v.render();
+    const tile = view.contentEl.querySelector<HTMLElement>('.mw-preset[data-mw-bg="art"]');
+    tile?.click();
+    const d = view.contentEl.querySelector<HTMLElement>(".mw-drawer");
+    if (!d?.classList.contains("is-open")) {
+      view.contentEl.querySelector<HTMLElement>(".mw-toolbtn")?.click();
+    }
+    await wait(500);
+    // 截图用的自检：底图必须真的能画出来（否则截图是一块近黑，看不出封面色）
+    const artUrlRaw = String(
+      getComputedStyle(view.contentEl).getPropertyValue("--mw-player-art") ?? ""
+    ).trim();
+    const artUrl = /url\(["']?(.*?)["']?\)/.exec(artUrlRaw)?.[1] ?? "";
+    const state = await new Promise<string>((res) => {
+      const img = new Image();
+      img.onload = () => res("ok");
+      img.onerror = () => res("error");
+      img.src = artUrl;
+      // 虚拟时间下定时器会被快进，超时不代表失败（解码另在线程上）
+      window.setTimeout(() => res("pending"), 1500);
+    });
+    check(state !== "error", "截图布景：封面底图不是坏图", {
+      state,
+      len: artUrl.length,
+      url: artUrl,
+    });
+    } catch (e) {
+      check(false, "截图布景异常", String((e as Error)?.stack ?? e));
+    }
   }
   document.title = fails.length ? `FAIL:${fails.join("|")}` : "PASS:mwp";
   const head = document.createElement("div");

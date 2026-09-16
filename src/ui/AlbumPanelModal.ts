@@ -7,6 +7,7 @@ import type { AlbumMeta, DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
+import { applyModalTheme } from "./modalTheme";
 
 export interface PanelOptions {
   meta: AlbumMeta;
@@ -118,6 +119,7 @@ export class AlbumPanelModal extends Modal {
   onOpen(): void {
     // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
     this.modalEl.addClass("mw-modal-zoom");
+    applyModalTheme(this.modalEl);
     const { contentEl } = this;
     contentEl.addClass("mw-album-modal");
     contentEl.createEl("h2", {

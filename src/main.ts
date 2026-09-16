@@ -49,7 +49,7 @@ import { MusicWallSettingTab } from "./settings";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "20260916-04";
+const BUILD_TAG = "20260916-07";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -220,6 +220,14 @@ export default class MusicWallPlugin extends Plugin {
   applyZoom(): void {
     const scale = clampZoom(this.settings.zoomScale ?? 1);
     document.body.style.setProperty(ZOOM_CSS_VAR, String(scale));
+    // 只有真的放大时才给弹窗加尺寸上限（见 base.css 的 .mw-modal-zoom 说明）：
+    // z = 1 时若也设 92vw/88vh，会把弹窗自己的宽度（如 .mw-album-modal 的 680px）
+    // 与主题给弹窗的默认宽度一起顶掉。
+    document.body.toggleClass("mw-zoomed", Math.abs(scale - 1) > 0.001);
+    // 缩放变化要同步两个视图的缩放盒像素尺寸（CSS calc 之外的兜底，
+    // 见 zoom.ts syncZoomBox：补偿退化的表现就是右侧/底部留白）
+    for (const view of this.allWallViews()) view.syncZoomBox();
+    for (const view of this.allPlayerViews()) view.syncZoomBox();
   }
 
   refreshOpenViews(): void {
