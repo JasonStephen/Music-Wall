@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* 复刻 Obsidian 布局链（默认主题）：
+     body > .workspace > .workspace-leaf > .workspace-leaf-content(flex column, overflow hidden)
+       > .view-header(44px) + .view-content(= .mw-view 根)
+     .view-content 的 overflow:auto 来自 .workspace-leaf-content .view-content (0,2,0)，
+     插件 .mw-view{overflow:hidden} (0,1,0) 特异性更低、必然失效 —— 由 cascade 直接体现 */
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  .workspace { height: 100%; }
+  .workspace-leaf { height: 100%; }
+  .workspace-leaf-content {
+    width: 100%; height: 100%; overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+    /* 模拟 200% DPI 下「奇数设备像素」导致的半像素窗格：
+       真实机窗格高会出现 x.5 CSS px，这里用可换参数的 calc 生成 */
+    height: calc(100% - var(--half, 0px));
+  }
+  .view-header { height: 44px; flex: none; background: #ddd; }
+  .view-content {
+    /* Obsidian 默认的两条规则（都会命中 .mw-view 根）：
+       ① .view-content { width:100%; height: calc(100% - var(--header-height)) }  (0,1,0)
+       ② .workspace-leaf-content .view-content { padding: …; overflow: auto }      (0,2,0)
+       插件 .mw-view { height:100%; overflow:hidden }                             (0,1,0)
+       —— overflow 被 ② 压制；height 被插件的 100% 覆盖（类名同元素，后加载获胜） */
+    width: 100%;
+    height: 100%;            /* .mw-view 覆盖了 Obsidian 的 calc(100% - header) */
+    overflow: auto;          /* (0,2,0) 胜出：根是滚动容器 */
+    background: #fff;
+  }
+  .mw-zoombox {
+    transform: scale(1); transform-origin: 0 0;
+    display: flex; flex-direction: column; overflow: hidden; position: relative;
+    /* 基础实现（会被行内 px 覆盖） */
+    width: calc(100% / 1); height: calc(100% / 1);
+  }
+  .mw-toolbar { min-height: 48px; flex: none; background:#eee; }
+  .mw-grid { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 18px 52px 34px 18px; }
+  .sec { height: 60px; background: #f4f4f4; margin-bottom: 12px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div class="workspace">
+  <div class="workspace-leaf">
+    <div class="workspace-leaf-content">
+      <div class="view-header">view-header（面包屑那条）</div>
+      <div class="view-content" id="root">
+        <div class="mw-zoombox" id="box">
+          <div class="mw-toolbar">toolbar</div>
+          <div class="mw-grid" id="grid">
+            <!-- 全部折叠：内容很短，理论上不该出滚动条 -->
+            <div class="sec"></div><div class="sec"></div><div class="sec"></div><div class="sec"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<pre id="log">boot</pre>
+<script>
+  const root = document.getElementById('root') || document.querySelector('.view-content');
+  const box = document.getElementById('box');
+  const grid = document.getElementById('grid');
+  const q = new URLSearchParams(location.search);
+  const half = q.get('half') === '1';           // 半像素窗格（dsf=2 奇数设备像素）
+  const zoom = parseFloat(q.get('z') || '1');   // 插件 zoomScale
+  if (half) document.querySelector('.workspace-leaf-content').style.setProperty('--half', '0.5px');
+  if (zoom !== 1) { box.style.transform = 'scale(' + zoom + ')'; document.body.style.setProperty('--mw-zoom', String(zoom)); }
+
+  // 复刻 zoom.ts applyZoomBoxSize：RO 观察根，行内 px 钉尺寸（0.001px 精度）
+  const px = (v) => (String(Math.round(v * 1000) / 1000) + 'px');
+  function apply() {
+    const w = root.clientWidth, h = root.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    box.style.width = px(w / zoom);
+    box.style.height = px(h / zoom);
+  }
+  new ResizeObserver(apply).observe(root);
+  let roCount = 0;
+  new ResizeObserver(() => { roCount++; }).observe(root);
+
+  // 采样：每帧记录根与网格的 overflow 状态，统计状态翻转次数
+  const samples = [];
+  let flips = 0, last = null;
+  function snap(el) {
+    return [el.scrollWidth - el.clientWidth, el.scrollHeight - el.clientHeight,
+            el.clientWidth, el.clientHeight, el.scrollWidth, el.scrollHeight].join(',');
+  }
+  let frame = 0;
+  function tick() {
+    frame++;
+    const s = 'root[' + snap(root) + '] grid[' + snap(grid) + ']';
+    if (s !== last) { samples.push(frame + ': ' + s); if (last !== null) flips++; last = s; }
+    if (frame < 240) requestAnimationFrame(tick);
+    else document.getElementById('log').textContent =
+      'half=' + half + ' zoom=' + zoom + ' frames=' + frame +
+      ' flips=' + flips + ' roCallbacks=' + roCount + '\n' + samples.slice(0, 80).join('\n');
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

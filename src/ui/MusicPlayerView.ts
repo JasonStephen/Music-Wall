@@ -24,11 +24,18 @@ import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
-import { coverAccent, onAccentFor } from "./accent";
+import { coverTone, peekTone, onAccentFor } from "./accent";
 import { setModalTheme } from "./modalTheme";
+import { DEFAULT_COVER, DEFAULT_COVER_NAME } from "./defaultCover";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
+
+/**
+ * 「封面」背景下判「浅底」的阈值（感知亮度 0..1，见 accent.ts 的 perceived）。
+ * ≥ 阈值 ⇒ 深色字/图标（浅色封面）；< 阈值 ⇒ 浅色字 + 文字阴影（深色封面）。
+ */
+const ART_LIGHT_LUMA = 0.5;
 
 /** 播放器可选的设备外观：磁带机因无法达到交付要求已移除（音乐墙上的磁带样式不受影响） */
 const PLAYER_STYLES: DiscStyle[] = ["vinyl", "cd", "cover"];
@@ -83,6 +90,8 @@ export class MusicPlayerView extends FileView {
   /** 右上角样式图标打开的抽屉（样式 / 背景） */
   private drawer: SideDrawer | null = null;
   private styleBtn: HTMLButtonElement | null = null;
+  /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
+  private paneObserver: ResizeObserver | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: MusicWallPlugin) {
     super(leaf);
@@ -147,6 +156,8 @@ export class MusicPlayerView extends FileView {
     });
     this.registerDomEvent(this.contentEl, "drop", (e) => void this.onDrop(e));
     await this.render();
+    // 窗格尺寸跟随：window.resize 覆盖不到「拖分隔条 / 分屏 / 收展侧边栏」
+    this.watchPaneSize();
   }
 
   async onClose(): Promise<void> {
@@ -154,6 +165,8 @@ export class MusicPlayerView extends FileView {
       this.offNow();
       this.offNow = null;
     }
+    this.paneObserver?.disconnect();
+    this.paneObserver = null;
     this.drawer?.dispose();
     this.drawer = null;
     this.styleBtn = null;
@@ -271,9 +284,10 @@ export class MusicPlayerView extends FileView {
     this.shell = body;
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
 
-    // 上拉曲目面板 + 遮罩：覆盖在 page 之上，纯查看不可切歌
+    // 上拉曲目面板 + 遮罩：覆盖在 page 之上，纯查看不可切歌。
+    // 第七轮起遮罩**只做视觉**（pointer-events:none，见 player.css）：
+    // 点其他地方不再收起面板——面板只能经 收起钮 / 曲目列表钮 / Esc 关闭。
     this.el.scrim = box.createDiv({ cls: "mw-player__scrim" });
-    this.el.scrim.addEventListener("click", () => this.togglePlaylist(false));
     this.el.panel = box.createDiv({ cls: "mw-player__playlist" });
     this.buildPlaylist(this.el.panel);
 
@@ -290,44 +304,78 @@ export class MusicPlayerView extends FileView {
     this.syncZoomBox();
   }
 
-  /** 背景模式落成类名；「封面」模式额外注入当前专辑封面做动态取色 */
+  /** 背景模式落成类名；「封面」模式额外注入当前专辑封面做动态取色 + 黑白字自适应 */
   private applyBackground(): void {
     const root = this.contentEl;
     root.removeClass("mw-bg--white", "mw-bg--dark", "mw-bg--art", "mw-bg--wood");
     root.addClass(`mw-bg--${this.bg}`);
     const cover = this.displayAlbum()?.cover ?? "";
-    // 播放键取色：只有「封面」模式跟着封面主色走，其余模式用 CSS 里各模式的固定色
-    this.applyArtAccent(this.bg === "art" ? cover : "");
+    // 「封面」模式永远有背景：没匹配到专辑 / 专辑无封面时铺内置默认封面，
+    // 不再剩下「没有封面 → 什么都没有」的空白（第七轮问题 2）。
+    const art = cover || DEFAULT_COVER;
+    // 取色 + 自适应字色：只有「封面」模式跟着封面走，其余模式用 CSS 里各模式的固定色
+    this.applyArtTone(this.bg === "art" ? art : "");
     if (this.bg !== "art") {
       root.style.removeProperty("--mw-player-art");
       return;
     }
-    if (cover) root.style.setProperty("--mw-player-art", `url("${sizedCover(cover, 800)}")`);
-    else root.style.removeProperty("--mw-player-art");
+    root.style.setProperty("--mw-player-art", `url("${sizedCover(art, 800)}")`);
+    // 取色曾经失败的地址（缓存里是空结果）别铺底：模糊层照旧失控，白字必隐形；
+    // 同步守卫 + 异步失败兜底（applyArtTone 里移除）各一道（第七轮）。
+    const prev = peekTone(sizedCover(art, 300));
+    if (prev && prev.luma === null && !prev.accent) {
+      root.style.removeProperty("--mw-player-art");
+    }
   }
 
-  /** 已解析过主色的封面地址（防止异步结果覆盖后来的专辑） */
+  /** 已解析过取色的封面地址（防止异步结果覆盖后来的专辑） */
   private accentKey = "";
 
   /**
-   * 「封面」背景下的播放键配色 = 封面主色。
+   * 「封面」背景下的两件事，一次采样同时拿到（见 accent.ts coverTone）：
+   *   1. 播放键配色 = 封面主色；2. 文字/图标黑白色 = 按封面整体亮度自适应。
    * 取色是异步的：回来的晚于专辑切换就丢弃（比对 key）。
-   * 取不到（无封面 / 网络失败 / 全是不适合的像素）时清掉内联变量，
-   * 回退到 CSS 的 --mw-np-accent（= 主题强调色）。
+   * 取不到（无封面 / 网络失败）时清掉内联变量回退 CSS，并把字色按深色封面处理。
    */
-  private applyArtAccent(cover: string): void {
+  private applyArtTone(cover: string): void {
     const root = this.contentEl;
     const key = cover.trim();
     if (key === this.accentKey) return;
     this.accentKey = key;
     root.style.removeProperty("--mw-np-accent");
     root.style.removeProperty("--mw-np-accent-fg");
-    if (!key) return;
-    void coverAccent(sizedCover(key, 300)).then((color) => {
-      if (!color || this.accentKey !== key) return;
-      root.style.setProperty("--mw-np-accent", color);
-      root.style.setProperty("--mw-np-accent-fg", onAccentFor(color));
+    if (!key) {
+      this.setArtTone(null);
+      return;
+    }
+    void coverTone(sizedCover(key, 300)).then((tone) => {
+      if (this.accentKey !== key) return;
+      if (tone.accent) {
+        root.style.setProperty("--mw-np-accent", tone.accent);
+        root.style.setProperty("--mw-np-accent-fg", onAccentFor(tone.accent));
+      }
+      this.setArtTone(tone.luma);
+      // 亮度也取不到 = 这次连「背景是浅是深」都无从判断：
+      // 不再敢于把失控的模糊封面铺在底下（浅封面 + 白字 = 全部隐形），
+      // 移除 --mw-player-art 让 .mw-bg--art 落回深色基底，白字天然可读（第七轮）。
+      if (tone.luma === null && !tone.accent) {
+        root.style.removeProperty("--mw-player-art");
+        console.warn("[music-wall] 封面取色失败，封面背景回退深色基底：", key);
+      }
     });
+  }
+
+  /**
+   * 按封面亮度在根节点上挂 `mw-art--light` / `mw-art--dark`（CSS 见 player.css）：
+   * 浅色封面 → 深色字/图标（顶栏标题、调色盘图标、标题/艺术家/正在播放/来源），
+   * 深色封面 → 保持浅色字 + 文字阴影。
+   * 亮度取不到（luma=null，无封面或解码失败）时按**深色**处理：浅字 + 文字阴影是安全的
+   * 一刀（深色封面占多数；即使背景其实是浅色，阴影也能把字托住，不会彻底看不见）。
+   */
+  private setArtTone(luma: number | null): void {
+    const light = luma !== null && luma >= ART_LIGHT_LUMA;
+    this.contentEl.toggleClass("mw-art--light", light);
+    this.contentEl.toggleClass("mw-art--dark", !light);
   }
 
   /**
@@ -364,8 +412,8 @@ export class MusicPlayerView extends FileView {
       if (open) this.togglePlaylist(false);
     });
     drawer.register("settings", "样式与背景", (panel) => {
-      // 样式：与音乐墙上四种样式同一套缩略预览
-      const cover = this.displayAlbum()?.cover ?? "";
+      // 样式：与音乐墙上四种样式同一套缩略预览（无专辑时给默认封面，别再空砖）
+      const cover = (this.displayAlbum()?.cover ?? "") || DEFAULT_COVER;
       const secStyle = panel.createDiv({ cls: "mw-panel__section" });
       secStyle.createDiv({ cls: "mw-panel__label", text: "样式" });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
@@ -590,20 +638,27 @@ export class MusicPlayerView extends FileView {
     host.empty();
     this.readoutEl = null;
     host.style.removeProperty("--mw-np-art");
-    if (!album || !album.cover) {
-      host.addClass("is-empty");
-      host.createDiv({ cls: "mw-np__disc-empty" });
-      return;
-    }
+    // 没匹配到专辑 / 专辑无封面：用内置默认封面渲染设备，不再空着。
+    // 匹配到的专辑仍以**专辑自己的封面**为主（第七轮的先后顺序）。
+    const meta = album
+      ? { ...album, cover: album.cover || DEFAULT_COVER }
+      : {
+          albumId: 0,
+          name: DEFAULT_COVER_NAME,
+          artist: "",
+          cover: DEFAULT_COVER,
+          trackCount: 0,
+          tracks: [],
+        };
     host.removeClass("is-empty");
     // 供封面模式做模糊环境底
-    host.style.setProperty("--mw-np-art", `url("${sizedCover(album.cover, 800)}")`);
+    host.style.setProperty("--mw-np-art", `url("${sizedCover(meta.cover, 800)}")`);
 
     const pseudo: WallItem = {
-      albumId: album.albumId,
+      albumId: album ? album.albumId : 0,
       source: "manual",
       locked: true,
-      meta: album,
+      meta,
       addedAt: new Date().toISOString(),
     };
     const device = buildDevice(pseudo, this.discStyle, 500);
@@ -617,6 +672,20 @@ export class MusicPlayerView extends FileView {
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);
+  }
+
+  /**
+   * 让布局跟随**窗格**尺寸，而不是只跟随窗口。
+   *
+   * 拖侧边栏分隔条、分屏/合并窗格、收展左右侧栏都会改变窗格宽度，但不触发
+   * `window.resize`：只挂 window 的话，`mw-player--narrow`（阈值 NARROW_WIDTH）
+   * 与 `--mw-topbar-h` 会一直停在旧值。缩放盒的像素尺寸由 zoom.ts 的观察者负责，
+   * 这里只管布局状态；window.resize 仍然保留，作为没有 ResizeObserver 时的兜底。
+   */
+  private watchPaneSize(): void {
+    if (this.paneObserver || typeof ResizeObserver === "undefined") return;
+    this.paneObserver = new ResizeObserver(() => this.syncLayout());
+    this.paneObserver.observe(this.contentEl);
   }
 
   // ---- 控制 ----

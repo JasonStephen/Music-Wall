@@ -43,7 +43,11 @@ function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): v
   const w = root.clientWidth;
   const h = root.clientHeight;
   if (w <= 0 || h <= 0) return;
-  const px = (v: number) => `${Math.round(v * 1000) / 1000}px`;
+  // 向下取整而不是四舍五入：缩放盒会被 transform 再放大 z 倍，
+  // 行内尺寸若被 round 到「略大」，放大后就会比窗格宽出零点几个千分位像素，
+  // 配合根节点 overflow:auto（见 base.css 的滚动条抽动说明）会让最外层
+  // 滚动条周期性出现/消失。floor 保证换算回来的视觉尺寸永远 ≤ 窗格。
+  const px = (v: number) => `${Math.floor(v * 1000) / 1000}px`;
   box.style.width = px(w / z);
   box.style.height = px(h / z);
   // 记下当前缩放，ResizeObserver 回调里要复用（回调不接参数）
@@ -53,6 +57,14 @@ function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): v
 /**
  * 同步缩放盒尺寸并在首次调用时挂上 ResizeObserver。
  * 视图 `render()` 末尾、缩放变化（plugin.applyZoom）与窗格尺寸变化时都要走一遍。
+ *
+ * ⚠️ 观察者回调必须**每次重新查询**当前那只 `.mw-zoombox`（勿改回闭包捕获）：
+ * `render()` 是 `root.empty()` 之后**新建**一只缩放盒，若把首次查询到的节点闭包捕获下来，
+ * 第二次 render 起观察者写的就一直是「已脱离 DOM 的旧盒子」，页面上活着的盒子
+ * 再也拿不到新尺寸。因为内联像素宽高优先级高于 CSS 的 calc 反除补偿，它不会自愈，
+ * 表现为**改变窗口/窗格尺寸后内容钉在原地**（背景是根节点上的 ::before，不受影响，
+ * 于是形状是「背景铺满、内容缩在原来的位置」）。只有下一次 render（拖入专辑、改设置、
+ * 库内文件变动）或缩放变化才会顺手写对一次。
  */
 export function syncZoomBox(root: HTMLElement, scale: number): void {
   const box = root.querySelector<HTMLElement>(":scope > .mw-zoombox");
@@ -61,8 +73,11 @@ export function syncZoomBox(root: HTMLElement, scale: number): void {
   // Obsidian 桌面/移动端都有 ResizeObserver，这里的守卫是给离线冒烟等非浏览器环境留的。
   if (!zoomObservers.has(root) && typeof ResizeObserver !== "undefined") {
     const ro = new ResizeObserver(() => {
+      // 重新查询：只有当前挂在 root 下的那只缩放盒才是活的（render 会重建它）
+      const live = root.querySelector<HTMLElement>(":scope > .mw-zoombox");
+      if (!live) return;
       const z = Number(root.dataset.mwZoom ?? "1") || 1;
-      applyZoomBoxSize(root, box, z);
+      applyZoomBoxSize(root, live, z);
     });
     ro.observe(root);
     zoomObservers.set(root, ro);

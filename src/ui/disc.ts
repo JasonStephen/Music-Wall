@@ -3,6 +3,7 @@
 
 import type { DiscStyle, WallItem } from "../types";
 import { sizedCover } from "../core/metadata";
+import { DEFAULT_COVER } from "./defaultCover";
 
 export interface DiscOptions {
   /** 封面取图尺寸（px），网格用小值省流量 */
@@ -28,12 +29,19 @@ function makeImg(src: string, alt: string): HTMLImageElement {
   // 并取消指针事件 —— 排序手势会被整段抢走（用户报「拖不动」的根因之一）。
   // 关掉它，拖拽源就只剩整张卡片。
   img.draggable = false;
+  // 第七轮起：没封面 / 封面拉不到都落到内置默认封面，不再露出破图或空白。
+  // 兜底图自己也拉不到时（再换就没完没了）才隐藏并给父容器挂 mw-cover-broken；
+  // 是否已是兜底图按 src 前缀判断，不再多存一份状态。
   img.addEventListener("error", () => {
+    if (!img.src.startsWith("data:image/svg+xml")) {
+      img.src = DEFAULT_COVER;
+      return;
+    }
     img.style.display = "none";
     const wrap = img.parentElement;
     if (wrap) wrap.classList.add("mw-cover-broken");
   });
-  if (src) img.src = src;
+  img.src = src || DEFAULT_COVER;
   return img;
 }
 

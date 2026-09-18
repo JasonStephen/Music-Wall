@@ -89,8 +89,9 @@
   --background-modifier-border: rgba(255, 255, 255, 0.2);
   --background-modifier-hover: rgba(255, 255, 255, 0.16);
   --mw-player-panel-bg: rgba(14, 16, 21, 0.62);
-  /* 封面模式：主色由 JS 从封面提取后写到行内；取不到就用主题强调色 */
-  --mw-np-accent: var(--interactive-accent);
+  /* 封面模式：主色由 JS 从封面提取后写到行内；提取彻底失败（纯灰封面/解码失败）
+     用固定品牌蓝兜底（第七轮），不再退主题紫——紫在整套调色里最跳。 */
+  --mw-np-accent: #4c5bd4;
   --mw-np-accent-fg: #ffffff;
   /* 面板是**磨砂玻璃**而不是实心黑板（第五轮 B2）：
      原来是 92% 近黑实底，在封面背景上像贴了块黑板，「样式依然是暗的」。
@@ -107,10 +108,10 @@
   --mw-ctrl-border: rgba(255, 255, 255, 0.2);
   --mw-ctrl-fg: #f2f4f8;
 }
-/* 封面动态取色：放大模糊的封面 + 底部局部压暗，保证文字可读。
-   ⚠️ 压暗层**绝不能铺满整页**（第六轮）：中性深色铺满 = 给彩色封面盖灰纱，
-   用户实测「只有封面背景会全屏盖一层灰，禁掉 ::after 就正常」。
-   现在 ::after 只压底部信息区，且用封面主色压（见下）。 */
+/* 封面动态取色：放大模糊的封面作为底色。
+   ⚠️ 封面背景下**不再叠任何压暗层**（第八轮按要求整条移除 ::after）：
+   无论铺满整屏还是只压底部，用户都不希望在封面背景上再加 background——
+   文字可读性现在完全由下方 .mw-np__* 的文字阴影承担（见下面的 text-shadow 规则）。 */
 .mw-player.mw-bg--art::before {
   content: "";
   position: absolute;
@@ -123,52 +124,30 @@
   z-index: 0;
   pointer-events: none;
 }
-.mw-player.mw-bg--art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  /* 只压「底部信息区」，不铺满整页（第六轮）：
-     铺满的中性深色 = 给彩色封面盖一层灰纱，用户报的「全屏盖上灰色一层」就是它
-     （用户在 DevTools 里禁掉本伪元素验证过）。现在上半页完全透明，封面原色直出；
-     底部因为要放标题/状态/控制键，用**封面主色**去压（不是中性黑），
-     压暗也不会把颜色洗成灰。可读性另有文字阴影兜底（见下方 .mw-np__* 规则）。 */
-  background:
-    linear-gradient(
-      0deg,
-      rgba(6, 8, 12, 0.42),
-      rgba(6, 8, 12, 0.16) 26%,
-      rgba(6, 8, 12, 0) 54%
-    ),
-    linear-gradient(
-      0deg,
-      color-mix(in srgb, var(--mw-np-accent, #4c5bd4) 30%, transparent),
-      transparent 42%
-    );
-  z-index: 0;
-  pointer-events: none;
+/* 这里原本是 `.mw-player.mw-bg--art::after`（第六/七轮的「底部信息区压暗」渐变）。
+   已按要求整条移除：封面背景不叠任何背景层。**不要**再加回来——
+   残留一个空的 ::after（只有 content/inset/z-index）没有任何意义，
+   要压暗文字区请先和用户确认（可读性目前由文字阴影兜底）。 */
+/* 封面背景的**黑/白字自适应**（第八轮）：根节点上的 mw-art--light / mw-art--dark
+   由 MusicPlayerView.setArtTone() 按封面整体亮度维护（浅色封面 → 深色字/图标）。
+   深色一侧不用在这里写：.mw-bg--art 上面已经定好了浅色字，--mw-np-accent 等一并沿用。 */
+.mw-player.mw-bg--art.mw-art--light {
+  --text-normal: #1b1e23;
+  --text-muted: rgba(24, 28, 34, 0.72);
+  --text-faint: rgba(24, 28, 34, 0.52);
 }
-/* 文字阴影：薄纱之后封面亮度不再被压死，浅色封面上白字要靠它站住 */
-.mw-player.mw-bg--art .mw-np__title,
-.mw-player.mw-bg--art .mw-np__artist,
-.mw-player.mw-bg--art .mw-np__status,
-.mw-player.mw-bg--art .mw-np__source,
-.mw-player.mw-bg--art .mw-np__disc-empty {
+/* 文字阴影只给「深色封面」那一侧：浅色封面改用深色字，再叠黑阴影只会糊成一团。
+   深色封面上白字压在亮暗不定的模糊底上，要靠它站住。 */
+.mw-player.mw-bg--art.mw-art--dark .mw-np__title,
+.mw-player.mw-bg--art.mw-art--dark .mw-np__artist,
+.mw-player.mw-bg--art.mw-art--dark .mw-np__status,
+.mw-player.mw-bg--art.mw-art--dark .mw-np__source,
+.mw-player.mw-bg--art.mw-art--dark .mw-np__disc-empty {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 2px 16px rgba(0, 0, 0, 0.42);
 }
-/* 顶栏区域的深色渐变（只覆盖顶部 ~60px，不整体压暗封面）：
-   封面模糊底亮暗不定，浅色封面上图标/标题会糊成一片（用户报过「按键不见了」）。
-   面板/控制键另有实底令牌，这里只保顶栏可读。 */
-.mw-player.mw-bg--art .mw-player__bar::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 60px;
-  background: linear-gradient(180deg, rgba(6, 8, 12, 0.72), rgba(6, 8, 12, 0));
-  pointer-events: none;
-  z-index: -1;
-}
+/* 这里原本是 `.mw-player.mw-bg--art .mw-player__bar::before`（顶栏 60px 深色渐变）。
+   第八轮已按用户要求整条删除：那条黑渐变「丑死了」，顶栏可读性改由上面的
+   **黑白字自适应**承担（浅色封面给深色标题/图标，深色封面给浅色）。**不要**再加回来。 */
 /* 封面背景下的磨砂玻璃：抽屉面板与上拉曲目表都要能透出封面的颜色，
    否则「封面背景」实际只剩下顶栏一点渐变（第五轮 B2）。
    文字对比度由面板底色（62% 深色）保证，模糊只是让底下的封面不成干扰。 */
@@ -383,8 +362,9 @@
   background:
     radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.1), transparent 55%),
     linear-gradient(168deg, #3d4046, #26282d 48%, #16181b);
+  /* 底部投影（0 26px 48px）已按要求移除：它落在标题那一条上、把标题压暗
+     （原因见下面 .mw-np__meta 的绘制顺序说明）。设备厚度由两条 inset 阴影承担。 */
   box-shadow:
-    0 26px 48px rgba(0, 0, 0, 0.6),
     inset 0 0 0 1px rgba(255, 255, 255, 0.09),
     inset 0 -22px 36px rgba(0, 0, 0, 0.55);
 }
@@ -555,8 +535,8 @@
   background:
     radial-gradient(120% 100% at 22% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
     linear-gradient(165deg, #444b54, #272c32 55%, #16191d);
+  /* 底部投影（0 24px 46px）同样移除，理由见黑胶那台 */
   box-shadow:
-    0 24px 46px rgba(0, 0, 0, 0.55),
     inset 0 0 0 1px rgba(255, 255, 255, 0.12),
     inset 0 -18px 30px rgba(0, 0, 0, 0.5);
 }
@@ -615,9 +595,8 @@
   inset: 0;
 }
 .mw-dev--cover .mw-cover--standalone {
-  box-shadow:
-    0 28px 54px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* 底部投影（0 28px 54px）同样移除：大封面的投影最重，标题被压暗得最明显 */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 /* 播放器里的唱片只是设备上的「盘片本体」，不需要音乐墙那套悬停交互：
    黑胶缩放 + 盘片自转、CD 盘片自转、封面抬升 + 扫光。
@@ -675,6 +654,17 @@
     0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
+/* 文字与控制键必须画在**设备层之上**（第八轮）：
+   设备是定位元素（.mw-np__disc{position:relative} → .mw-dev__chassis / ::before 环境模糊），
+   按 CSS 绘制顺序，定位层排在常规流之后 ⇒ 会盖住后面这两个**静态**兄弟节点。
+   底盘原本那条 24~28px 偏移、46~54px 模糊的黑投影正好落在标题那一条，
+   于是标题被罩上一层黑——用户看到的「标题很暗」就是它（不是文字阴影的问题）。
+   投影已按要求移除，这里再给文字/控制键定位 + z-index，保证任何设备层都不会再压到它们。 */
+.mw-np__meta,
+.mw-np__controls {
+  position: relative;
+  z-index: 1;
+}
 .mw-np__meta {
   display: flex;
   flex-direction: column;
@@ -827,19 +817,21 @@
   z-index: 29;
 }
 
-/* ---- 上拉曲目面板（覆盖在 page 之上，纯查看） ---- */
+/* ---- 上拉曲目面板（覆盖在 page 之上，纯查看） ----
+   第七轮起遮罩只做视觉：不吞点击、不承担关闭——点其他地方不收起面板，
+   页面其余交互照常；关闭途径 = 倒三角收起钮 / 曲目列表按钮开关 / Esc。 */
 .mw-player__scrim {
   position: absolute;
   inset: 0;
   z-index: 3;
   background: rgba(0, 0, 0, 0.28);
   opacity: 0;
-  pointer-events: none;
+  pointer-events: none !important;
   transition: opacity 0.3s ease;
 }
 .mw-player__scrim.is-open {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none !important;
 }
 /* 上拉面板默认必须是「真隐藏」：早先用 transform: translateY(101%) 靠父节点裁剪，
    但根节点的 height/overflow 与 Obsidian 的 .view-content 是同一档特异性，谁生效不稳定；

@@ -10,6 +10,9 @@
 
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
 import { installDomHelpers, probeCoverUri, TFile, WorkspaceLeaf } from "./obsidian-shim";
+import { matchNowPlaying } from "../src/core/match";
+import type { NowPlayingState } from "../src/core/nowPlaying";
+import type { WallItem } from "../src/types";
 
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 const fails: string[] = [];
@@ -33,6 +36,8 @@ function makePlugin() {
       minColumnWidth: 200,
       defaultStyle: "vinyl",
       shelfCaption: "pull",
+      /** 全局缩放：与真实设置同形（缩放场景会临时改写它再调 syncZoomBox） */
+      zoomScale: 1,
     },
     nowPlaying: {
       supported: false,
@@ -394,13 +399,13 @@ const coverSvg = (label: string): string =>
       "同时给出压色（保证图标可读）",
       view.contentEl.style.getPropertyValue("--mw-np-accent-fg")
     );
-    // 取不到封面（请求失败）→ 不写行内变量，回退 CSS 的强调色
+    // 第七轮：无封面专辑 → 不再「什么都没有」，落到内置默认封面摊开渲染
     (view as unknown as { current: unknown }).current = {
       meta: {
         albumId: 8,
         name: "无封面",
         artist: "a",
-        cover: "https://example.invalid/nope.png",
+        cover: "",
         trackCount: 0,
         tracks: [],
       },
@@ -410,21 +415,87 @@ const coverSvg = (label: string): string =>
     await wait(150);
     await pickBg("art");
     await wait(350);
+    // 第七轮：无封面专辑**不再什么都画不上**——封面背景/设备都落到内置默认封面，
+    // 取色在 data URI 上就近完成（不再借道 requestUrl，始终有亮度可采）。
+    const noCoverArt = getComputedStyle(view.contentEl)
+      .getPropertyValue("--mw-player-art")
+      .trim();
     check(
-      view.contentEl.style.getPropertyValue("--mw-np-accent").trim() === "",
-      "取色失败：回退主题强调色（不残留行内值）",
-      view.contentEl.style.getPropertyValue("--mw-np-accent")
+      noCoverArt.startsWith('url("data:image/svg+xml'),
+      "无封面专辑：封面背景落到内置默认封面",
+      noCoverArt.slice(0, 48)
     );
-    // 封面模式的可读性：顶栏有局部深色渐变、控制键有深色半透明底（不是透明圆 + 淡描边）
+    const noCoverDisc = view.contentEl
+      .querySelector<HTMLElement>(".mw-np__disc img")
+      ?.getAttribute("src");
+    check(
+      !!noCoverDisc && noCoverDisc.startsWith("data:image/svg+xml"),
+      "无封面专辑：设备正常渲染（is-empty 已不再出现）",
+      (noCoverDisc ?? "").slice(0, 48)
+    );
+    // 内置封面必须**真能解码**：SVG 里少一个引号就会静默变成空白图，
+    // 只断言 src 前缀抓不住（虚拟时间下超时不算失败，只排除 error）。
+    const noCoverDecode = await new Promise<string>((res) => {
+      const img = new Image();
+      img.onload = () => res("ok");
+      img.onerror = () => res("error");
+      img.src = noCoverDisc ?? "";
+      window.setTimeout(() => res("pending"), 1200);
+    });
+    check(
+      noCoverDecode !== "error",
+      "内置默认封面可解码（不是坏图）",
+      noCoverDecode
+    );
+    // 封面模式的可读性（第八轮改版）：顶栏**不再**有深色渐变，
+    // 改为按封面亮度自适应字色——浅色封面给深色标题/图标，深色封面给浅色字 + 文字阴影
     await pickBg("art");
     await wait(200);
     // 注意：render 会重建 DOM，必须重新查询（早先捕获的 bar 引用已脱离文档）
     const liveBar = view.contentEl.querySelector<HTMLElement>(".mw-player__bar")!;
     check(
       view.contentEl.classList.contains("mw-bg--art") &&
-        getComputedStyle(liveBar, "::before").backgroundImage.includes("gradient"),
-      "封面模式：顶栏有一条局部深色渐变（保证图标/标题可读）",
+        !getComputedStyle(liveBar, "::before").backgroundImage.includes("gradient"),
+      "封面模式：顶栏不再有深色渐变（改由自适应字色保证可读）",
       getComputedStyle(liveBar, "::before").backgroundImage.slice(0, 60)
+    );
+    // 两个分支都走一遍：纯色封面探针 → 采样出亮度 → setArtTone 挂类名
+    const toneOf = async (hex: string) => {
+      (view as unknown as { current: unknown }).current = {
+        meta: {
+          albumId: 77,
+          name: "自适应",
+          artist: "a",
+          cover: probeCoverUri(hex),
+          trackCount: 0,
+          tracks: [],
+        },
+        srcPath: "walls/a.mw",
+      };
+      await view["render"]();
+      await wait(120);
+      await pickBg("art");
+      await wait(420);
+      const title = view.contentEl.querySelector<HTMLElement>(".mw-np__title")!;
+      const cs = getComputedStyle(title);
+      return {
+        light: view.contentEl.classList.contains("mw-art--light"),
+        dark: view.contentEl.classList.contains("mw-art--dark"),
+        titleLum: lum(cs.color),
+        shadow: cs.textShadow,
+      };
+    };
+    const lightTone = await toneOf("f4f4f4");
+    check(
+      lightTone.light && lightTone.titleLum >= 0 && lightTone.titleLum < 0.35,
+      "封面背景：浅色封面 → 标题/艺术家/图标自动变深色",
+      lightTone
+    );
+    const darkTone = await toneOf("141416");
+    check(
+      darkTone.dark && darkTone.titleLum > 0.6 && darkTone.shadow !== "none",
+      "封面背景：深色封面 → 保持浅色字 + 文字阴影",
+      darkTone
     );
     // 用列表键探针（它不会因 SMTC 不可用而进入禁用态）
     const ctrlProbe = view.contentEl.querySelector<HTMLElement>(".mw-np__ctrl--list")!;
@@ -457,10 +528,20 @@ const coverSvg = (label: string): string =>
       getComputedStyle(prevBtn).pointerEvents
     );
 
-    // 播放器页的缩放：缩放盒必须精确铺满根节点（与音乐墙同一套机制）
+    // 播放器页的缩放：缩放盒必须精确铺满根节点（与音乐墙同一套机制）。
+    // **必须走真实链路**：plugin.applyZoom() 会先把系数写进设置与 body 变量，
+    // 再遍历视图调 syncZoomBox() 写行内像素尺寸。只改 body 变量是不支持的路径——
+    // 行内像素兜底（见 zoom.ts）优先级高于 CSS 的 calc 反除补偿，没人重算它，
+    // 盒子就停在旧尺寸、被 transform 原样放大 1.25 倍（这正是本条早先的假失败）。
     const rootEl = view.contentEl;
-    const prevZoom = document.body.style.getPropertyValue("--mw-zoom");
+    const viewPlugin = (view as unknown as {
+      plugin: { settings: { zoomScale?: number } };
+    }).plugin;
+    const prevZoomScale = viewPlugin.settings.zoomScale ?? 1;
+    const prevZoomVar = document.body.style.getPropertyValue("--mw-zoom");
+    viewPlugin.settings.zoomScale = 1.25;
     document.body.style.setProperty("--mw-zoom", "1.25");
+    view.syncZoomBox();
     await wait(120);
     const boxEl = rootEl.querySelector<HTMLElement>(".mw-zoombox")!;
     const rr = rootEl.getBoundingClientRect();
@@ -482,7 +563,9 @@ const coverSvg = (label: string): string =>
       "125%：右下角仍落在缩放盒内（未被裁切）",
       String(cornerProbe?.className ?? cornerProbe?.tagName ?? "null")
     );
-    document.body.style.setProperty("--mw-zoom", prevZoom || "1");
+    viewPlugin.settings.zoomScale = prevZoomScale;
+    document.body.style.setProperty("--mw-zoom", prevZoomVar || "1");
+    view.syncZoomBox();
     await wait(120);
 
     // Esc / 遮罩关闭抽屉；再开曲目面板时抽屉自动收起（互斥）
@@ -519,6 +602,32 @@ const coverSvg = (label: string): string =>
         !!view.contentEl.querySelector(".mw-player__playlist.is-open"),
       "曲目面板与抽屉互斥"
     );
+
+    // ---- 第七轮问题 1：曲目面板展开时点其他地方**不收起**（scrim 只做视觉） ----
+    {
+      const scrim = view.contentEl.querySelector<HTMLElement>(".mw-player__scrim")!;
+      check(
+        getComputedStyle(scrim).pointerEvents === "none",
+        "曲目面板遮罩不吞点击（pointer-events:none）",
+        getComputedStyle(scrim).pointerEvents
+      );
+      const hitTarget = document.elementFromPoint(
+        window.innerWidth * 0.25,
+        120
+      ) as HTMLElement | null;
+      check(
+        !!hitTarget,
+        "面板外区域可命中（不被遮罩截获）",
+        String(hitTarget?.className ?? hitTarget?.tagName ?? "null")
+      );
+      (hitTarget as HTMLElement)?.click();
+      await wait(200);
+      check(
+        !!view.contentEl.querySelector(".mw-player__playlist.is-open"),
+        "点其他地方不收起曲目面板",
+        !!view.contentEl.querySelector(".mw-player__playlist.is-open")
+      );
+    }
 
     // 整页不出滚动条（flex 溢出产生的 scrollHeight 不算：可滚动容器本身必须为零）
     const scrollers = Array.from(view.contentEl.querySelectorAll<HTMLElement>("*")).filter(
@@ -614,29 +723,13 @@ const coverSvg = (label: string): string =>
       "封面模式：面板带背景模糊（磨砂玻璃）",
       artCs.backdropFilter
     );
-    // 封面背景的「压暗层」：**上半页必须完全透明**（原先是铺满整页的中性深色，
-    // 等于给彩色封面盖一层灰纱；用户实测禁掉 ::after 就正常）。
-    // 断言方式：::after 的每条渐变里必须有 alpha = 0 的 stop，且最大 alpha 有上限。
-    const artVeil = getComputedStyle(view.contentEl, "::after").backgroundImage;
-    const veilStops = Array.from(artVeil.matchAll(/rgba?\(([^)]+)\)/g)).map((m) => {
-      const parts = m[1].split(",").map((x) => parseFloat(x));
-      return parts.length > 3 ? parts[3] : 1;
-    });
-    const maxVeil = veilStops.length ? Math.max(...veilStops) : 0;
+    // 封面背景**不叠任何压暗层**（第八轮按要求移除 `.mw-bg--art::after` 的 background）：
+    // 无论铺满整屏还是只压底部，都不该在封面背景上再加背景层。
+    // 断言方式：::after 的 computed background-image 必须是 none（规则已整条删除）。
+    const artVeil = String(getComputedStyle(view.contentEl, "::after").backgroundImage);
     check(
-      veilStops.includes(0),
-      "封面背景：压暗层由透明起手（上半页不吃灰）",
-      { stops: veilStops.join("/"), max: maxVeil }
-    );
-    check(
-      maxVeil <= 0.7,
-      "封面背景：最深处压暗 ≤ 70%（不是整屏灰纱）",
-      maxVeil
-    );
-    // 压暗必须带封面主色（不是中性黑 → 不会把颜色洗成灰）
-    check(
-      /color-mix|color\(/.test(artVeil) || !/rgb\(6, 8, 12\)/.test(artVeil),
-      "封面背景：底部压暗用封面主色而不是中性黑",
+      artVeil === "none" || artVeil === "",
+      "封面背景：没有压暗层（::after 不带任何 background）",
       artVeil.slice(0, 120)
     );
     const artBlur = getComputedStyle(view.contentEl, "::before").filter;
@@ -756,6 +849,70 @@ const coverSvg = (label: string): string =>
       view.contentEl.querySelectorAll<HTMLElement>(".mw-drawer .mw-preset.is-active, .mw-drawer .mw-preset__stage")
     ).some((el) => getComputedStyle(el).borderTopColor === "rgb(124, 92, 255)");
     check(!purpleHit, "封面背景：面板高亮没有主题紫");
+
+    // ---- 第七轮问题 2：匹配顺序以**专辑为主**，曲目快照是次级途径 ----
+    {
+      const walls: WallItem[] = [
+        {
+          albumId: 501,
+          source: "search",
+          locked: true,
+          meta: {
+            albumId: 501,
+            name: "Night Lines",
+            artist: "Kenji",
+            cover: "",
+            trackCount: 1,
+            tracks: [{ name: "Song A", duration: 180000, artists: "Kenji" }],
+          },
+          addedAt: new Date().toISOString(),
+        },
+        {
+          albumId: 502,
+          source: "search",
+          locked: true,
+          meta: {
+            albumId: 502,
+            name: "Song A",
+            artist: "Kim",
+            cover: "",
+            trackCount: 1,
+            tracks: [{ name: "B Tune", duration: 200000, artists: "Kim" }],
+          },
+          addedAt: new Date().toISOString(),
+        },
+      ];
+      const now = (over: Partial<NowPlayingState>): NowPlayingState => ({
+        supported: true,
+        active: true,
+        title: "",
+        artist: "",
+        album: "",
+        status: "playing",
+        positionMs: 0,
+        durationMs: 0,
+        seekable: false,
+        canPlay: true,
+        canPause: true,
+        canToggle: true,
+        canNext: true,
+        canPrev: true,
+        ...over,
+      });
+      // SMTC 发布了专辑名时：专辑级精确命中压过曲目快照命中（501 的曲目叫 Song A，
+      // 但正在播放的专辑是「Song A」→ 应命中 502）
+      const albumHit = matchNowPlaying(
+        now({ title: "Song A", artist: "Kim", album: "Song A" }),
+        walls
+      );
+      check(albumHit?.albumId === 502, "专辑名命中优先（以专辑为主）", albumHit);
+      // 专辑没匹配到也没关系：曲名快照兜底依然可用
+      const trackHit = matchNowPlaying(now({ title: "Song A", artist: "Kenji" }), walls);
+      check(trackHit?.albumId === 501 && trackHit.trackIndex === 0, "无专辑名：曲目快照兜底", trackHit);
+      // 两级全落空 → 界面会走默认封面（match null）
+      const miss = matchNowPlaying(now({ title: "Xyz None", artist: "nobody" }), walls);
+      check(miss === null, "两级都没命中 → null（界面用默认封面兜底）", miss);
+    }
   } catch (e) {
     check(false, "场景异常", String((e as Error)?.stack ?? e));
   }

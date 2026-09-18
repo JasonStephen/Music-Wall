@@ -15,6 +15,26 @@
 .view-content.mw-view {
   padding: 0 !important;
   margin: 0 !important;
+  /*
+   * 根节点必须锁死裁剪（滚动条抽动修复）。
+   *
+   * Obsidian 默认样式有一条 (0,2,0) 的
+   *   `.workspace-leaf-content .view-content { overflow: auto }`
+   * 而下面 `.mw-view { overflow: hidden }` 只有 (0,1,0)——特异性必输，
+   * 与加载顺序无关。结果音乐墙根节点一直是真正的滚动容器：内容底部/
+   * 右侧只要有一丝亚像素溢出（缩放盒 transform 后 ±0.001px 的补偿误差，
+   * 200% DPI 下半像素窗格再放大这种误差），最外侧的横竖滚动条就会冒出来。
+   *
+   * 更糟的是滚动条一旦出现会吃掉一条槽宽，根的 clientWidth/Height 变化
+   * 又触发 syncZoomBox 的 ResizeObserver 重写缩放盒尺寸，几何再抖一下，
+   * 滚动条又消失——出现/消失互为因果，形成逐帧Limit循环，表现为
+   * 「滚动条高频抽动、截图都截不住」（200% DPI 上实测）。
+   *
+   * 修法与播放器页同款（player.css .mw-player.mw-view）：蹭已有的双类
+   * (0,2,0) 规则把 overflow 一并压过去；插件样式晚于 app.css 加载，
+   * 同特异性时后加载者赢。滚动只允许发生在 .mw-grid 内层。
+   */
+  overflow: hidden;
 }
 /* 少数主题把内边距加在叶子上而不是 .view-content 上，一并归零 */
 .workspace-leaf-content[data-type="music-wall-view"],

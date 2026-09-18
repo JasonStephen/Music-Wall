@@ -2964,8 +2964,9 @@ export class MusicWallView extends FileView implements WallHost {
   } | null {
     detail.empty();
     const meta = item.meta;
+    // 遮罩只做视觉、不再承担关闭（第七轮）：点格子空白不收回开盒详情，
+    // 关闭途径 = 右上 × / Esc / 再点同一唱片。pointer-events 见 shelf.css。
     const scrim = detail.createDiv({ cls: "mw-gf__scrim" });
-    scrim.addEventListener("click", () => this.closeShelfDetail());
     const book = detail.createDiv({ cls: "mw-gf__book" });
 
     // 右页必须先建：闭合态左右两页共面，共面时后建者绘制在上，封面页（左页）要压住盘托

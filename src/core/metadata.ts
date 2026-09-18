@@ -179,6 +179,8 @@ export function parseAlbumInput(input: string): number | null {
 /** 给网易云图片 URL 附加尺寸参数（封面懒加载用小图） */
 export function sizedCover(url: string, size = 400): string {
   if (!url) return "";
+  // data-URI（内置默认封面）不是远端图，不能也不需要追加 param 参数
+  if (url.startsWith("data:")) return url;
   if (url.includes("param=")) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}param=${size}y${size}`;

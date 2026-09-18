@@ -233,7 +233,11 @@ function topAtCover(): string {
   const cover = document.querySelector<HTMLElement>(".mw-gf__face--cover")!;
   const r = cover.getBoundingClientRect();
   const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-  return hit ? (hit as HTMLElement).className || hit.tagName : "null";
+  if (!hit) return "null";
+  // 命中点在封面页内部即可：第七轮起内置默认封面兜底，破图不再 display:none，
+  // 命中的最深元素变成封面页里的 <img>——它仍属于封面页，语义不变。
+  if (hit.closest(".mw-gf__face--cover")) return "mw-gf__face--cover";
+  return (hit as HTMLElement).className || hit.tagName;
 }
 
 // ---- 场景 ----
@@ -296,7 +300,10 @@ async function caseSwap(): Promise<void> {
       root: [Math.round(rootRect.left), Math.round(rootRect.top), Math.round(rootRect.width), Math.round(rootRect.height)],
     }
   );
-  // 顶栏图标必须被遮罩压在下面（点它等于关详情，不能穿过去点到按钮）
+  // 第七轮起遮罩只做视觉（pointer-events:none）：点顶栏图标要「真点到图标」，
+  // 不再被遮罩截获——断言从前是「命中遮罩」，现在反过来：命中点必须落在图标钮内。
+  // 注意不能用 className.includes 判断：命中的最深元素常是按钮里的 <svg>，
+  // 它的 className 是 SVGAnimatedString（不是字符串），要用 closest 判定归属。
   const iconHit = Array.from(
     view.contentEl.querySelectorAll<HTMLElement>(".mw-toolbar .mw-toolbtn")
   ).map((b) => {
@@ -304,13 +311,16 @@ async function caseSwap(): Promise<void> {
     const el = document.elementFromPoint(
       Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1),
       Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1)
-    ) as HTMLElement | null;
-    return String(el?.className ?? el?.tagName ?? "null");
+    );
+    return {
+      ok: !!el && (el === b || b.contains(el)),
+      hit: el ? `${el.tagName}.${el.getAttribute("class") ?? ""}` : "null",
+    };
   });
   result(
-    iconHit.every((c) => c.includes("mw-gf__scrim")),
-    "顶栏图标在遮罩之下（不会被穿透点中）",
-    iconHit.join(" | ")
+    iconHit.length > 0 && iconHit.every((h) => h.ok),
+    "顶栏图标可被直击（遮罩不再吞掉点击）",
+    iconHit.map((h) => h.hit).join(" | ")
   );
   const faces = document.querySelectorAll<HTMLElement>(".mw-gf__discface");
   result(faces.length === 2, "双盘面就绪", faces.length);
