@@ -92,7 +92,8 @@ export class AlbumSearchPanel {
     const raw = this.inputEl?.value.trim() ?? "";
     if (!raw) return;
 
-    // 链接/裸 ID 快速路径
+    // 分享链接快速路径（含 http / album?id= 的链接直接按 ID 拉取）
+    // 裸 ID 不在这里拦：先当关键词搜，搜不到再兜底按 ID 取（见 loadMore）
     const id = parseAlbumInput(raw);
     if (id !== null && /http|album/i.test(raw)) {
       await this.quickAddById(id);
@@ -107,10 +108,12 @@ export class AlbumSearchPanel {
     await this.loadMore();
   }
 
-  private async quickAddById(albumId: number): Promise<void> {
+  /** 按 ID 直取专辑；返回是否走通（true=已提示/已弹确认框） */
+  private async quickAddById(albumId: number): Promise<boolean> {
     if (this.host.getExistingIds().has(albumId)) {
       new Notice("该专辑已在当前音乐墙中");
-      return;
+      this.setStatus("");
+      return true;
     }
     this.setStatus("正在拉取专辑元数据…");
     try {
@@ -120,8 +123,10 @@ export class AlbumSearchPanel {
         this.host.addAlbum(meta, "search");
         this.markAdded(albumId);
       });
+      return true;
     } catch (e: any) {
       this.setStatus("获取失败：" + (e?.message ?? e));
+      return false;
     }
   }
 
@@ -139,6 +144,17 @@ export class AlbumSearchPanel {
       this.hasMore = batch.length >= PAGE;
       this.offset += batch.length;
       this.renderList();
+      if (this.results.length === 0) {
+        // 云搜索按文本匹配、不认专辑 ID：纯数字关键词搜不到时，
+        // 八成是用户粘贴的裸 ID → 兜底按 ID 直取（1989/21 这类有文本命中则不受影响）
+        const id = parseAlbumInput(this.keyword);
+        if (id !== null) {
+          if (!(await this.quickAddById(id))) {
+            this.setStatus("没有结果，换个关键词试试");
+          }
+          return;
+        }
+      }
       this.setStatus(this.results.length === 0 ? "没有结果，换个关键词试试" : "");
     } catch (e: any) {
       this.setStatus("搜索失败：" + (e?.message ?? e));
