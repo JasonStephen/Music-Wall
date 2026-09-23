@@ -1,0 +1,251 @@
+/* ===== 评分：卡片徽标 / 详情星显 / 评分框 =====
+   五档配色（1 红 → 2 橙 → 3 黄 → 4 绿 → 5 靛紫）：徽标星色、详情亮起的星、
+   评分框星位都取同一套 --mw-rate-N，扫一眼就能分辨分数高低。 */
+
+.mw-view,
+.mw-modal-zoom {
+  --mw-rate-1: #e05252;
+  --mw-rate-2: #e8804a;
+  --mw-rate-3: #e5c04b;
+  --mw-rate-4: #7cb342;
+  --mw-rate-5: #7c6cf0;
+  /* 数字压在星心：1–4 档底色偏亮用近黑，5 档靛紫偏深用白 */
+  --mw-rate-ink: #140f08;
+  --mw-rate-ink-light: #fdfbff;
+}
+
+/* ---- 卡片右上角徽标：单星＋中间数字（常显，不随悬停按钮消失） ---- */
+.mw-rating-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+}
+.mw-rating-badge__star {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 字号 = 徽标边长：星形外接方框刚好铺满，中间留出的面积才够放数字 */
+  font-size: 34px;
+  line-height: 1;
+  color: var(--mw-rate-5);
+}
+.mw-rating-badge__num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 数字压在星心：★ 重心略偏上，下移 4px 才是视觉正中 */
+  padding-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--mw-rate-ink);
+}
+/* 按档位着色：星色 + 数字墨色 */
+.mw-rating-badge[data-rating="1"] .mw-rating-badge__star { color: var(--mw-rate-1); }
+.mw-rating-badge[data-rating="2"] .mw-rating-badge__star { color: var(--mw-rate-2); }
+.mw-rating-badge[data-rating="3"] .mw-rating-badge__star { color: var(--mw-rate-3); }
+.mw-rating-badge[data-rating="4"] .mw-rating-badge__star { color: var(--mw-rate-4); }
+.mw-rating-badge[data-rating="5"] .mw-rating-badge__star {
+  color: var(--mw-rate-5);
+}
+.mw-rating-badge[data-rating="5"] .mw-rating-badge__num {
+  color: var(--mw-rate-ink-light);
+}
+/* 有徽标的卡片：右上悬停按钮整体下移一行，避免盖住放大后的星 */
+.mw-card.has-rating .mw-iconbtn {
+  top: 44px;
+}
+
+/* ---- 展示架：徽标挂在封套内部（跟随抽出与缩放），列表：缩略图右上角 ---- */
+.mw-shelf-jacket .mw-rating-badge {
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  /* 高于封套自身的 ::after 反光层（z-index auto），否则会被它压住 */
+  z-index: 5;
+}
+.mw-shelf-jacket .mw-rating-badge__star {
+  font-size: 30px;
+}
+.mw-row__thumbwrap {
+  position: relative;
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+}
+.mw-row__thumbwrap .mw-row__thumb {
+  width: 100%;
+  height: 100%;
+  flex: none;
+}
+.mw-row__thumbwrap .mw-rating-badge {
+  top: -6px;
+  right: -6px;
+  width: 28px;
+  height: 28px;
+}
+.mw-row__thumbwrap .mw-rating-badge__star {
+  font-size: 28px;
+}
+
+/* ---- 详情只读五星 ---- */
+.mw-stars {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.mw-stars__star {
+  font-size: 17px;
+  line-height: 1;
+  color: var(--text-faint, #8b7d6b);
+}
+/* 亮起的星统一取该专辑总分色 */
+.mw-stars__star.is-on {
+  color: var(--mw-rate-5);
+  text-shadow: 0 0 6px rgba(124, 108, 240, 0.35);
+}
+.mw-stars[data-rating="1"] .mw-stars__star.is-on {
+  color: var(--mw-rate-1);
+  text-shadow: 0 0 6px rgba(224, 82, 82, 0.4);
+}
+.mw-stars[data-rating="2"] .mw-stars__star.is-on {
+  color: var(--mw-rate-2);
+  text-shadow: 0 0 6px rgba(232, 128, 74, 0.4);
+}
+.mw-stars[data-rating="3"] .mw-stars__star.is-on {
+  color: var(--mw-rate-3);
+  text-shadow: 0 0 6px rgba(229, 192, 75, 0.4);
+}
+.mw-stars[data-rating="4"] .mw-stars__star.is-on {
+  color: var(--mw-rate-4);
+  text-shadow: 0 0 6px rgba(124, 179, 66, 0.4);
+}
+.mw-stars[data-rating="5"] .mw-stars__star.is-on {
+  color: var(--mw-rate-5);
+  text-shadow: 0 0 6px rgba(124, 108, 240, 0.45);
+}
+.mw-stars.is-unrated .mw-stars__star {
+  opacity: 0.75;
+}
+/* 详情评分行：星显＋评分按钮 */
+.mw-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.mw-rate-row__btn {
+  font-size: 0.8em;
+}
+/* 开盒详情（深色信息面）：按钮硬重置，免得被主题刷成白底药丸 */
+.mw-gf__rate {
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.mw-gf__rate .mw-gf__rate-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 2px 12px;
+  border: 1px solid rgba(255, 226, 180, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 226, 180, 0.08);
+  box-shadow: none;
+  min-height: 0;
+  height: auto;
+  color: #e6dcc9;
+  font-size: 0.75em;
+  cursor: pointer;
+}
+.mw-gf__rate .mw-gf__rate-btn:hover {
+  border-color: #d9a24a;
+  color: #fff2dc;
+}
+
+/* ---- 评分模态框：五颗大星＋悬停预览 ---- */
+.mw-rating-modal__heading {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+.mw-rating-modal__current {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  margin-bottom: 10px;
+}
+.mw-rating-modal__stars {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+/* 星星本身不带任何按钮外观：主题与展示架皮肤都会给 button:not(.clickable-icon)
+   刷底色/描边/**文字色**（展示架那份三条都带 !important，特异性 (0,3,1)），
+   所以这里必须同时做到「特异性更高」+「!important」——漏掉任一条，木墙皮肤下
+   星星就会带圆角底、而且全部被染成同一个暖白色（反馈截图正是如此）。 */
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star:hover {
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: 34px;
+  line-height: 1;
+  padding: 0 4px;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  color: var(--text-faint, #8b7d6b) !important;
+  transition: transform 0.12s, color 0.12s;
+}
+/* 星位即档位：悬停/键盘预览时点亮的 1..n 星取各自档位色并放大；已选只着色不放大 */
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star.is-preview {
+  transform: scale(1.18);
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="1"].is-on,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="1"].is-preview {
+  color: var(--mw-rate-1) !important;
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="2"].is-on,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="2"].is-preview {
+  color: var(--mw-rate-2) !important;
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="3"].is-on,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="3"].is-preview {
+  color: var(--mw-rate-3) !important;
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="4"].is-on,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="4"].is-preview {
+  color: var(--mw-rate-4) !important;
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="5"].is-on,
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star[data-star="5"].is-preview {
+  color: var(--mw-rate-5) !important;
+}
+.modal.mw-modal-zoom .mw-rating-modal__stars button.mw-rate-star:focus-visible {
+  outline: 2px solid var(--interactive-accent, #e8b45f);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.mw-rating-modal__hint {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  margin-bottom: 4px;
+}
+.mw-rating-modal__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}

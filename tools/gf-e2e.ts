@@ -10,6 +10,7 @@
 // 结果读 <title>：PASS:<case> 或 FAIL:<case>:<明细>（断言行在 #result）。
 
 import { MusicWallView } from "../src/ui/MusicWallView";
+import { RatingModal } from "../src/ui/RatingModal";
 import { installDomHelpers, MENU_LOG, TFile, WorkspaceLeaf } from "./obsidian-shim";
 
 declare global {
@@ -300,8 +301,9 @@ async function caseSwap(): Promise<void> {
       root: [Math.round(rootRect.left), Math.round(rootRect.top), Math.round(rootRect.width), Math.round(rootRect.height)],
     }
   );
-  // 第七轮起遮罩只做视觉（pointer-events:none）：点顶栏图标要「真点到图标」，
-  // 不再被遮罩截获——断言从前是「命中遮罩」，现在反过来：命中点必须落在图标钮内。
+  // 第八轮起遮罩**接管**顶栏区域（is-open/is-shutting 时 pointer-events:auto）：
+  // 开盒详情打开时点顶栏，命中的是遮罩而不是图标——这是刻意的（点册页外一律收起，
+  // 见 caseBlankClose），断言据此反转：命中点必须落在详情层内，不会误触看不见的图标。
   // 注意不能用 className.includes 判断：命中的最深元素常是按钮里的 <svg>，
   // 它的 className 是 SVGAnimatedString（不是字符串），要用 closest 判定归属。
   const iconHit = Array.from(
@@ -313,13 +315,13 @@ async function caseSwap(): Promise<void> {
       Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1)
     );
     return {
-      ok: !!el && (el === b || b.contains(el)),
+      ok: !!el && !!el.closest(".mw-shelf-detail"),
       hit: el ? `${el.tagName}.${el.getAttribute("class") ?? ""}` : "null",
     };
   });
   result(
     iconHit.length > 0 && iconHit.every((h) => h.ok),
-    "顶栏图标可被直击（遮罩不再吞掉点击）",
+    "开盒时遮罩接管顶栏（点顶栏＝收起详情，不误触看不见的图标）",
     iconHit.map((h) => h.hit).join(" | ")
   );
   const faces = document.querySelectorAll<HTMLElement>(".mw-gf__discface");
@@ -539,6 +541,240 @@ async function caseQueue(): Promise<void> {
     "队列唱片自动打开"
   );
   result(true, "排队后最终打开 Album 08");
+}
+
+/**
+ * 开盒详情：点「册页以外」＝收起（用户反馈的误触修复）。
+ * 遮罩曾经 pointer-events:none，点击会穿透到墙上的唱片，被当成「换开另一张」，
+ * 表现就是「点黑色空白处没收回详情，反而误触到背景唱片而切换」。
+ * 现在 scrim 在 is-open/is-shutting 期间接管点击 → 一律收起，不再排队切歌。
+ */
+async function caseBlankClose(): Promise<void> {
+  await openAndWait(7);
+  // ① 册页本体：点它不能收起（否则详情里的换面/工具钮全都没法用）
+  const cover = document.querySelector<HTMLElement>(".mw-gf__face--cover")!;
+  const cr = cover.getBoundingClientRect();
+  const cHit = document.elementFromPoint(cr.left + cr.width / 2, cr.top + cr.height / 2) as
+    | HTMLElement
+    | null;
+  result(
+    !!cHit && !!cHit.closest(".mw-gf__book"),
+    "册页本体仍压在遮罩之上（命中 book 内元素）",
+    cHit ? `${cHit.tagName}.${cHit.getAttribute("class") ?? ""}` : "null"
+  );
+  cHit?.click();
+  await wait(300);
+  result(isOpen(), "点册页本体不会收起详情");
+
+  // ② 背景另一张唱片的位置：必须命中遮罩本身，点下去只收起、不换开。
+  // 册页是居中的 2:1 大开本，很多卡片被它盖住；沿卡片上沿找「露出册页之外、
+  // 且下面确实压着唱片」的点——这正是用户点「黑色空白处」时的手势。
+  const scrimEl = detailEl().querySelector<HTMLElement>(".mw-gf__scrim")!;
+  const bookRect = bookEl().getBoundingClientRect();
+  const inBook = (x: number, y: number) =>
+    x >= bookRect.left && x <= bookRect.right && y >= bookRect.top && y <= bookRect.bottom;
+  let pick: [number, number] | null = null;
+  let under: string = "none";
+  for (const c of Array.from(document.querySelectorAll<HTMLElement>(".mw-shelf-card"))) {
+    if (c.dataset.mwAlbum === "7") continue;
+    const r = c.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height * 0.25;
+    if (inBook(x, y) || x < 1 || y < 1 || x > window.innerWidth - 1 || y > window.innerHeight - 1) {
+      continue;
+    }
+    const stack = document.elementsFromPoint(x, y);
+    const cardUnder = stack.find((el) => el.closest?.(".mw-shelf-card"));
+    if (cardUnder) {
+      pick = [x, y];
+      under = cardUnder.getAttribute("class") ?? "";
+      break;
+    }
+  }
+  result(
+    !!pick,
+    "找到「册页之外、下面压着背景唱片」的点",
+    pick ? { point: [Math.round(pick[0]), Math.round(pick[1])], under } : "none"
+  );
+  const [px, py] = pick ?? [bookRect.left + 20, Math.max(1, bookRect.top - 20)];
+  const hit = document.elementFromPoint(px, py) as HTMLElement | null;
+  result(
+    hit === scrimEl,
+    "该点命中的是遮罩本身，而不是墙上的唱片",
+    hit ? `${hit.tagName}.${hit.getAttribute("class") ?? ""}` : "null"
+  );
+  hit?.click();
+  await waitFor(() => detailEl().children.length === 0, 8000, "点空白收起");
+  result(detailEl().children.length === 0, "点背景空白处已收起详情");
+  const st = view as unknown as { gfPhase: string; gfQueue: unknown };
+  result(
+    st.gfPhase === "idle" && !st.gfQueue,
+    "收起后回到空闲，没有排队切换专辑",
+    { phase: st.gfPhase, queue: st.gfQueue ? "有" : "无" }
+  );
+  result(
+    document.querySelector<HTMLElement>(".mw-gf__name") === null,
+    "没有打开背景那张唱片（不再误触切换）"
+  );
+}
+
+/**
+ * 评分 UI：徽标挂在封套内且 z 序高于封套（用户报「展示架下星星被挡在唱片后面」）、
+ * 星心数字不再拥挤、五档各有代表色、评分框星星不带按钮圆角底（用户报的按钮背景）。
+ */
+async function caseRatingUi(): Promise<void> {
+  const v = view as unknown as {
+    data: { layout?: string; items: { albumId: number; rating?: number }[] };
+    app: unknown;
+    render(): Promise<void>;
+  };
+  /** 与 styles/rating.css 的 --mw-rate-1..5 一一对应 */
+  const PALETTE = [
+    "rgb(224, 82, 82)",
+    "rgb(232, 128, 74)",
+    "rgb(229, 192, 75)",
+    "rgb(124, 179, 66)",
+    "rgb(124, 108, 240)",
+  ];
+  for (let i = 0; i < 5; i++) v.data.items[i].rating = i + 1;
+  await v.render();
+
+  // ① 展示架：徽标必须在封套**内部**且 z 序更高
+  const rows: unknown[] = [];
+  let shelfOk = true;
+  for (let i = 0; i < 5; i++) {
+    const jacket = card(v.data.items[i].albumId).querySelector<HTMLElement>(
+      ".mw-shelf-jacket"
+    )!;
+    const badge = jacket?.querySelector<HTMLElement>(".mw-rating-badge") ?? null;
+    const star = badge?.querySelector<HTMLElement>(".mw-rating-badge__star") ?? null;
+    const color = star ? getComputedStyle(star).color : "none";
+    const bz = badge ? Number(getComputedStyle(badge).zIndex) || 0 : -1;
+    const jz = jacket ? Number(getComputedStyle(jacket).zIndex) || 0 : 0;
+    const ok = !!badge && color === PALETTE[i] && bz > jz;
+    if (!ok) shelfOk = false;
+    rows.push({ rating: i + 1, color, want: PALETTE[i], badgeZ: bz, jacketZ: jz });
+  }
+  result(shelfOk, "展示架徽标在封套内、z 序高于封套、五档各色", rows);
+
+  // ② 详情五星：亮起的星取该专辑总分色
+  await openAndWait(2); // albumId=2 → 2 分
+  const gst = document.querySelector<HTMLElement>('.mw-stars[data-rating="2"]');
+  const on = gst?.querySelector<HTMLElement>(".mw-stars__star.is-on") ?? null;
+  result(
+    !!gst && !!on && getComputedStyle(on).color === PALETTE[1],
+    "详情亮起的星按档位着色",
+    on ? getComputedStyle(on).color : "null"
+  );
+
+  // ③ 评分框（展示架皮肤：反馈截图里的那个）：星星不得带按钮圆角底
+  const flat = (sels: string): { n: number; bad: unknown[] } => {
+    const stars = Array.from(document.querySelectorAll<HTMLElement>(sels));
+    const bad = stars
+      .map((b) => {
+        const cs = getComputedStyle(b);
+        return {
+          bg: cs.backgroundColor,
+          border: cs.borderTopWidth,
+          borderColor: cs.borderTopColor,
+          shadow: cs.boxShadow,
+        };
+      })
+      .filter(
+        (s) =>
+          s.bg !== "rgba(0, 0, 0, 0)" ||
+          parseFloat(s.border) !== 0 ||
+          s.shadow !== "none"
+      );
+    return { n: stars.length, bad };
+  };
+  const modal = new RatingModal(v.app as never, {
+    albumName: "Album 02",
+    current: 3,
+    onSave: () => undefined,
+  });
+  modal.open();
+  const mEl = document.querySelector<HTMLElement>(".modal");
+  result(
+    !!mEl && mEl.classList.contains("mw-modal--shelf"),
+    "评分框在展示架墙下走木质皮肤（复现反馈截图的环境）"
+  );
+  const shelfFlat = flat(".mw-rating-modal__stars .mw-rate-star");
+  result(
+    shelfFlat.n === 5 && shelfFlat.bad.length === 0,
+    "展示架皮肤下星星无底色/无描边/无阴影",
+    shelfFlat.bad.length ? shelfFlat.bad : shelfFlat.n
+  );
+
+  // ④ 悬停预览：第 4 颗 → 前 4 颗点亮预览、第 5 颗不亮，当前分同步
+  const mStars = Array.from(
+    document.querySelectorAll<HTMLElement>(".mw-rating-modal__stars .mw-rate-star")
+  );
+  // 颜色/缩放都带 .12s 过渡，而无头 dump-dom 不产帧 → 过渡永远停在起点值
+  // （刚加类就读计算样式只会得到灰色/原始 transform）。断言终值前先关掉过渡：
+  // 过渡被取消后属性会立刻跳到目标值。
+  for (const s of mStars) s.style.transition = "none";
+  mStars[3].dispatchEvent(new MouseEvent("mouseenter"));
+  await wait(50);
+  const previewOk =
+    mStars.slice(0, 4).every((s) => s.classList.contains("is-preview")) &&
+    !mStars[4].classList.contains("is-preview");
+  result(previewOk, "悬停第 4 颗只预览前 4 颗");
+  const star4Color = getComputedStyle(mStars[3]).color;
+  result(star4Color === PALETTE[3], "预览中的第 4 颗取 4 分档位色", star4Color);
+  const tf = getComputedStyle(mStars[3]).transform;
+  result(
+    tf !== "none" && tf !== "matrix(1, 0, 0, 1, 0, 0)",
+    "预览中的星有放大动效",
+    tf
+  );
+  result(
+    (document.querySelector<HTMLElement>(".mw-rating-modal__current")?.textContent ?? "").includes(
+      "4"
+    ),
+    "悬停时「当前分」同步预览",
+    document.querySelector<HTMLElement>(".mw-rating-modal__current")?.textContent ?? ""
+  );
+  document
+    .querySelector<HTMLElement>(".mw-rating-modal__stars")!
+    .dispatchEvent(new MouseEvent("mouseleave"));
+  result(
+    mStars.every((s) => !s.classList.contains("is-preview")),
+    "移开鼠标后预览复原"
+  );
+  modal.close();
+
+  // ⑤ 网格：徽标星字够大、数字缩小（反馈「星心塞字太挤」）
+  v.data.layout = undefined;
+  await v.render();
+  const gcard = document.querySelector<HTMLElement>('.mw-card[data-mw-album="3"]');
+  const gbadge = gcard?.querySelector<HTMLElement>(".mw-rating-badge") ?? null;
+  const gstar = gbadge?.querySelector<HTMLElement>(".mw-rating-badge__star") ?? null;
+  const gnum = gbadge?.querySelector<HTMLElement>(".mw-rating-badge__num") ?? null;
+  const starFs = gstar ? parseFloat(getComputedStyle(gstar).fontSize) : 0;
+  const numFs = gnum ? parseFloat(getComputedStyle(gnum).fontSize) : 0;
+  const bw = gbadge ? gbadge.getBoundingClientRect().width : 0;
+  result(
+    !!gbadge && starFs >= 32 && numFs <= 12 && Math.abs(bw - starFs) <= 1.5,
+    "网格徽标：星字 ≥32px、数字 ≤12px、星形铺满外框",
+    { starFs, numFs, boxW: Math.round(bw * 100) / 100 }
+  );
+
+  // ⑥ 默认皮肤下同样没有按钮底（换肤开关随渲染切回 default）
+  const m2 = new RatingModal(v.app as never, { albumName: "Album 03", onSave: () => undefined });
+  m2.open();
+  const mEl2 = document.querySelector<HTMLElement>(".modal");
+  result(
+    !!mEl2 && !mEl2.classList.contains("mw-modal--shelf"),
+    "网格渲染后弹窗走默认皮肤"
+  );
+  const defFlat = flat(".mw-rating-modal__stars .mw-rate-star");
+  result(
+    defFlat.n === 5 && defFlat.bad.length === 0,
+    "默认皮肤下星星同样无底色/无描边/无阴影",
+    defFlat.bad.length ? defFlat.bad : defFlat.n
+  );
+  m2.close();
 }
 
 /** 无头 dump-dom 模式不产帧 → WAAPI 永不推进。用 50ms 定时器按 playbackRate
@@ -920,8 +1156,8 @@ async function caseToolbarDrawer(): Promise<void> {
     document.querySelectorAll<HTMLElement>('input[name="mw-sort-mode"]')
   ).map((el) => (el.parentElement?.textContent ?? "").replace(/\s+/g, ""));
   result(
-    modes.join("|") === "手动排序可拖动|添加时间|专辑名|艺术家|发行时间",
-    "排序类型五项且与升降序分离",
+    modes.join("|") === "手动排序可拖动|添加时间|专辑名|艺术家|发行时间|评分",
+    "排序类型六项（含评分）且与升降序分离",
     modes.join("|")
   );
   result(
@@ -3397,6 +3633,50 @@ async function caseShotDetail(): Promise<void> {
 }
 
 /**
+ * 截图布景（人工核对评分观感用，不在 run-all 清单里）：
+ * 展示架上的星标徽标——挂在封套内、五档各色、随抽出一起移动。
+ */
+async function caseShotRating(): Promise<void> {
+  await resetView(
+    gridData({
+      layout: "shelf",
+      items: makeData(6).items.map((it, i) => ({ ...it, rating: (i % 5) + 1 })),
+    })
+  );
+  await wait(400);
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  // 抽出一张（hover 态用类名模拟），核对徽标跟着封套上浮缩放
+  card(2).addClass("is-pulled");
+}
+
+/**
+ * 截图布景：网格徽标（星心数字）＋评分框（无按钮底、悬停预览第 4 颗）。
+ * 关掉过渡是为了让无头截图停在终态而不是过渡起点。
+ */
+async function caseShotRatingModal(): Promise<void> {
+  await resetView(
+    gridData({ items: makeData(6).items.map((it, i) => ({ ...it, rating: (i % 5) + 1 })) })
+  );
+  await wait(300);
+  const box = document.getElementById("result");
+  if (box) box.style.display = "none";
+  const app2 = (view as unknown as { app: unknown }).app;
+  const modal = new RatingModal(app2 as never, {
+    albumName: "Album 03",
+    current: 3,
+    onSave: () => undefined,
+  });
+  modal.open();
+  const stars = Array.from(
+    document.querySelectorAll<HTMLElement>(".mw-rating-modal__stars .mw-rate-star")
+  );
+  for (const s of stars) s.style.transition = "none";
+  stars[3].dispatchEvent(new MouseEvent("mouseenter"));
+  await wait(60);
+}
+
+/**
  * 窄容器（分屏/手机）开盒：容器查询锚从 .mw-stage 改成缩放盒（mw-pane）后，
  * 这套降级规则最容易「静默失效」——所以单独盯一次。
  */
@@ -3490,6 +3770,8 @@ async function caseNarrowDetail(): Promise<void> {
       interrupt: caseInterrupt,
       "close-position": caseClosePosition,
       queue: caseQueue,
+      "blank-close": caseBlankClose,
+      "rating-ui": caseRatingUi,
       "total-dur": caseTotalDur,
       hitdebug: caseHitDebug,
       "toolbar-drawer": caseToolbarDrawer,
@@ -3520,6 +3802,8 @@ async function caseNarrowDetail(): Promise<void> {
       "shot-modal": caseShotModal,
       "shot-edit": caseShotEdit,
       "shot-detail": caseShotDetail,
+      "shot-rating": caseShotRating,
+      "shot-rating-modal": caseShotRatingModal,
       "shot-zoom90": caseShotZoom90,
       previews: casePreviews,
       "float-panels": caseFloatPanels,

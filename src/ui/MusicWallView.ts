@@ -65,6 +65,8 @@ import { buildLayoutTile, buildStyleTile, firstCover } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
 import { openShelfMenu, type ShelfMenuItem } from "./ShelfMenu";
 import { setModalTheme } from "./modalTheme";
+import { buildRatingBadge, buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating";
+import { RatingModal } from "./RatingModal";
 
 /** "2015" → "2010s"；无效返回 "" */
 function decadeOf(y?: string): string {
@@ -530,12 +532,17 @@ export class MusicWallView extends FileView implements WallHost {
     return this.data?.view?.filterTags ?? [];
   }
 
+  private get filterRatings(): number[] {
+    return this.data?.view?.filterRatings ?? [];
+  }
+
   private get filtering(): boolean {
     return (
       !!this.q ||
       this.filterArtists.length > 0 ||
       this.filterDecades.length > 0 ||
-      this.filterTags.length > 0
+      this.filterTags.length > 0 ||
+      this.filterRatings.length > 0
     );
   }
 
@@ -578,6 +585,10 @@ export class MusicWallView extends FileView implements WallHost {
     if (tags.length) {
       items = items.filter((i) => (i.meta.tags ?? []).some((t) => tags.includes(t)));
     }
+    const ratings = this.filterRatings;
+    if (ratings.length) {
+      items = items.filter((i) => ratings.includes(i.rating ?? 0));
+    }
 
     if (this.sortMode === "manual") {
       const order = normalizeOrder(this.data?.items ?? [], this.data?.order);
@@ -604,6 +615,16 @@ export class MusicWallView extends FileView implements WallHost {
         case "year":
           r = (a.meta.year ?? "").localeCompare(b.meta.year ?? "");
           break;
+        case "rating": {
+          // 未评分恒沉底（升/降序都最后），已评分部分按方向排
+          const ar = a.rating ?? 0;
+          const br = b.rating ?? 0;
+          if (!ar && !br) r = 0;
+          else if (!ar) return 1;
+          else if (!br) return -1;
+          else r = ar - br;
+          break;
+        }
         case "addedAt":
           r = a.addedAt.localeCompare(b.addedAt);
           break;
@@ -1070,6 +1091,52 @@ export class MusicWallView extends FileView implements WallHost {
         void this.persist();
       }
     );
+    // 评分 facet：5→1＋未评分（数值维度，单独渲染；选中值存 view.filterRatings，0 = 未评分）
+    {
+      const counts = new Map<number, number>();
+      for (const i of items) {
+        const k = i.rating ?? 0;
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+      const order = [5, 4, 3, 2, 1, 0];
+      if (order.some((k) => counts.has(k))) {
+        const selected = new Set(this.filterRatings);
+        const sec = body.createDiv({ cls: "mw-panel__section" });
+        const head = sec.createDiv({ cls: "mw-panel__section-head" });
+        head.createDiv({ cls: "mw-panel__label", text: "评分" });
+        const clearBtn = head.createEl("button", {
+          cls: "mw-panel__clear",
+          text: "清除",
+        });
+        clearBtn.setAttr("type", "button");
+        clearBtn.toggleClass("is-disabled", selected.size === 0);
+        clearBtn.addEventListener("click", () => {
+          if (!selected.size) return;
+          delete view.filterRatings;
+          void this.persist();
+          api.refresh();
+        });
+        const list = sec.createDiv({ cls: "mw-panel__list" });
+        for (const k of order) {
+          if (!counts.has(k)) continue;
+          const row = list.createEl("label", { cls: "mw-check" });
+          const box = row.createEl("input", { type: "checkbox", cls: "mw-check__box" });
+          box.checked = selected.has(k);
+          box.addEventListener("change", () => {
+            const cur = new Set(view.filterRatings ?? []);
+            if (box.checked) cur.add(k);
+            else cur.delete(k);
+            if (cur.size) view.filterRatings = [...cur].sort((a, b) => b - a);
+            else delete view.filterRatings;
+            void this.persist();
+            this.rerenderGrid();
+            this.syncToolbarState();
+          });
+          row.createSpan({ cls: "mw-check__text", text: k === 0 ? "未评分" : `${k} 分` });
+          row.createSpan({ cls: "mw-check__count", text: String(counts.get(k) ?? 0) });
+        }
+      }
+    }
 
     if (this.filtering) {
       const reset = body.createEl("button", {
@@ -1082,6 +1149,7 @@ export class MusicWallView extends FileView implements WallHost {
         delete view.filterArtists;
         delete view.filterDecades;
         delete view.filterTags;
+        delete view.filterRatings;
         void this.persist();
         this.render();
       });
@@ -1502,6 +1570,7 @@ export class MusicWallView extends FileView implements WallHost {
             delete view.filterArtists;
             delete view.filterDecades;
             delete view.filterTags;
+            delete view.filterRatings;
             void this.persist();
             this.render();
           });
@@ -1619,6 +1688,11 @@ export class MusicWallView extends FileView implements WallHost {
     card.dataset.mwAlbum = String(item.albumId);
     if (item.groupId) card.dataset.mwGroup = item.groupId;
     card.appendChild(buildDiscElement(item, style, { coverSize: 300 }));
+    const badgeRating = normalizeRating(item.rating);
+    if (badgeRating) {
+      card.addClass("has-rating");
+      card.appendChild(buildRatingBadge(badgeRating));
+    }
     card.appendChild(this.makeMenuButton(item));
     card.appendChild(this.makeDelButton(item));
     this.wireCardReorder(card, item);
@@ -1683,6 +1757,13 @@ export class MusicWallView extends FileView implements WallHost {
     const jacket = document.createElement("div");
     jacket.className = "mw-shelf-jacket";
     jacket.appendChild(makeCoverImg(sizedCover(item.meta.cover, 300), item.meta.name));
+    // 徽标必须挂在**封套内部**：封套 z-index 高于卡槽，挂在槽位右上会被封套压住
+    // （用户反馈「星星被挡在唱片后面」）；挂在封套里还能跟随 hover 抽出与缩放一起动。
+    const shelfRating = normalizeRating(item.rating);
+    if (shelfRating) {
+      card.addClass("has-rating");
+      jacket.appendChild(buildRatingBadge(shelfRating));
+    }
     slot.appendChild(jacket);
     card.appendChild(slot);
 
@@ -1750,12 +1831,17 @@ export class MusicWallView extends FileView implements WallHost {
     row.dataset.mwAlbum = String(item.albumId);
     if (item.groupId) row.dataset.mwGroup = item.groupId;
 
+    const thumbWrap = document.createElement("div");
+    thumbWrap.className = "mw-row__thumbwrap";
     const thumb = document.createElement("img");
     thumb.className = "mw-row__thumb";
     thumb.loading = "lazy";
     thumb.alt = item.meta.name;
     thumb.addEventListener("error", () => (thumb.style.visibility = "hidden"));
     thumb.src = sizedCover(item.meta.cover, 200);
+    thumbWrap.appendChild(thumb);
+    const rowRating = normalizeRating(item.rating);
+    if (rowRating) thumbWrap.appendChild(buildRatingBadge(rowRating));
 
     const info = document.createElement("div");
     info.className = "mw-row__info";
@@ -1775,7 +1861,7 @@ export class MusicWallView extends FileView implements WallHost {
     actions.className = "mw-row__actions";
     actions.append(this.makeMenuButton(item), this.makeDelButton(item));
 
-    row.append(thumb, info, actions);
+    row.append(thumbWrap, info, actions);
     this.wireCardReorder(row, item);
     row.addEventListener("click", () => {
       if (this.editMode) return;
@@ -2503,7 +2589,39 @@ export class MusicWallView extends FileView implements WallHost {
       style: this.data!.style,
       locked: item.locked,
       source: item.source,
+      rating: item.rating,
+      onRate: (r) => this.applyRating(item, r),
       deps: this.plugin.getPlaybackDeps(),
+    }).open();
+  }
+
+  /** 统一落盘评分（含撤回 undefined）：持久化＋墙面徽标刷新＋开盒详情星显同步 */
+  private applyRating(item: WallItem, rating: number | undefined): void {
+    const next = normalizeRating(rating);
+    if (next === undefined) delete item.rating;
+    else item.rating = next;
+    void this.persist();
+    this.rerenderGrid();
+    // 开盒详情正开着同一张：原地刷新星显与按钮文案，不重走开盒动画
+    const detail = this.contentEl.querySelector<HTMLElement>(".mw-shelf-detail");
+    const stars = detail?.querySelector<HTMLElement>(
+      `.mw-gf__rate-stars[data-mw-album="${item.albumId}"]`
+    );
+    if (stars) {
+      paintStarsDisplay(stars, next);
+      const btn = detail?.querySelector<HTMLElement>(
+        `.mw-gf__rate-btn[data-mw-album="${item.albumId}"]`
+      );
+      if (btn) btn.setText(next ? "改评分" : "评分");
+    }
+  }
+
+  /** 右键「评分…」：弹出评分框（五星悬停预览＋清除评分） */
+  private rateItem(item: WallItem): void {
+    new RatingModal(this.app, {
+      albumName: item.meta.name,
+      current: item.rating,
+      onSave: (r) => this.applyRating(item, r),
     }).open();
   }
 
@@ -2964,9 +3082,15 @@ export class MusicWallView extends FileView implements WallHost {
   } | null {
     detail.empty();
     const meta = item.meta;
-    // 遮罩只做视觉、不再承担关闭（第七轮）：点格子空白不收回开盒详情，
-    // 关闭途径 = 右上 × / Esc / 再点同一唱片。pointer-events 见 shelf.css。
+    // 遮罩既是视觉压暗、也是「点空白处收起」的命中层（第七轮修正）：
+    // 曾经 pointer-events:none 让点击穿透到墙上，点背面唱片会被当成「换开另一张」，
+    // 用户报「点黑色空白处没收回详情，反而误触切换」。现在 scrim 在 is-open 时接管点击：
+    // 点册页落在 book 上（不关闭），点册页外任何位置都收起。
     const scrim = detail.createDiv({ cls: "mw-gf__scrim" });
+    scrim.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.requestClose();
+    });
     const book = detail.createDiv({ cls: "mw-gf__book" });
 
     // 右页必须先建：闭合态左右两页共面，共面时后建者绘制在上，封面页（左页）要压住盘托
@@ -3014,6 +3138,20 @@ export class MusicWallView extends FileView implements WallHost {
     const nameEl = metaBox.createDiv({ cls: "mw-gf__name", text: meta.name });
     nameEl.title = meta.name;
     metaBox.createDiv({ cls: "mw-gf__artist", text: meta.artist || "未知艺术家" });
+    // 评分行：五星只读展示＋“评分”按钮（弹出评分框，悬停预览）
+    const gfRateRow = info.createDiv({ cls: "mw-rate-row mw-gf__rate" });
+    const gfStars = buildStarsDisplay(item.rating);
+    gfStars.addClass("mw-gf__rate-stars");
+    gfStars.dataset.mwAlbum = String(item.albumId);
+    gfRateRow.appendChild(gfStars);
+    const gfRateBtn = gfRateRow.createEl("button", {
+      cls: "mw-gf__rate-btn",
+      text: normalizeRating(item.rating) ? "改评分" : "评分",
+    });
+    gfRateBtn.dataset.mwAlbum = String(item.albumId);
+    gfRateBtn.setAttr("type", "button");
+    gfRateBtn.setAttr("title", "打开评分框（悬停预览，点击保存，可清除）");
+    gfRateBtn.addEventListener("click", () => this.rateItem(item));
     const tracks = info.createDiv({ cls: "mw-gf__tracks" });
     const list = meta.tracks ?? [];
     if (!list.length) {
@@ -3096,6 +3234,11 @@ export class MusicWallView extends FileView implements WallHost {
         },
       },
       { title: "编辑布局", icon: "move", onPick: () => this.enterEditMode() },
+      {
+        title: item.rating ? `评分…（当前 ${item.rating} 分）` : "评分…",
+        icon: "star",
+        onPick: () => this.rateItem(item),
+      },
     ];
     // 「移动到分组…」走模态选择框（分组一多内联列表就比屏幕还长）
     if ((this.data?.groups ?? []).length) {

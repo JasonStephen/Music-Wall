@@ -8,12 +8,20 @@ import { buildDiscElement } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
 import { applyModalTheme } from "./modalTheme";
+import { buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating";
+import { RatingModal } from "./RatingModal";
 
 export interface PanelOptions {
   meta: AlbumMeta;
   style: DiscStyle;
   locked?: boolean;
   source?: "search" | "manual";
+  /** 当前评分（已入库条目传入；搜索待添加不传即不渲染评分行） */
+  rating?: number;
+  /** 评分保存（含撤回 undefined）；提供时才渲染“评分”按钮 */
+  onRate?: (rating: number | undefined) => void;
+  /** 打开评分框需要 App 实例（仅 onRate 存在时需要） */
+  app?: App;
 }
 
 /** 渲染共享面板到容器 */
@@ -48,6 +56,32 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
     r.createSpan({ cls: "mw-panel__k", text: k });
     r.createSpan({ cls: "mw-panel__v", text: String(v) });
   };
+  // 评分行：五星只读展示＋“评分”按钮（弹出评分框）；未入库（无 onRate/app）不渲染
+  if (opts.onRate && opts.app) {
+    const hostApp = opts.app;
+    const rateRow = right.createDiv({ cls: "mw-rate-row" });
+    const stars = buildStarsDisplay(opts.rating);
+    rateRow.appendChild(stars);
+    const rateBtn = rateRow.createEl("button", {
+      cls: "mw-rate-row__btn",
+      text: normalizeRating(opts.rating) ? "改评分" : "评分",
+    });
+    rateBtn.setAttr("type", "button");
+    rateBtn.setAttr("title", "打开评分框（悬停预览，点击保存，可清除）");
+    rateBtn.addEventListener("click", () => {
+      new RatingModal(hostApp, {
+        albumName: opts.meta.name,
+        current: opts.rating,
+        onSave: (r) => {
+          opts.onRate?.(r);
+          const next = normalizeRating(r);
+          paintStarsDisplay(stars, next);
+          rateBtn.setText(next ? "改评分" : "评分");
+          opts.rating = next;
+        },
+      }).open();
+    });
+  }
   row("发行", opts.meta.year);
   row("曲目数", opts.meta.trackCount);
   // 总时长：档位化展示（分钟/小时），悬停给"总分钟:秒"
@@ -93,6 +127,8 @@ export class AlbumPanelModal extends Modal {
   private source: "search" | "manual";
   private deps: PlaybackDeps;
   private onAdd?: () => void;
+  private rating?: number;
+  private onRate?: (rating: number | undefined) => void;
 
   constructor(
     app: App,
@@ -104,6 +140,8 @@ export class AlbumPanelModal extends Modal {
       source?: "search" | "manual";
       deps: PlaybackDeps;
       onAdd?: () => void;
+      rating?: number;
+      onRate?: (rating: number | undefined) => void;
     }
   ) {
     super(app);
@@ -114,6 +152,8 @@ export class AlbumPanelModal extends Modal {
     this.source = args.source ?? "manual";
     this.deps = args.deps;
     this.onAdd = args.onAdd;
+    this.rating = normalizeRating(args.rating);
+    this.onRate = args.onRate;
   }
 
   onOpen(): void {
@@ -133,6 +173,15 @@ export class AlbumPanelModal extends Modal {
       style: this.style,
       locked: this.locked,
       source: this.source,
+      rating: this.rating,
+      onRate: this.onRate
+        ? (r) => {
+            const next = normalizeRating(r);
+            this.rating = next;
+            this.onRate?.(next);
+          }
+        : undefined,
+      app: this.app,
     });
 
     const btns = contentEl.createDiv({ cls: "mw-album-modal__buttons" });

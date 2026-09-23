@@ -12,6 +12,7 @@ $root = "E:\Project\Obsidian Plugin\Music Wall\tools"
 
 $gfCases = @(
   "boot-hold", "swap", "play", "interrupt", "close-position", "queue", "total-dur",
+  "blank-close", "rating-ui",
   "hitdebug", "toolbar-drawer", "wall-surface", "groups", "manual-order",
   "cross-group-move", "cross-group-targets", "shelf-panel-theme", "no-scrim",
   "editbar-clear", "section-gaps", "style-panel-order", "panel-controls", "clear-x",

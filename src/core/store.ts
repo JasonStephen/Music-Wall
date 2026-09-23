@@ -13,7 +13,7 @@ import {
 import { normalizeOrder } from "./layout";
 
 const VALID_STYLES: DiscStyle[] = ["vinyl", "cd", "cassette", "cover"];
-const VALID_SORT_MODES: SortMode[] = ["manual", "addedAt", "name", "artist", "year"];
+const VALID_SORT_MODES: SortMode[] = ["manual", "addedAt", "name", "artist", "year", "rating"];
 
 export function emptyWall(name: string, style: DiscStyle): MusicWallData {
   return { version: WALL_FILE_VERSION, name, style, items: [] };
@@ -48,6 +48,22 @@ function cleanGroups(v: unknown): WallGroup[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** 评分清洗：仅接受 1–5 整数，否则视为未评分 */
+function cleanRating(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : undefined;
+}
+
+/** 评分筛选清洗：仅接受 0–5 整数（0 = 未评分），去重 */
+function cleanRatings(v: unknown): number[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: number[] = [];
+  for (const raw of v) {
+    if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > 5) continue;
+    if (!out.includes(raw)) out.push(raw);
+  }
+  return out.length ? out : undefined;
+}
+
 /** 视图状态校验（未知键丢弃） */
 function cleanView(v: unknown): WallViewState | undefined {
   if (!v || typeof v !== "object") return undefined;
@@ -61,6 +77,8 @@ function cleanView(v: unknown): WallViewState | undefined {
   if (decades) out.filterDecades = decades;
   const tags = cleanStringList(raw.filterTags);
   if (tags) out.filterTags = tags;
+  const ratings = cleanRatings(raw.filterRatings);
+  if (ratings) out.filterRatings = ratings;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -82,6 +100,13 @@ function migrate(data: any): MusicWallData {
   const items: WallItem[] = Array.isArray(data?.items)
     ? data.items.filter(isWallItem)
     : [];
+
+  // 评分只认 1–5 整数：脏值（字符串/小数/越界）一律按未评分处理并丢弃字段
+  for (const it of items) {
+    const r = cleanRating((it as { rating?: unknown }).rating);
+    if (r === undefined) delete it.rating;
+    else it.rating = r;
+  }
 
   const groups = cleanGroups(data?.groups);
 

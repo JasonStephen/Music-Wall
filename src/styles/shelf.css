@@ -261,8 +261,9 @@
   perspective: 1700px;
   perspective-origin: 50% 42%;
   visibility: hidden;
-  /* 容器本身不拦截点击（scrim 已 none）：整层只露出 book 的交互，
-     点到格子/空白都会落在下层墙上——不再出现「看得见却点不动」的幽灵层 */
+  /* 容器本身不拦截点击：交互只由两个子层负责——scrim（点空白＝收起）
+     与 book（册页本体）。这样既不会出现「看得见却点不动」的幽灵层，
+     也不会让点击穿过遮罩打到墙上的唱片上 */
   pointer-events: none;
 }
 /* is-shutting：收盒动画期间保持可见（is-open 已摘除，面板回落到闭合 CSS） */
@@ -271,9 +272,12 @@
   visibility: visible;
 }
 
-/* 背板遮罩：压暗架子突出盒子——**只做视觉**（第七轮起）：
-   曾经「点击=关闭」，不符合「点亮的面板点了别处就收起」的新要求，已移除；
-   pointer-events:none 让点击穿透到墙（可以换开别的专辑详情），关闭仍走 ×/Esc。
+/* 背板遮罩：压暗架子突出盒子，**同时是「点空白处收起」的命中层**（第七轮修正）：
+   曾经 pointer-events:none 让点击穿透到墙上，点背面的唱片会被当成「换开另一张」，
+   用户报「点黑色空白处没收回详情，反而误触切换」。
+   现在 is-open / is-shutting 期间接管点击（收起由视图层 scrim click → requestClose 处理）；
+   收盒动画期间继续吸收点击，避免关闭途中又排队开新专辑。
+   册页（.mw-gf__book）绘制在 scrim 之上且 pointer-events:auto，点册页不会关闭。
    淡入由视图层 WAAPI 随整条时间线驱动（推镜期间架子保持可见、渐暗）；
    is-open → opacity 1 仅作 reduced-motion/窄容器的直出兜底。 */
 .mw-gf__scrim {
@@ -284,6 +288,10 @@
   background:
     radial-gradient(120% 90% at 50% 40%, rgba(10, 7, 4, 0.62), rgba(6, 4, 2, 0.9) 82%),
     linear-gradient(180deg, #1a1410, #0e0a06);
+}
+.mw-shelf-detail.is-open .mw-gf__scrim,
+.mw-shelf-detail.is-shutting .mw-gf__scrim {
+  pointer-events: auto;
 }
 .mw-shelf-detail.is-open .mw-gf__scrim {
   opacity: 1;

@@ -18,7 +18,7 @@ export const LAYOUT_LABELS: Record<WallLayout, string> = {
 };
 
 /** 排序类型；manual = 手动排序（顺序存于 MusicWallData.order） */
-export type SortMode = "manual" | "addedAt" | "name" | "artist" | "year";
+export type SortMode = "manual" | "addedAt" | "name" | "artist" | "year" | "rating";
 
 /** 排序类型的中文标签（排序面板与旧工具栏共用） */
 export const SORT_LABELS: Record<SortMode, string> = {
@@ -27,6 +27,7 @@ export const SORT_LABELS: Record<SortMode, string> = {
   name: "专辑名",
   artist: "艺术家",
   year: "发行时间",
+  rating: "评分",
 };
 
 /** 播放器页背景模式 */
@@ -85,6 +86,8 @@ export interface WallItem {
   meta: AlbumMeta;
   /** ISO 时间，添加时间 */
   addedAt: string;
+  /** 评分 1–5；缺省/缺失 = 未评分 */
+  rating?: number;
   /** 所属分组 id；缺省 = 未分组（始终显示在最后一个分区） */
   groupId?: string;
 }
@@ -112,6 +115,8 @@ export interface WallViewState {
   filterDecades?: string[];
   /** 多选标签（空/缺省 = 不限） */
   filterTags?: string[];
+  /** 多选评分 1–5，0 = 未评分（空/缺省 = 不限） */
+  filterRatings?: number[];
 }
 
 /** .mw 文件结构 */
