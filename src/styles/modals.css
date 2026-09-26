@@ -135,6 +135,14 @@
 }
 
 /* ---- 搜索面板（挂进右上角悬浮框，不再是模态框） ---- */
+/* 批量入口：搜索按钮右侧的紧凑次按钮，同行同高，不挤输入框 */
+.mw-search-panel__batch {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.mw-search-row__preview {
+  flex-shrink: 0;
+}
 .mw-search-panel__hint {
   color: var(--mw-panel-fg-dim, var(--text-muted));
   font-size: 0.8em;
@@ -216,6 +224,7 @@
    更硬的一层兜底见 panel-controls.css（第五轮 B1：对真实主题的最终压制）。 */
 .mw-drawer .mw-search-panel__bar button:not(.mw-panel__clearicon),
 .mw-drawer .mw-search-row__add,
+.mw-drawer .mw-search-row__preview,
 .mw-drawer .mw-search-more {
   background: var(--mw-panel-surface);
   border: 1px solid var(--mw-panel-line);
@@ -428,6 +437,203 @@
 .modal.mw-modal--shelf input::placeholder,
 .modal.mw-modal--shelf textarea::placeholder {
   color: #8b7d6b !important;
+}
+
+/* ---- 批量导入 ---- */
+.mw-batch {
+  max-width: 640px;
+}
+.mw-batch__heading {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+.mw-batch__hint {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+.mw-batch__input {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
+.mw-batch__error {
+  min-height: 1.2em;
+  font-size: 0.78em;
+  color: #e93147;
+  margin: 4px 0;
+}
+.mw-batch__btnrow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.mw-batch__list {
+  max-height: 44vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+.mw-batch__empty {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 18px 0;
+}
+.mw-batch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.mw-batch-row:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+}
+/* 顶部全选行：按钮 + 计数 */
+.mw-batch__selectrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 8px;
+}
+.mw-batch__selectcount {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* 行首复选框：行内静态元素（覆盖 .mw-selectbox 的绝对定位与多选态显隐） */
+.mw-batch-row .mw-selectbox {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+/* 批量弹窗不在 .mw-view 树内，base 的 `.mw-view .mw-selectbox` 够不着，
+   这里按同语言补全（单层框 + 自绘勾；组件无原生 input，主题够不着）。 */
+.mw-batch__list .mw-selectbox {
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  background-image: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+.mw-batch__list .mw-selectbox:hover {
+  border-color: var(--interactive-accent);
+}
+.mw-batch__list .mw-selectbox.is-checked {
+  border-color: var(--interactive-accent);
+  background-color: var(--interactive-accent);
+  background-image: none;
+}
+.mw-batch__list .mw-selectbox::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  border-radius: 1px;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 0.12s ease-out;
+  pointer-events: none;
+}
+.mw-batch__list .mw-selectbox.is-checked::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+/* 未勾选的行置淡，明确表达“确认时跳过” */
+.mw-batch-row.is-unpicked .mw-batch-row__info,
+.mw-batch-row.is-unpicked .mw-batch-row__cover {
+  opacity: 0.45;
+}
+.mw-batch-row__cover {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #333;
+}
+.mw-batch-row__cover--ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  color: var(--text-muted);
+}
+.mw-batch-row__info {
+  flex: 1;
+  min-width: 0;
+}
+.mw-batch-row__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-batch-row__sub {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-batch-row__badge {
+  flex-shrink: 0;
+  font-size: 0.72em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.mw-batch-row__badge.is-ready {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+.mw-batch-row__badge.is-exists,
+.mw-batch-row__badge.is-duplicate {
+  color: var(--text-muted);
+}
+.mw-batch-row__badge.is-error {
+  color: #e93147;
+  border-color: #e93147;
+}
+.mw-batch-row__ops {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mw-batch__foot {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.mw-batch__summary {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- 移动端：面板改纵向 ---- */

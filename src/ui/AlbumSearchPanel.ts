@@ -7,6 +7,7 @@
 import { Notice, setIcon } from "obsidian";
 import type { AlbumMeta, AlbumSummary } from "../types";
 import { parseAlbumInput, sizedCover } from "../core/metadata";
+import { playAlbum, type PlaybackDeps } from "../core/playback";
 
 export interface WallHost {
   searchAlbums(keyword: string, offset: number): Promise<AlbumSummary[]>;
@@ -14,6 +15,8 @@ export interface WallHost {
   getExistingIds(): Set<number>;
   addAlbum(meta: AlbumMeta, source: "search" | "manual"): void;
   confirmAdd(meta: AlbumMeta, onAdd: () => void): void;
+  getPlaybackDeps?(): PlaybackDeps;
+  getStyle?(): import("../types").DiscStyle;
 }
 
 const PAGE = 20;
@@ -73,6 +76,15 @@ export class AlbumSearchPanel {
     bar
       .createEl("button", { cls: "mw-btn mw-btn--primary", text: "搜索" })
       .addEventListener("click", () => void this.doSearch());
+    // 批量入口：搜索右侧的紧凑次按钮（与搜索同行同高，不独占一行）
+    const batchBtn = bar.createEl("button", {
+      cls: "mw-btn mw-search-panel__batch",
+      text: "批量",
+    });
+    batchBtn.setAttr("type", "button");
+    batchBtn.setAttr("title", "批量添加（数字 ID，分号隔开）");
+    batchBtn.setAttr("aria-label", "批量添加（数字 ID，分号隔开）");
+    batchBtn.addEventListener("click", () => this.openBatch());
 
     this.statusEl = container.createDiv({ cls: "mw-search-panel__status" });
     this.listEl = container.createDiv({ cls: "mw-search-panel__list" });
@@ -192,6 +204,15 @@ export class AlbumSearchPanel {
       });
       btn.disabled = added;
       btn.addEventListener("click", () => void this.onAddClick(a, btn));
+
+      // 试听：未添加也能播，原理与播放一致，点即播
+      const preview = row.createEl("button", {
+        cls: "mw-search-row__preview",
+        text: "试听",
+      });
+      preview.setAttr("type", "button");
+      preview.setAttr("title", "未添加也可试听，原理与播放一致");
+      preview.addEventListener("click", () => void this.onPreviewClick(a, preview));
     }
 
     if (this.hasMore && this.results.length) {
@@ -200,6 +221,40 @@ export class AlbumSearchPanel {
         .addEventListener("click", () => void this.loadMore());
     }
   }
+
+  private async onPreviewClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
+    const deps = this.host.getPlaybackDeps?.();
+    if (!deps) {
+      new Notice("当前视图不支持试听");
+      return;
+    }
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = "拉取中…";
+    try {
+      const meta = await this.host.fetchAlbumDetail(summary.albumId);
+      await playAlbum(meta, deps);
+    } catch (e: any) {
+      new Notice("试听失败：" + (e?.message ?? e));
+    } finally {
+      btn.textContent = old;
+      btn.disabled = false;
+    }
+  }
+
+  /** 打开批量导入弹窗（App 从宿主视图的容器里取，避免面板与 App 解耦被打破） */
+  private openBatch(): void {
+    // AlbumSearchPanel 挂在视图浮层里，App 可从任意 DOM 的 ownerDocument 取不到；
+    // 这里用全局 app 兜底：宿主视图会通过 setBatchOpener 注入真正的打开函数时优先用它。
+    if (this.batchOpener) {
+      this.batchOpener();
+      return;
+    }
+    new Notice("当前视图不支持批量添加");
+  }
+
+  /** 由宿主视图注入（MusicWallView.buildFloater），避免面板直接依赖 App */
+  batchOpener: (() => void) | null = null;
 
   private async onAddClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
     btn.disabled = true;

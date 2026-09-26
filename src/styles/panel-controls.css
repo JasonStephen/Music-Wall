@@ -159,6 +159,28 @@
   height: 16px;
 }
 
+/* ---- 多选操作条图标按钮：墙上的图标，主题不得插手 ----
+   操作条已图标化（.mw-selbtn，透明底无边框），主题的
+   `button:not(.clickable-icon)` (0,1,1) 仍会试图刷底色/描边。
+   这里用 `.mw-view .mw-selectbar …`（≥(0,3,0)）+ !important 收口，
+   只锁“无底无框”，颜色交给 base.css（网格/列表跟主题，展示架木风）。 */
+.mw-view .mw-selectbar .mw-selbtn,
+.mw-view .mw-selectbar .mw-selbtn:hover {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn:hover {
+  background-color: rgba(255, 226, 180, 0.12) !important;
+}
+.mw-view .mw-selectbar .mw-selbtn--danger:hover {
+  background-color: rgba(233, 49, 71, 0.12) !important;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger:hover {
+  background-color: rgba(233, 72, 88, 0.18) !important;
+}
+
 /* ---- × 清空钮：绝不能有底色/圆角（主题会给 .clickable-icon 刷强调色实心底） ---- */
 .mw-view .mw-drawer .mw-panel__clearicon {
   background-color: transparent !important;

@@ -913,6 +913,234 @@
   height: 16px;
 }
 
+/* ---- 多选态 ---- */
+.mw-selecting .mw-card,
+.mw-selecting .mw-row {
+  cursor: pointer;
+}
+/* 多选态隐藏单卡快捷钮，避免误触删除/菜单 */
+.mw-selecting .mw-card .mw-iconbtn,
+.mw-selecting .mw-row .mw-iconbtn {
+  display: none;
+}
+.mw-card.is-selected,
+.mw-row.is-selected {
+  outline: 2px solid var(--mw-accent, var(--interactive-accent));
+  outline-offset: 4px;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--mw-accent, var(--interactive-accent)) 10%,
+    transparent
+  );
+}
+/* 网格卡片唱片区包裹层：复选框的定位上下文（锚在唱片左下角） */
+.mw-card__art {
+  position: relative;
+}
+/* ---- 自绘复选框（彻底重写：内部零原生控件） ----
+   组件见 src/ui/selectBox.ts：button[role=checkbox]，框体 = button 自身边框/背景，
+   对勾 = ::after 自绘。主题没有任何 input[type=checkbox] 规则能命中它。
+   单层 22×22，不存在内外框错位；选中态由 JS 同步的 .is-checked 类表达
+   （不依赖 :has，旧 Electron 也可用）。
+   特异性说明：全部带 .mw-view 前缀（≥(0,2,0)），压住主题的
+   `button:not(.clickable-icon)` (0,1,1) 与其 :hover (0,2,1)。 */
+.mw-view .mw-selectbox {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 6;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  background-image: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.mw-view .mw-selectbox:hover {
+  border-color: var(--mw-accent, var(--interactive-accent));
+}
+.mw-view .mw-selectbox:focus-visible {
+  outline: 2px solid var(--mw-accent, var(--interactive-accent));
+  outline-offset: 1px;
+}
+/* 选中：主题强调色实心 + 白勾（网格/列表与其他模式一致） */
+.mw-view .mw-selectbox.is-checked {
+  border-color: var(--mw-accent, var(--interactive-accent));
+  background-color: var(--mw-accent, var(--interactive-accent));
+  background-image: none;
+}
+/* 对勾：几何居中（-50%/-50%），scale 显隐。
+   不要再加额外上提：对勾字形重心本就偏下，-50% 已是视觉居中；
+   -62% 会把勾顶到上沿、短臂探出框外。 */
+.mw-view .mw-selectbox::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  border-radius: 1px;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 0.12s ease-out;
+  pointer-events: none;
+}
+.mw-view .mw-selectbox.is-checked::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+/* 展示架：深木底 + 暖描边（未选中也保持可见，木色墙上白底方块太刺眼）。
+   注意：这里没有任何 accent/紫色引用——展示架复选框只用木色系。 */
+.mw-view.mw-wall--shelf .mw-selectbox {
+  border: 1px solid rgba(255, 226, 180, 0.4);
+  background-color: rgba(24, 16, 10, 0.78);
+  background-image: linear-gradient(
+    180deg,
+    rgba(74, 52, 35, 0.86),
+    rgba(51, 34, 20, 0.86)
+  );
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 226, 180, 0.14);
+}
+.mw-view.mw-wall--shelf .mw-selectbox:hover {
+  border-color: rgba(255, 226, 180, 0.75);
+}
+/* 展示架选中：琥珀实心 + 暖描边 + 暖白勾（与操作条强调色同一套暖色） */
+.mw-view.mw-wall--shelf .mw-selectbox.is-checked {
+  border-color: rgba(255, 226, 180, 0.85);
+  background-color: #b07a3c;
+  background-image: linear-gradient(180deg, #c08a48, #96632c);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.mw-view.mw-wall--shelf .mw-selectbox.is-checked::after {
+  border-color: #fff6e8;
+}
+/* 列表行：复选框是行首常显元素。position 保持 relative（::after 定位需要），
+   无偏移量时等同 static，不影响行布局。 */
+.mw-view .mw-row .mw-selectbox {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+}
+.mw-selecting .mw-selectbox {
+  display: inline-flex;
+}
+/* 底部多选操作条：与编辑条同为正常流（工具栏之下、网格之上）。
+   按钮全部图标化（.mw-selbtn，复用工具栏图标钮语言：透明底、无边框、hover 高亮），
+   带 .mw-view 前缀（≥(0,2,0)）压住主题 button 规则。 */
+.mw-selectbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px clamp(18px, 4vw, 52px);
+  background: transparent;
+  border-bottom: 1px solid var(--mw-wall-line);
+  color: var(--mw-wall-fg);
+}
+.mw-selectbar__count {
+  font-size: 0.85em;
+  font-weight: 600;
+  margin-right: auto;
+  color: var(--mw-wall-fg);
+  font-variant-numeric: tabular-nums;
+}
+.mw-view .mw-selectbar .mw-selbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: var(--mw-wall-fg-dim, var(--text-muted));
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.mw-view .mw-selectbar .mw-selbtn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--mw-wall-fg, var(--text-normal));
+}
+.mw-view .mw-selectbar .mw-selbtn svg {
+  width: 16px;
+  height: 16px;
+}
+/* 强调动作（迁移到其他墙）：图标着主题强调色 */
+.mw-view .mw-selectbar .mw-selbtn--primary {
+  color: var(--mw-accent, var(--interactive-accent));
+}
+.mw-view .mw-selectbar .mw-selbtn--primary:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--mw-accent, var(--interactive-accent));
+}
+/* 危险动作（删除）：图标着红色 */
+.mw-view .mw-selectbar .mw-selbtn--danger {
+  color: #e93147;
+}
+.mw-view .mw-selectbar .mw-selbtn--danger:hover {
+  background-color: rgba(233, 49, 71, 0.12);
+  color: #e93147;
+}
+.mw-view .mw-selectbar .mw-selbtn.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+/* 展示架：图标换暖浅色，hover 暖底；强调/危险动作沿用木风暖色 */
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn {
+  color: #cfc0a8;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn:hover {
+  background-color: rgba(255, 226, 180, 0.12);
+  color: #ffffff;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--primary {
+  color: #e8b96a;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--primary:hover {
+  background-color: rgba(255, 226, 180, 0.12);
+  color: #ffd9a0;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger {
+  color: #ffb3ba;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger:hover {
+  background-color: rgba(233, 72, 88, 0.18);
+  color: #ffb3ba;
+}
+.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn.is-disabled {
+  color: #a89a86;
+}
+@media (max-width: 700px) {
+  .mw-selectbar__count {
+    width: 100%;
+  }
+}
+
 /* ---- 卡片 ---- */
 .mw-card {
   position: relative;

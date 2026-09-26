@@ -462,17 +462,50 @@ export default class MusicWallPlugin extends Plugin {
     albumId: number,
     target: TFile
   ): Promise<void> {
+    await this.receiveWallBatch(srcPath, [albumId], target);
+  }
+
+  /** 批量拖拽迁移：多选拖拽与跨墙 drop 共用；重复跳过并汇总 */
+  async receiveWallBatch(
+    srcPath: string,
+    albumIds: number[],
+    target: TFile
+  ): Promise<void> {
+    const ids = [...new Set(albumIds.filter((x) => typeof x === "number"))];
+    if (!ids.length) return;
     const src = this.allWallViews().find((v) => v.getFile()?.path === srcPath);
     if (!src) {
       new Notice("拖拽源墙已不在前台标签中，请改用卡片右键「迁移到其他墙…」");
       return;
     }
     const data = src.getData();
-    const item = data?.items.find((i) => i.albumId === albumId);
-    if (!data || !item) return;
-    if (!(await this.migrateItemInto(item, target))) return;
-    await src.takeOutItem(albumId);
-    new Notice(`已迁移《${item.meta.name}》→ ${target.basename}.mw`);
+    if (!data) return;
+    const byId = new Map(data.items.map((i) => [i.albumId, i]));
+    const items = ids.map((id) => byId.get(id)).filter((x): x is WallItem => !!x);
+    if (!items.length) return;
+    let okCount = 0;
+    let skipCount = 0;
+    const moved: number[] = [];
+    for (const item of items) {
+      if (await this.migrateItemInto(item, target)) {
+        okCount++;
+        moved.push(item.albumId);
+      } else {
+        skipCount++;
+      }
+    }
+    if (moved.length) {
+      // 批量移出源墙：一次落盘一次重绘
+      await src.takeOutItems(moved);
+    }
+    if (items.length === 1) {
+      const name = items[0].meta.name;
+      if (okCount) new Notice(`已迁移《${name}》→ ${target.basename}.mw`);
+      return;
+    }
+    const parts = [`已迁移 ${okCount} 张 → ${target.basename}.mw`];
+    if (skipCount) parts.push(`跳过重复 ${skipCount} 张`);
+    new Notice(parts.join("；"));
   }
 
   /** 资源管理器文件落点（1.4+ 运行时事件，类型声明未收录，做防御式注册） */
@@ -500,8 +533,21 @@ export default class MusicWallPlugin extends Plugin {
     ) as DragEvent | undefined;
     ev?.preventDefault();
     try {
-      const p = JSON.parse(raw) as { srcPath: string; albumId: number };
-      if (p.srcPath !== file.path) await this.receiveWallDrag(p.srcPath, p.albumId, file);
+      const p = JSON.parse(raw) as {
+        srcPath: string;
+        albumId?: number;
+        albumIds?: number[];
+      };
+      const ids = Array.isArray(p.albumIds)
+        ? p.albumIds.filter((x) => typeof x === "number")
+        : typeof p.albumId === "number"
+          ? [p.albumId]
+          : [];
+      if (!ids.length) return;
+      if (p.srcPath !== file.path) {
+        if (ids.length > 1) await this.receiveWallBatch(p.srcPath, ids, file);
+        else await this.receiveWallDrag(p.srcPath, ids[0], file);
+      }
     } catch {
       /* 载荷损坏：忽略 */
     }

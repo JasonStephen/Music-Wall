@@ -55,6 +55,8 @@ import type { NowPlayingState } from "../core/nowPlaying";
 import { ALL_STYLES, STYLE_LABELS, buildDiscElement, makeCoverImg } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { AlbumPanelModal } from "./AlbumPanelModal";
+import { BatchAddModal } from "./BatchAddModal";
+import { createSelectBox, syncSelectBox } from "./selectBox";
 import { ConfirmModal } from "./ConfirmModal";
 import { EditMetaModal } from "./EditMetaModal";
 import { InputModal } from "./InputModal";
@@ -187,16 +189,19 @@ function panScrollTo(
 /** 拖拽中的载荷（原生拖拽与触屏指针拖拽共用一套语义） */
 type DragPayload =
   | { kind: "item"; item: WallItem }
+  | { kind: "multi-item"; items: WallItem[] }
   | { kind: "group"; groupId: string };
 
 /**
  * 跨视图 MIME 载荷。kind 缺省 = item（向后兼容：旧版本只写 srcPath + albumId）。
  * 分组拖拽也会带上载荷，但读取方必须用 kind !== "item" 排除，避免把分组当唱片迁移。
+ * 多选拖拽用 kind="multi-item" + albumIds（同时保留 albumId 首项以兼容旧读取方）。
  */
 interface WallDragData {
-  kind?: "item" | "group";
+  kind?: "item" | "multi-item" | "group";
   srcPath: string;
   albumId?: number;
+  albumIds?: number[];
   groupId?: string;
 }
 
@@ -251,6 +256,10 @@ export class MusicWallView extends FileView implements WallHost {
 
   /** 布局编辑态（手动排序 / 分组换序）：拖动实时落盘，退出即「完成」，没有回滚 */
   private editMode = false;
+
+  /** 多选态：右上角图标进入，底部操作条退出；选中集为会话态，不落盘 */
+  private selectMode = false;
+  private selected = new Set<number>();
 
   /** 指针拖拽状态（仅触屏走这条路径） */
   private dragPayload: DragPayload | null = null;
@@ -348,9 +357,18 @@ export class MusicWallView extends FileView implements WallHost {
         const p = JSON.parse(raw) as WallDragData;
         // 分组拖拽不是迁移
         if (p.kind === "group") return;
-        if (typeof p.albumId !== "number") return;
+        const ids = Array.isArray(p.albumIds)
+          ? p.albumIds.filter((x) => typeof x === "number")
+          : typeof p.albumId === "number"
+            ? [p.albumId]
+            : [];
+        if (!ids.length) return;
         if (p.srcPath !== this.file.path) {
-          void this.plugin.receiveWallDrag(p.srcPath, p.albumId, this.file);
+          if (ids.length > 1) {
+            void this.plugin.receiveWallBatch(p.srcPath, ids, this.file);
+          } else {
+            void this.plugin.receiveWallDrag(p.srcPath, ids[0], this.file);
+          }
         }
       } catch {
         /* 载荷损坏：忽略 */
@@ -448,13 +466,21 @@ export class MusicWallView extends FileView implements WallHost {
 
   /** 从本墙移出条目并保存（迁移流程调用） */
   async takeOutItem(albumId: number): Promise<void> {
-    if (!this.data) return;
-    this.data.items = this.data.items.filter((i) => i.albumId !== albumId);
+    await this.takeOutItems([albumId]);
+  }
+
+  /** 批量移出条目并保存（多选/拖拽批量迁移共用，一次落盘一次重绘） */
+  async takeOutItems(albumIds: number[]): Promise<void> {
+    if (!this.data || !albumIds.length) return;
+    const drop = new Set(albumIds);
+    this.data.items = this.data.items.filter((i) => !drop.has(i.albumId));
     if (this.data.order) {
-      this.data.order = removeFromOrder(this.data.order, [albumId]);
+      this.data.order = removeFromOrder(this.data.order, albumIds);
     }
+    for (const id of albumIds) this.selected.delete(id);
     await this.persist();
     this.render();
+    if (this.selectMode) this.renderSelectionBar();
   }
 
   // ---- WallHost 接口（供 SearchAlbumModal 调用） ----
@@ -470,6 +496,9 @@ export class MusicWallView extends FileView implements WallHost {
   }
   async fetchAlbumDetail(albumId: number): Promise<AlbumMeta> {
     return this.plugin.fetchAlbumDetail(albumId);
+  }
+  getPlaybackDeps(): import("../core/playback").PlaybackDeps {
+    return this.plugin.getPlaybackDeps();
   }
   confirmAdd(meta: AlbumMeta, onAdd: () => void): void {
     new AlbumPanelModal(this.app, "add", {
@@ -720,6 +749,12 @@ export class MusicWallView extends FileView implements WallHost {
     // 重建后重新施加「正在播放」高亮 + 编辑态提示条
     this.applyNowPlaying(this.plugin.nowPlaying.state);
     if (this.editMode) this.renderEditBar();
+    if (this.selectMode) {
+      this.pruneSelection();
+      this.contentEl.toggleClass("mw-selecting", true);
+      this.renderSelectionBar();
+      this.syncToolbarState();
+    }
     // 缩放盒尺寸兜底（见 zoom.ts syncZoomBox）：CSS 的 calc 反除补偿一旦退化，
     // 表现就是「右侧 + 底部留白」，这里用像素把尺寸钉死
     syncZoomBox(root, this.zoom);
@@ -803,13 +838,17 @@ export class MusicWallView extends FileView implements WallHost {
     const searchBtn = mkIcon("search", "搜索本墙专辑", () => {
       this.floater?.toggle("search");
     });
+    const selectBtn = mkIcon("check-square", "多选", () => {
+      if (this.selectMode) this.exitSelectMode();
+      else this.enterSelectMode();
+    });
     const moreBtn = mkIcon("more-horizontal", "更多操作", (btn) => {
       const rect = btn.getBoundingClientRect();
       this.openMoreMenu({ x: rect.left, y: rect.bottom + 4 } as MouseEvent);
     });
 
     // 抽屉/浮层开合 → 图标激活态同步
-    this.drawerState = { styleBtn, filterBtn, sortBtn, searchBtn, addBtn, moreBtn };
+    this.drawerState = { styleBtn, filterBtn, sortBtn, searchBtn, addBtn, moreBtn, selectBtn };
     this.syncToolbarState();
     return bar;
   }
@@ -821,6 +860,7 @@ export class MusicWallView extends FileView implements WallHost {
     searchBtn?: HTMLButtonElement;
     addBtn?: HTMLButtonElement;
     moreBtn?: HTMLButtonElement;
+    selectBtn?: HTMLButtonElement;
   } = {};
 
   private syncToolbarState(): void {
@@ -832,6 +872,7 @@ export class MusicWallView extends FileView implements WallHost {
     s.sortBtn?.toggleClass("is-active", key === "sort");
     s.searchBtn?.toggleClass("is-active", floatKey === "search" || !!this.q);
     s.addBtn?.toggleClass("is-active", floatKey === "add");
+    s.selectBtn?.toggleClass("is-active", this.selectMode);
     s.moreBtn?.removeClass("is-active");
   }
 
@@ -881,9 +922,21 @@ export class MusicWallView extends FileView implements WallHost {
       this.searchPanel?.dispose();
       const panel = new AlbumSearchPanel(this);
       this.searchPanel = panel;
+      panel.batchOpener = () => this.openBatchAdd();
       panel.mount(body);
     });
     return floater;
+  }
+
+  /** 打开批量导入弹窗（添加浮层内的批量按钮入口） */
+  private openBatchAdd(): void {
+    new BatchAddModal(this.app, {
+      fetchAlbumDetail: (id: number) => this.fetchAlbumDetail(id),
+      getExistingIds: () => this.getExistingIds(),
+      addAlbum: (meta: AlbumMeta, source: "search" | "manual") => this.addAlbum(meta, source),
+      getPlaybackDeps: () => this.getPlaybackDeps(),
+      getStyle: () => this.getStyle(),
+    }).open();
   }
 
   /**
@@ -1687,7 +1740,14 @@ export class MusicWallView extends FileView implements WallHost {
     card.className = "mw-card";
     card.dataset.mwAlbum = String(item.albumId);
     if (item.groupId) card.dataset.mwGroup = item.groupId;
-    card.appendChild(buildDiscElement(item, style, { coverSize: 300 }));
+    if (this.selectMode && this.isSelected(item.albumId)) card.addClass("is-selected");
+    // 唱片区包裹层：多选复选框锚在唱片左下角（.mw-card__art 底部），
+    // 而不是卡片底部——卡片还含下面的文字区，直接按卡片 bottom 定位会掉进文字里。
+    const art = document.createElement("div");
+    art.className = "mw-card__art";
+    art.appendChild(buildDiscElement(item, style, { coverSize: 300 }));
+    art.appendChild(this.makeSelectBox(item));
+    card.appendChild(art);
     const badgeRating = normalizeRating(item.rating);
     if (badgeRating) {
       card.addClass("has-rating");
@@ -1718,10 +1778,15 @@ export class MusicWallView extends FileView implements WallHost {
 
     card.addEventListener("click", () => {
       if (this.editMode) return; // 编辑布局时不弹详情
+      if (this.selectMode) {
+        this.toggleSelect(item.albumId);
+        return;
+      }
       this.openPlayModal(item);
     });
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      if (this.selectMode) return;
       this.openCardMenu(e as MouseEvent, item);
     });
     return card;
@@ -1751,6 +1816,7 @@ export class MusicWallView extends FileView implements WallHost {
     card.className = "mw-card mw-shelf-card";
     card.dataset.mwAlbum = String(item.albumId);
     if (item.groupId) card.dataset.mwGroup = item.groupId;
+    if (this.selectMode && this.isSelected(item.albumId)) card.addClass("is-selected");
 
     const slot = document.createElement("div");
     slot.className = "mw-shelf-slot";
@@ -1766,6 +1832,7 @@ export class MusicWallView extends FileView implements WallHost {
     }
     slot.appendChild(jacket);
     card.appendChild(slot);
+    card.appendChild(this.makeSelectBox(item));
 
     const cap = document.createElement("div");
     cap.className = "mw-shelf-cap";
@@ -1804,6 +1871,10 @@ export class MusicWallView extends FileView implements WallHost {
 
     card.addEventListener("click", () => {
       if (this.editMode) return; // 编辑布局时不进详情
+      if (this.selectMode) {
+        this.toggleSelect(item.albumId);
+        return;
+      }
       if (this.longPressFired) {
         this.longPressFired = false;
         return;
@@ -1817,6 +1888,7 @@ export class MusicWallView extends FileView implements WallHost {
     });
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      if (this.selectMode) return;
       cancelPress();
       this.openCardMenu(e as MouseEvent, item);
     });
@@ -1830,6 +1902,8 @@ export class MusicWallView extends FileView implements WallHost {
     row.className = "mw-row";
     row.dataset.mwAlbum = String(item.albumId);
     if (item.groupId) row.dataset.mwGroup = item.groupId;
+    if (this.selectMode && this.isSelected(item.albumId)) row.addClass("is-selected");
+    row.appendChild(this.makeSelectBox(item));
 
     const thumbWrap = document.createElement("div");
     thumbWrap.className = "mw-row__thumbwrap";
@@ -1865,13 +1939,34 @@ export class MusicWallView extends FileView implements WallHost {
     this.wireCardReorder(row, item);
     row.addEventListener("click", () => {
       if (this.editMode) return;
+      if (this.selectMode) {
+        this.toggleSelect(item.albumId);
+        return;
+      }
       this.openPlayModal(item);
     });
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      if (this.selectMode) return;
       this.openCardMenu(e as MouseEvent, item);
     });
     return row;
+  }
+
+  /** 多选复选框（自绘组件，内部无原生 input，见 selectBox.ts） */
+  private makeSelectBox(item: WallItem): HTMLElement {
+    const box = createSelectBox({
+      checked: this.isSelected(item.albumId),
+      title: "点选 / 取消点选",
+      onToggle: () => {
+        if (this.selected.has(item.albumId)) this.selected.delete(item.albumId);
+        else this.selected.add(item.albumId);
+        this.paintSelection();
+        return this.selected.has(item.albumId);
+      },
+    });
+    // label 时代的 stopPropagation 由组件内部处理；这里保留卡片点击不穿透即可
+    return box;
   }
 
   /** ✕ 快捷删除钮（网格悬停浮层 / 列表行内共用） */
@@ -1936,7 +2031,14 @@ export class MusicWallView extends FileView implements WallHost {
       const data: WallDragData =
         payload.kind === "item"
           ? { kind: "item", srcPath: this.file.path, albumId: payload.item.albumId }
-          : { kind: "group", srcPath: this.file.path, groupId: payload.groupId };
+          : payload.kind === "multi-item"
+            ? {
+                kind: "multi-item",
+                srcPath: this.file.path,
+                albumId: payload.items[0]?.albumId,
+                albumIds: payload.items.map((x) => x.albumId),
+              }
+            : { kind: "group", srcPath: this.file.path, groupId: payload.groupId };
       de.dataTransfer.setData(WALL_DRAG_MIME, JSON.stringify(data));
       el.addClass("is-dragging");
     });
@@ -1966,7 +2068,9 @@ export class MusicWallView extends FileView implements WallHost {
     });
     /** 本墙是否接收这次拖拽的落点：编辑态接收唱片；分组头任何时候都能换序 */
     const acceptsHere = (): boolean =>
-      this.editMode || this.dragPayload?.kind === "group";
+      this.editMode ||
+      this.dragPayload?.kind === "group" ||
+      (this.selectMode && this.dragPayload?.kind === "multi-item");
     grid.addEventListener("dragover", (e) => {
       const de = e as DragEvent;
       const dt = de.dataTransfer;
@@ -2067,10 +2171,22 @@ export class MusicWallView extends FileView implements WallHost {
    * - 触屏：没有 HTML5 原生拖拽，长按 350ms 后走指针拖拽（编辑态内排序）。
    */
   private wireCardReorder(el: HTMLElement, item: WallItem): void {
-    const make = (): DragPayload => ({ kind: "item", item });
+    const make = (): DragPayload => {
+      // 多选态下拖其中一张即带上整组（若本卡未选中则只拖本卡）
+      if (this.selectMode && this.selected.size > 1 && this.selected.has(item.albumId)) {
+        const items = this.selectedItems();
+        if (items.length > 1) return { kind: "multi-item", items };
+      }
+      return { kind: "item", item };
+    };
     this.wireNativeDrag(el, make);
     el.addEventListener("pointerdown", (e) => {
       const pe = e as PointerEvent;
+      // 多选态不走「长按进编辑态」，但触屏仍需长按启动指针拖拽（多选批量拖）
+      if (this.selectMode) {
+        if (pe.pointerType === "touch") this.armLongPress(pe, make(), el, false, true);
+        return;
+      }
       if (pe.pointerType === "touch") {
         this.armLongPress(pe, make(), el, false, true);
         return;
@@ -2133,8 +2249,8 @@ export class MusicWallView extends FileView implements WallHost {
     this.dragTimer = window.setTimeout(() => {
       this.dragTimer = 0;
       cancel();
-      // 分组头任何时候都能拖，不需要编辑态
-      if (!isHead && !this.editMode) {
+      // 分组头任何时候都能拖，不需要编辑态；多选态下不进编辑态（多选拖拽独立）
+      if (!isHead && !this.editMode && !this.selectMode) {
         this.enterEditMode();
         new Notice("已进入布局编辑：拖动唱片调整顺序，按「完成」保存");
       }
@@ -2198,7 +2314,9 @@ export class MusicWallView extends FileView implements WallHost {
     const label =
       payload.kind === "group"
         ? (this.data?.groups?.find((g) => g.id === payload.groupId)?.name ?? "分组")
-        : payload.item.meta.name;
+        : payload.kind === "multi-item"
+          ? `已选 ${payload.items.length} 张`
+          : payload.item.meta.name;
     if (payload.kind === "group") ghost.addClass("mw-drag-ghost--group");
     ghost.dataset.dragKind = payload.kind;
     ghost.textContent = label;
@@ -2301,7 +2419,9 @@ export class MusicWallView extends FileView implements WallHost {
       this.nearestElementAt(x, y);
     if (!hit || !this.contentEl.contains(hit)) return null;
 
-    if (payload.kind === "item") {
+    if (payload.kind === "item" || payload.kind === "multi-item") {
+      const movingIds =
+        payload.kind === "item" ? new Set([payload.item.albumId]) : new Set(payload.items.map((x) => x.albumId));
       const section = hit.closest<HTMLElement>(".mw-section");
       if (!section) return null;
       const groupId = section.dataset.mwGroup ?? UNGROUPED_ID;
@@ -2309,7 +2429,7 @@ export class MusicWallView extends FileView implements WallHost {
       if (card) {
         const albumId = Number(card.dataset.mwAlbum);
         const item = this.data?.items.find((i) => i.albumId === albumId);
-        if (!item || item.albumId === payload.item.albumId) return null;
+        if (!item || movingIds.has(item.albumId)) return null;
         const r = card.getBoundingClientRect();
         const place: Place = this.isListLayout()
           ? y < r.top + r.height / 2
@@ -2323,9 +2443,22 @@ export class MusicWallView extends FileView implements WallHost {
       // 落在分区空白处 / 分组头 / 收起的分区：追加到该分区末尾。
       // 锚点必须**按数据**取该分区顺序里的最后一张：收起的分组与空分组都没有卡片 DOM，
       // 用「最后一张可见卡片」会退化成「锚点 = 自己」，跨组拖拽静默失败。
-      const last = this.lastItemOfGroup(groupId);
-      if (!last) return { kind: "item", target: null, place: "after", groupId };
-      if (last.albumId === payload.item.albumId) return null; // 同组落到自己身上：原地不动
+      const last = this.lastNonMovingItemOfGroup(groupId, movingIds);
+      if (!last) {
+        // 目标分区为空或只剩被拖项：按追加到该分组末尾处理
+        // 若拖的全部都在本组且组内无其他项，则是原地不动
+        const want = groupId === UNGROUPED_ID ? "" : groupId;
+        const others = (this.data?.items ?? []).some(
+          (i) => (i.groupId ?? "") === want && !movingIds.has(i.albumId)
+        );
+        if (!others) {
+          const allInGroup = payload.kind === "item"
+            ? (payload.item.groupId ?? UNGROUPED_ID) === groupId
+            : payload.items.every((x) => (x.groupId ?? UNGROUPED_ID) === groupId);
+          if (allInGroup) return null;
+        }
+        return { kind: "item", target: null, place: "after", groupId };
+      }
       return { kind: "item", target: last, place: "after", groupId };
     }
 
@@ -2350,12 +2483,18 @@ export class MusicWallView extends FileView implements WallHost {
    * 只有数据能给出正确的「追加位置」。
    */
   private lastItemOfGroup(groupId: string): WallItem | null {
+    return this.lastNonMovingItemOfGroup(groupId, new Set());
+  }
+
+  /** 同上，但排除正在拖拽的若干 id（多选拖拽用，避免锚点落到自己身上） */
+  private lastNonMovingItemOfGroup(groupId: string, exclude: Set<number>): WallItem | null {
     const data = this.data;
     if (!data) return null;
     const want = groupId === UNGROUPED_ID ? "" : groupId;
     const byId = new Map(data.items.map((i) => [i.albumId, i]));
     const ids = orderedIds(data.items, data.order);
     for (let i = ids.length - 1; i >= 0; i--) {
+      if (exclude.has(ids[i])) continue;
       const it = byId.get(ids[i]);
       if (it && (it.groupId ?? "") === want) return it;
     }
@@ -2418,9 +2557,14 @@ export class MusicWallView extends FileView implements WallHost {
       this.contentEl.querySelector<HTMLElement>(".mw-stage") ?? this.contentEl;
     const host = hostEl.getBoundingClientRect();
     if (target.kind === "item") {
-      const payloadItem = this.dragPayload.kind === "item" ? this.dragPayload.item : null;
-      const crossGroup =
-        !!payloadItem && (payloadItem.groupId ?? UNGROUPED_ID) !== target.groupId;
+      const p = this.dragPayload;
+      const movingGroups =
+        p.kind === "item"
+          ? [(p.item.groupId ?? UNGROUPED_ID)]
+          : p.kind === "multi-item"
+            ? p.items.map((x) => x.groupId ?? UNGROUPED_ID)
+            : [];
+      const crossGroup = movingGroups.some((g) => g !== target.groupId);
       // 跨组：整块分区高亮（卡片高亮在收起/空分组里根本画不出来）
       if (crossGroup) this.sectionEl(target.groupId)?.addClass("is-drop-section");
       if (!target.target) {
@@ -2505,6 +2649,25 @@ export class MusicWallView extends FileView implements WallHost {
 
     // 唱片：卡片落点（同组换位 / 跨组改组）、分区空白或分组头（追加进目标分区末尾）
     if (target.kind !== "item") return;
+    if (payload.kind === "multi-item") {
+      const ids = payload.items.map((x) => x.albumId);
+      const moving = new Set(ids);
+      if (target.target && moving.has(target.target.albumId)) return;
+      const order = this.ensureOrder();
+      const byId = new Map(data.items.map((i) => [i.albumId, i]));
+      const toGroup = target.groupId;
+      for (const id of ids) {
+        const it = byId.get(id);
+        if (!it) continue;
+        if (toGroup === UNGROUPED_ID) delete it.groupId;
+        else it.groupId = toGroup;
+      }
+      data.order = target.target
+        ? moveInto(order, ids, target.target.albumId, target.place)
+        : moveInto(order, ids, null);
+      void this.commit(`已移动 ${ids.length} 张到分组`);
+      return;
+    }
     const item = payload.item;
     const anchor = target.target;
     // 锚点就是自己：同组 = 原地重排（无意义），跨组不可能出现
@@ -2581,6 +2744,309 @@ export class MusicWallView extends FileView implements WallHost {
     done.addEventListener("click", () => this.exitEditMode());
     // 编辑条占了顶部一行，顶栏被推下去：面板/浮层的定位要跟着重算
     this.watchTopbarHeight();
+  }
+
+  // ---- 多选态 ----
+
+  /** 进入多选：与编辑态互斥，单击卡片改为切换选中 */
+  private enterSelectMode(): void {
+    if (this.selectMode || !this.data) return;
+    if (this.editMode) this.exitEditMode();
+    this.selectMode = true;
+    this.contentEl.addClass("mw-selecting");
+    this.syncToolbarState();
+    this.rerenderGrid();
+    this.renderSelectionBar();
+  }
+
+  /** 退出多选：清空已选（按需求约定） */
+  private exitSelectMode(): void {
+    if (!this.selectMode) return;
+    this.selectMode = false;
+    this.selected.clear();
+    this.contentEl.removeClass("mw-selecting");
+    this.contentEl.querySelector(".mw-selectbar")?.remove();
+    this.syncToolbarState();
+    this.rerenderGrid();
+  }
+
+  private isSelected(albumId: number): boolean {
+    return this.selected.has(albumId);
+  }
+
+  private toggleSelect(albumId: number): void {
+    if (this.selected.has(albumId)) this.selected.delete(albumId);
+    else this.selected.add(albumId);
+    this.paintSelection();
+  }
+
+  /** 选中项对应的 WallItem（按当前数据过滤掉已删除） */
+  private selectedItems(): WallItem[] {
+    if (!this.data || !this.selected.size) return [];
+    const byId = new Map(this.data.items.map((i) => [i.albumId, i]));
+    const out: WallItem[] = [];
+    for (const id of this.selected) {
+      const hit = byId.get(id);
+      if (hit) out.push(hit);
+    }
+    return out;
+  }
+
+  /** 剪枝已不存在的选中 id（删除/迁移/重载后调用） */
+  private pruneSelection(): void {
+    if (!this.selected.size) return;
+    if (!this.data) {
+      this.selected.clear();
+      return;
+    }
+    const alive = new Set(this.data.items.map((i) => i.albumId));
+    for (const id of [...this.selected]) {
+      if (!alive.has(id)) this.selected.delete(id);
+    }
+  }
+
+  /** 不重建网格，只刷新选中态（高亮 + 复选框 + 底部计数） */
+  private paintSelection(): void {
+    for (const el of Array.from(
+      this.contentEl.querySelectorAll<HTMLElement>("[data-mw-album]")
+    )) {
+      const id = Number(el.dataset.mwAlbum);
+      const on = this.selected.has(id);
+      el.toggleClass("is-selected", on);
+      const box = el.querySelector<HTMLButtonElement>(".mw-selectbox");
+      if (box) syncSelectBox(box, on);
+    }
+    const count = this.contentEl.querySelector<HTMLElement>(".mw-selectbar__count");
+    if (count) count.setText(`已选 ${this.selected.size} 张`);
+    const btns = this.contentEl.querySelectorAll<HTMLElement>(
+      ".mw-selectbar [data-sel-act]"
+    );
+    const has = this.selected.size > 0;
+    for (const b of Array.from(btns)) {
+      const act = b.dataset.selAct;
+      if (act === "all" || act === "exit") continue;
+      (b as HTMLButtonElement).toggleClass("is-disabled", !has);
+    }
+  }
+
+  private selectAllVisible(): void {
+    for (const i of this.getVisibleItems()) this.selected.add(i.albumId);
+    this.paintSelection();
+  }
+
+  private invertSelectionVisible(): void {
+    const visible = new Set(this.getVisibleItems().map((i) => i.albumId));
+    const next = new Set<number>();
+    for (const id of visible) {
+      if (!this.selected.has(id)) next.add(id);
+    }
+    // 可见之外的选中保留，避免隐藏项被意外丢掉
+    if (this.data) {
+      for (const id of this.selected) {
+        if (!visible.has(id)) next.add(id);
+      }
+    }
+    this.selected = next;
+    this.paintSelection();
+  }
+
+  private clearSelection(): void {
+    this.selected.clear();
+    this.paintSelection();
+  }
+
+  /** 底部多选操作条：与编辑条同为缩放盒正常流首行之下（工具栏之上不压图标） */
+  private renderSelectionBar(): void {
+    this.contentEl.querySelector(".mw-selectbar")?.remove();
+    if (!this.selectMode) return;
+    const host = this.zoomBox ?? this.contentEl;
+    const bar = host.createDiv({ cls: "mw-selectbar" });
+    const toolbar = host.querySelector(".mw-toolbar");
+    if (toolbar?.nextSibling) host.insertBefore(bar, toolbar.nextSibling);
+    else host.appendChild(bar);
+    bar.createDiv({ cls: "mw-selectbar__count", text: `已选 ${this.selected.size} 张` });
+    const mkBtn = (
+      icon: string,
+      label: string,
+      act: string,
+      fn: () => void,
+      cls = ""
+    ) => {
+      const b = bar.createEl("button", {
+        cls: `mw-selbtn${cls ? " " + cls : ""}`,
+      });
+      b.setAttr("type", "button");
+      b.setAttr("title", label);
+      b.setAttr("aria-label", label);
+      setIcon(b, icon);
+      b.dataset.selAct = act;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    mkBtn("list-checks", "全选（仅可见项）", "all", () => this.selectAllVisible());
+    mkBtn("arrow-left-right", "反选（仅可见项）", "invert", () => this.invertSelectionVisible());
+    mkBtn("eraser", "清空已选", "clear", () => this.clearSelection());
+    mkBtn("arrow-right", "迁移到其他墙", "migrate", () => this.migrateSelectedToWall(), "mw-selbtn--primary");
+    mkBtn("folder-input", "移动到分组…", "group", () => this.moveSelectedToGroup());
+    mkBtn("trash", "删除所选", "delete", () => this.confirmDeleteSelected(), "mw-selbtn--danger");
+    mkBtn("x", "退出多选", "exit", () => this.exitSelectMode());
+    this.paintSelection();
+  }
+
+  /** 把选中唱片批量移动到指定分组（null = 未分组）；保持选中相对顺序 */
+  private moveItemsToGroup(ids: number[], groupId: string | null): void {
+    const data = this.data;
+    if (!data || !ids.length) return;
+    const moving = new Set(ids);
+    const order = this.ensureOrder();
+    const want = groupId ?? UNGROUPED_ID;
+    const byId = new Map(data.items.map((i) => [i.albumId, i]));
+    // 目标分区现有成员（排除本次移动项），取其在手动顺序中的最后一张做锚点
+    const seq = order.filter((id) => {
+      const it = byId.get(id);
+      if (!it || moving.has(id)) return false;
+      return (it.groupId ?? UNGROUPED_ID) === want;
+    });
+    const anchor = seq.length ? seq[seq.length - 1] : null;
+    for (const id of ids) {
+      const it = byId.get(id);
+      if (!it) continue;
+      if (groupId === null) delete it.groupId;
+      else it.groupId = groupId;
+    }
+    data.order =
+      anchor != null
+        ? moveInto(order, ids, anchor, "after")
+        : moveInto(order, ids, null);
+    const name =
+      want === UNGROUPED_ID
+        ? UNGROUPED_LABEL
+        : (data.groups?.find((g) => g.id === want)?.name ?? "分组");
+    void this.commit(`已将 ${ids.length} 张移动到「${name}」`);
+  }
+
+  /** 多选：移动到分组（本墙内，与单张 pickGroupFor 同语言，不选墙） */
+  private moveSelectedToGroup(): void {
+    const items = this.selectedItems();
+    if (!items.length) {
+      new Notice("请先点选至少一张专辑");
+      return;
+    }
+    const groups = this.data?.groups ?? [];
+    if (!groups.length) {
+      new Notice("当前墙没有分组，可先在空白处右键新建分组");
+      return;
+    }
+    const targets: { id: string; label: string }[] = [
+      { id: UNGROUPED_ID, label: UNGROUPED_LABEL },
+      ...groups.map((g) => ({ id: g.id, label: g.name })),
+    ];
+    new PickerModal(
+      this.app,
+      `将选中的 ${items.length} 张移动到…`,
+      targets.map((t) => ({
+        label: t.label,
+        detail: `${this.data!.items.filter((i) => (i.groupId ?? UNGROUPED_ID) === t.id).length} 张`,
+      })),
+      (i) => {
+        const target = targets[i];
+        if (!target) return;
+        this.moveItemsToGroup(
+          items.map((x) => x.albumId),
+          target.id === UNGROUPED_ID ? null : target.id
+        );
+      }
+    ).open();
+  }
+
+  /** 多选：迁移到其他墙（剪切语义；重复跳过并汇总） */
+  private migrateSelectedToWall(): void {
+    const items = this.selectedItems();
+    if (!items.length) {
+      new Notice("请先点选至少一张专辑");
+      return;
+    }
+    const files = this.plugin.wallFiles(this.file?.path);
+    if (!files.length) {
+      new Notice("库中没有其他 .mw 音乐墙，可先新建一面再迁移");
+      return;
+    }
+    new PickerModal(
+      this.app,
+      `将选中的 ${items.length} 张迁移到…`,
+      files.map((f) => ({
+        label: f.basename,
+        detail: f.parent && f.parent.path !== "/" ? f.parent.path : "库根目录",
+      })),
+      (i) => void this.doMigrateSelected(items, files[i])
+    ).open();
+  }
+
+  private async doMigrateSelected(items: WallItem[], target: TFile): Promise<void> {
+    if (!this.data) return;
+    let okCount = 0;
+    let skipCount = 0;
+    let failCount = 0;
+    const moved: number[] = [];
+    for (const item of items) {
+      try {
+        const ok = await this.plugin.migrateItemInto(item, target);
+        if (ok) {
+          okCount++;
+          moved.push(item.albumId);
+        } else {
+          skipCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+    if (moved.length) {
+      const drop = new Set(moved);
+      this.data.items = this.data.items.filter((i) => !drop.has(i.albumId));
+      if (this.data.order) {
+        this.data.order = removeFromOrder(this.data.order, moved);
+      }
+      for (const id of moved) this.selected.delete(id);
+      await this.persist();
+      this.render();
+      this.renderSelectionBar();
+    }
+    const parts = [`已迁移 ${okCount} 张 → ${target.basename}.mw`];
+    if (skipCount) parts.push(`跳过重复 ${skipCount} 张`);
+    if (failCount) parts.push(`失败 ${failCount} 张`);
+    new Notice(parts.join("；"));
+  }
+
+  /** 多选删除：一次确认，列出数量 + 前几张 */
+  private confirmDeleteSelected(): void {
+    const items = this.selectedItems();
+    if (!items.length) {
+      new Notice("请先点选至少一张专辑");
+      return;
+    }
+    const list = items.slice(0, 8).map((m) => `《${m.meta.name}》`);
+    if (items.length > 8) list.push(`等共 ${items.length} 张…`);
+    new ConfirmModal(this.app, {
+      title: `删除 ${items.length} 张专辑`,
+      message: `确定将选中的 ${items.length} 张专辑移出这面音乐墙吗？`,
+      details: [...list, "仅从本墙移除，不影响其他墙与网易云账号数据。"],
+      danger: true,
+      confirmText: "删除",
+      onConfirm: async () => {
+        const data = this.data!;
+        const drop = new Set(items.map((i) => i.albumId));
+        data.items = data.items.filter((i) => !drop.has(i.albumId));
+        if (data.order) {
+          data.order = removeFromOrder(data.order, [...drop]);
+        }
+        this.selected.clear();
+        await this.persist();
+        this.render();
+        this.renderSelectionBar();
+        new Notice(`已移除 ${items.length} 张专辑`);
+      },
+    }).open();
   }
 
   private openPlayModal(item: WallItem): void {

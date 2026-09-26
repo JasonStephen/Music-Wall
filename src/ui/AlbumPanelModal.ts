@@ -188,6 +188,15 @@ export class AlbumPanelModal extends Modal {
     const cancel = btns.createEl("button", { text: "取消" });
     cancel.addEventListener("click", () => this.close());
 
+    // 试听：未添加也能播（add 模式下点即播，不关闭弹窗、不触发添加）
+    if (this.mode === "add") {
+      const preview = btns.createEl("button", { text: "▶ 试听" });
+      preview.setAttr("title", "未添加也可试听，原理与播放一致");
+      preview.addEventListener("click", () => {
+        void playAlbum(this.meta, this.deps);
+      });
+    }
+
     const primary = btns.createEl("button", {
       text: this.mode === "play" ? "▶ 播放" : "确认添加",
       cls: "mod-cta",
