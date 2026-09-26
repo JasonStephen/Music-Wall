@@ -28,12 +28,11 @@
 .mw-rating-badge__star {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 字号 = 徽标边长：星形外接方框刚好铺满，中间留出的面积才够放数字 */
-  font-size: 34px;
-  line-height: 1;
+  /* SVG 星随徽标宽高走，封套/列表里缩小不用再改字号；星色吃 color，按档位注入 */
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: currentColor;
   color: var(--mw-rate-5);
 }
 .mw-rating-badge__num {
@@ -42,8 +41,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 数字压在星心：★ 重心略偏上，下移 4px 才是视觉正中 */
-  padding-top: 4px;
+  /* SVG 星与徽标同心正中，★ 时代的 4px 字形补偿已删；仅 1px 修掉数字字形自带的光学偏上 */
+  padding-top: 1px;
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
@@ -74,9 +73,6 @@
   /* 高于封套自身的 ::after 反光层（z-index auto），否则会被它压住 */
   z-index: 5;
 }
-.mw-shelf-jacket .mw-rating-badge__star {
-  font-size: 30px;
-}
 .mw-row__thumbwrap {
   position: relative;
   flex: 0 0 64px;
@@ -93,9 +89,6 @@
   right: -6px;
   width: 28px;
   height: 28px;
-}
-.mw-row__thumbwrap .mw-rating-badge__star {
-  font-size: 28px;
 }
 
 /* ---- 详情只读五星 ---- */
