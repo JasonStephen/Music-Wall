@@ -28,9 +28,6 @@
   );
   border-color: rgba(255, 226, 180, 0.35);
 }
-.mw-view.mw-wall--shelf .mw-section__btn--danger:hover {
-  color: #ff8a8a;
-}
 .mw-view.mw-wall--shelf .mw-section {
   padding-top: 2px;
 }
@@ -69,5 +66,5 @@
   color: var(--text-faint);
 }
 .mw-confirm__hint.is-error {
-  color: #e93147;
+  color: var(--mw-danger, #e93147);
 }

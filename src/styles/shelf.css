@@ -149,22 +149,6 @@
   pointer-events: none;
 }
 
-/* ---- 黑胶彩蛋（仅 vinyl 样式注入）：与封套同心藏后，抽出时向右滑出 ---- */
-.mw-shelf-vinyl {
-  position: absolute;
-  left: 12%;
-  bottom: calc(var(--mw-plank-h) - 4px + 3%);
-  width: 82%;
-  aspect-ratio: 1 / 1;
-  z-index: 2;
-  transform: translateX(0);
-  transition: transform var(--mw-shelf-dur) var(--mw-shelf-ease);
-}
-.mw-shelf-vinyl .mw-disc--vinyl {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-}
-
 /* ---- 抽出（hover 或触屏 .is-pulled）+ 聚光灯聚焦 ---- */
 .mw-shelf-card:hover,
 .mw-shelf-card.is-pulled {
@@ -464,7 +448,7 @@
   gap: 6px;
 }
 .mw-gf__bar .mw-gf__tool--danger:hover {
-  color: #ff97a2;
+  color: var(--mw-danger, #ff8a8a);
 }
 
 /* 三行歌曲信息 */
@@ -861,11 +845,13 @@
 .mw-shelf-menu__item:hover {
   background: rgba(255, 226, 180, 0.14);
 }
+/* 木质菜单挂在 body 上、拿不到 .mw-view 的 --mw-danger token，这里用同一色值的字面量。
+   若改 --mw-danger 的展示架值，请同步这一处（A3 备注）。 */
 .mw-shelf-menu__item.is-danger {
-  color: #e9848f;
+  color: #ff8a8a;
 }
 .mw-shelf-menu__item.is-danger:hover {
-  background: rgba(233, 72, 88, 0.18);
+  background: rgba(255, 138, 138, 0.16);
 }
 .mw-shelf-menu__item.is-disabled {
   opacity: 0.42;

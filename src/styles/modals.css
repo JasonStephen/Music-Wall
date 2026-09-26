@@ -191,7 +191,8 @@
   border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #333;
+  /* 封面加载中的占位：取面板线色（B5），原来是写死的深灰 #333，浅色主题抽屉里是一块深色补丁 */
+  background: var(--mw-panel-line, var(--background-modifier-border));
 }
 .mw-search-row__info {
   flex: 1;
@@ -360,6 +361,9 @@
   --background-modifier-border-focus: rgba(255, 226, 180, 0.4);
   --text-accent: #d9a24a;
   --text-accent-hover: #e8b45f;
+  /* 危险色跟随展示架墙（A3）：深木底上用亮暖红，与 base.css 的 token 一致 */
+  --mw-danger: #ff8a8a;
+  --mw-danger-hover: rgba(255, 138, 138, 0.14);
   /* !important：主题常写 `.theme-light .modal`（与我们同档特异性，靠加载顺序决胜负），
      不能赌顺序——弹窗整块变白是本轮被反馈的问题本身 */
   background: linear-gradient(180deg, #2a1f16, #211812 60%, #1a120c) !important;
@@ -460,7 +464,7 @@
 .mw-batch__error {
   min-height: 1.2em;
   font-size: 0.78em;
-  color: #e93147;
+  color: var(--mw-danger, #e93147);
   margin: 4px 0;
 }
 .mw-batch__btnrow {
@@ -573,7 +577,7 @@
   border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #333;
+  background: var(--mw-panel-line, var(--background-modifier-border));
 }
 .mw-batch-row__cover--ph {
   display: inline-flex;
@@ -617,8 +621,8 @@
   color: var(--text-muted);
 }
 .mw-batch-row__badge.is-error {
-  color: #e93147;
-  border-color: #e93147;
+  color: var(--mw-danger, #e93147);
+  border-color: var(--mw-danger, #e93147);
 }
 .mw-batch-row__ops {
   display: flex;

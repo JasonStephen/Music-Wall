@@ -234,13 +234,16 @@
   box-shadow: none;
   color: var(--text-normal);
 }
+/* hover/active 吃 --mw-np-accent（各背景模式的强调色），不能用 --text-accent——
+   四种背景都没定义它，会穿透到主题强调色（木背景/封面背景上悬停图标变紫）。
+   与主播放键同色系才自洽。 */
 .mw-player .mw-toolbtn:hover {
   background: transparent;
-  color: var(--text-accent);
+  color: var(--mw-np-accent, var(--interactive-accent));
 }
 .mw-player .mw-toolbtn.is-active {
   background: transparent;
-  color: var(--text-accent);
+  color: var(--mw-np-accent, var(--interactive-accent));
 }
 
 /* 芯片（样式 / 背景）：底色与文字全部走当前背景模式的变量。
@@ -946,6 +949,30 @@
 }
 .mw-row.is-now-playing .mw-row__thumb {
   box-shadow: 0 0 0 3px var(--mw-accent, var(--interactive-accent));
+}
+/* 展示架：封套里没有 .mw-disc（黑胶彩蛋结构已随 A4 清理），光环落在封套本体上。
+   静置与 hover/抽出两态都要带环：hover 的阴影是整组替换，不写第二条「一悬停环就没」。
+   环色取 --mw-accent（展示架 = 琥珀），与网格/列表的光环同一取色口。 */
+.mw-shelf-card.is-now-playing .mw-shelf-jacket {
+  box-shadow:
+    0 0 0 2px var(--mw-accent, var(--interactive-accent)),
+    0 0 16px color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 45%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 7px 0 9px -8px rgba(0, 0, 0, 0.95),
+    inset -4px 0 8px -6px rgba(0, 0, 0, 0.9),
+    2px 2px 0 rgba(20, 12, 6, 0.55),
+    4px 5px 10px rgba(0, 0, 0, 0.6);
+}
+.mw-shelf-card.is-now-playing:hover .mw-shelf-jacket,
+.mw-shelf-card.is-now-playing.is-pulled .mw-shelf-jacket {
+  box-shadow:
+    0 0 0 2px var(--mw-accent, var(--interactive-accent)),
+    0 0 16px color-mix(in srgb, var(--mw-accent, var(--interactive-accent)) 45%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 -10px 44px rgba(255, 214, 140, 0.2),
+    0 0 26px rgba(255, 214, 140, 0.12),
+    0 26px 34px rgba(0, 0, 0, 0.65),
+    0 8px 12px rgba(0, 0, 0, 0.5);
 }
 .mw-view.mw-np-paused .mw-card.is-now-playing .mw-record__plate,
 .mw-view.mw-np-paused .mw-card.is-now-playing .mw-tape__hub {

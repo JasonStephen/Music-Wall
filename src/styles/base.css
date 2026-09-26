@@ -71,6 +71,15 @@
   background: var(--mw-wall-bg);
 }
 
+/* 危险动作色（审计 A3 收敛：删除/错误统一取这两个 token，不再各处硬编码红色）。
+   弹窗挂在 body 上拿不到 .mw-view 的变量，故「墙 + 弹窗」一起声明；
+   展示架墙 / 展示架弹窗在各自皮肤里换成深木底上更可读的亮暖红。 */
+.mw-view,
+.mw-modal-zoom {
+  --mw-danger: #e93147;
+  --mw-danger-hover: rgba(233, 49, 71, 0.12);
+}
+
 /*
  * 缩放盒：所有内容都在这一层里，缩放只作用在这里。
  *
@@ -120,11 +129,13 @@
   z-index: 9999;
   padding: 6px 14px;
   border-radius: 999px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  /* 取面板 token（B6）：播放器 dark/art/wood 把 --background-primary 改成了
+     8–14% 半透明白，toast 会在封面亮部上近乎隐形；面板底色各背景都是实色/高不透明 */
+  background: var(--mw-panel-bg, var(--background-primary));
+  border: 1px solid var(--mw-panel-line, var(--background-modifier-border));
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
   font-size: 0.8em;
-  color: var(--text-normal);
+  color: var(--mw-panel-fg, var(--text-normal));
   opacity: 0;
   transform: translateY(6px);
   pointer-events: none;
@@ -172,6 +183,9 @@
   --interactive-accent: #d9a24a;
   --interactive-accent-hover: #e8b45f;
   --text-on-accent: #241b12;
+  /* 深木底上的危险色：标准红 #e93147 偏冷偏暗，统一换成亮暖红（A3） */
+  --mw-danger: #ff8a8a;
+  --mw-danger-hover: rgba(255, 138, 138, 0.14);
   --mw-wall-bg:
     radial-gradient(130% 70% at 50% -8%, rgba(255, 198, 130, 0.1), transparent 55%),
     radial-gradient(100% 130% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 60%),
@@ -779,7 +793,7 @@
   color: var(--mw-wall-fg);
 }
 .mw-section__btn--danger:hover {
-  color: #e93147;
+  color: var(--mw-danger, #e93147);
 }
 .mw-section__btn svg {
   width: 14px;
@@ -1098,13 +1112,13 @@
   background-color: var(--background-modifier-hover);
   color: var(--mw-accent, var(--interactive-accent));
 }
-/* 危险动作（删除）：图标着红色 */
+/* 危险动作（删除）：图标着 --mw-danger（展示架根上已换成亮暖红） */
 .mw-view .mw-selectbar .mw-selbtn--danger {
-  color: #e93147;
+  color: var(--mw-danger, #e93147);
 }
 .mw-view .mw-selectbar .mw-selbtn--danger:hover {
-  background-color: rgba(233, 49, 71, 0.12);
-  color: #e93147;
+  background-color: var(--mw-danger-hover, rgba(233, 49, 71, 0.12));
+  color: var(--mw-danger, #e93147);
 }
 .mw-view .mw-selectbar .mw-selbtn.is-disabled {
   opacity: 0.35;
@@ -1124,13 +1138,6 @@
 .mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--primary:hover {
   background-color: rgba(255, 226, 180, 0.12);
   color: #ffd9a0;
-}
-.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger {
-  color: #ffb3ba;
-}
-.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger:hover {
-  background-color: rgba(233, 72, 88, 0.18);
-  color: #ffb3ba;
 }
 .mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn.is-disabled {
   color: #a89a86;
@@ -1184,8 +1191,8 @@
   opacity: 0.92;
 }
 .mw-iconbtn--del:hover {
-  color: #e93147;
-  border-color: #e93147;
+  color: var(--mw-danger, #e93147);
+  border-color: var(--mw-danger, #e93147);
 }
 .mw-iconbtn--menu:hover {
   color: var(--text-normal);
@@ -1252,6 +1259,11 @@
   object-fit: cover;
   background: var(--background-modifier-border);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+/* 破图降级：与网格/封套同一张灰紫渐变（B8；原来是隐形 img + 一块主题边框色平面） */
+.mw-row__thumbwrap.mw-cover-broken {
+  background: linear-gradient(135deg, #4a4a58, #1c1c24);
+  border-radius: 8px;
 }
 .mw-row__info {
   flex: 1 1 auto;

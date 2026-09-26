@@ -1907,12 +1907,10 @@ export class MusicWallView extends FileView implements WallHost {
 
     const thumbWrap = document.createElement("div");
     thumbWrap.className = "mw-row__thumbwrap";
-    const thumb = document.createElement("img");
-    thumb.className = "mw-row__thumb";
-    thumb.loading = "lazy";
-    thumb.alt = item.meta.name;
-    thumb.addEventListener("error", () => (thumb.style.visibility = "hidden"));
-    thumb.src = sizedCover(item.meta.cover, 200);
+    // 与网格/封套同一条错误链：封面拉不到 → 内置默认封面 → 父容器 mw-cover-broken 渐变
+    // （以前是 visibility:hidden 留一块主题边框色的平面——审计 B8）
+    const thumb = makeCoverImg(sizedCover(item.meta.cover, 200), item.meta.name);
+    thumb.addClass("mw-row__thumb");
     thumbWrap.appendChild(thumb);
     const rowRating = normalizeRating(item.rating);
     if (rowRating) thumbWrap.appendChild(buildRatingBadge(rowRating));
@@ -3845,26 +3843,30 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private openMoreMenu(evt: MouseEvent): void {
-    const menu = new Menu();
-    menu.addItem((it) =>
-      it.setTitle("导出当前墙（分享副本）").setIcon("download").onClick(() => {
-        void this.plugin.exportCurrentWall(this);
-      })
-    );
-    menu.addItem((it) =>
-      it.setTitle("导入 .mw 文件").setIcon("upload").onClick(() => {
-        void this.plugin.importMwFile(this);
-      })
-    );
-    menu.addItem((it) =>
-      it.setTitle("从 Git 仓库导入").setIcon("git").onClick(() => {
-        if (!Platform.isDesktopApp) {
-          new Notice("Git 导入仅在桌面端可用");
-          return;
-        }
-        void this.plugin.gitImport(this);
-      })
-    );
-    menu.showAtPosition({ x: evt.x, y: evt.y });
+    // 与右键菜单同源：展示架布局要走自绘木菜单，不能绕过 showCtxMenu 直接 new Menu
+    // （否则木墙上弹出一个白底主题菜单——审计 A1）
+    this.showCtxMenu(evt, [
+      {
+        title: "导出当前墙（分享副本）",
+        icon: "download",
+        onPick: () => void this.plugin.exportCurrentWall(this),
+      },
+      {
+        title: "导入 .mw 文件",
+        icon: "upload",
+        onPick: () => void this.plugin.importMwFile(this),
+      },
+      {
+        title: "从 Git 仓库导入",
+        icon: "git",
+        onPick: () => {
+          if (!Platform.isDesktopApp) {
+            new Notice("Git 导入仅在桌面端可用");
+            return;
+          }
+          void this.plugin.gitImport(this);
+        },
+      },
+    ]);
   }
 }

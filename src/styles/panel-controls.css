@@ -174,11 +174,10 @@
 .mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn:hover {
   background-color: rgba(255, 226, 180, 0.12) !important;
 }
+/* 危险动作 hover 底：走 --mw-danger-hover，展示架根上已换成亮暖红版本（A3 收敛，
+   原来的 shelf 专属 !important 覆盖随之删除——变量在根上切换，不再需要规则对打） */
 .mw-view .mw-selectbar .mw-selbtn--danger:hover {
-  background-color: rgba(233, 49, 71, 0.12) !important;
-}
-.mw-view.mw-wall--shelf .mw-selectbar .mw-selbtn--danger:hover {
-  background-color: rgba(233, 72, 88, 0.18) !important;
+  background-color: var(--mw-danger-hover, rgba(233, 49, 71, 0.12)) !important;
 }
 
 /* ---- × 清空钮：绝不能有底色/圆角（主题会给 .clickable-icon 刷强调色实心底） ---- */

@@ -14,6 +14,20 @@
   --mw-rate-ink-light: #fdfbff;
 }
 
+/* 展示架墙面与展示架弹窗：五色里唯一的冷色（5 分靛紫）在暖木上最跳，降饱和融入（B7）。
+   只收 5 分档——1–4 档本来就在暖色光谱内；档位语义不变，白色数字墨色照旧。 */
+.mw-view.mw-wall--shelf,
+.modal.mw-modal--shelf {
+  --mw-rate-5: #7f71e0;
+}
+
+/* 木墙详情页（开盒信息面）的亮星光晕略发虚：木纹上关掉 text-shadow（B7）。
+   选择器必须带 [data-rating]：各档位光晕规则是 (0,4,0)，不带属性选择器会打成平手、
+   靠后声明的 data-rating 光晕仍会赢（这段不能被挪到档位规则之前而不掉特异性）。 */
+.mw-view.mw-wall--shelf .mw-stars[data-rating] .mw-stars__star.is-on {
+  text-shadow: none;
+}
+
 /* ---- 卡片右上角徽标：单星＋中间数字（常显，不随悬停按钮消失） ---- */
 .mw-rating-badge {
   position: absolute;
