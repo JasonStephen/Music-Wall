@@ -10,36 +10,11 @@ export type WallLayout = "grid" | "list" | "shelf";
 /** 展示架布局下，专辑名称文字显示档位（全局设置） */
 export type ShelfCaption = "hidden" | "pull" | "always";
 
-/** 布局模式的中文标签（工具栏样式面板与设置页共用） */
-export const LAYOUT_LABELS: Record<WallLayout, string> = {
-  grid: "网格",
-  list: "列表",
-  shelf: "展示架",
-};
-
 /** 排序类型；manual = 手动排序（顺序存于 MusicWallData.order） */
 export type SortMode = "manual" | "addedAt" | "name" | "artist" | "year" | "rating";
 
-/** 排序类型的中文标签（排序面板与旧工具栏共用） */
-export const SORT_LABELS: Record<SortMode, string> = {
-  manual: "手动排序",
-  addedAt: "添加时间",
-  name: "专辑名",
-  artist: "艺术家",
-  year: "发行时间",
-  rating: "评分",
-};
-
 /** 播放器页背景模式 */
 export type PlayerBackground = "white" | "dark" | "art" | "wood";
-
-/** 播放器背景模式的中文标签（播放器芯片与设置页共用） */
-export const PLAYER_BG_LABELS: Record<PlayerBackground, string> = {
-  white: "白色",
-  dark: "深色",
-  art: "封面",
-  wood: "木地板",
-};
 
 /** 专辑来源 */
 export type AlbumSource = "search" | "manual";
@@ -154,6 +129,8 @@ export interface AlbumSummary {
 
 /** 插件设置 */
 export interface MusicWallSettings {
+  /** 界面语言：system = 跟随 Obsidian 界面语言（zh → 简中，zh-TW → 繁中，其他 → 英文） */
+  language?: "system" | "zh-CN" | "zh-TW" | "en";
   /** Git 远程仓库地址（用于 Git 导入） */
   gitRepoUrl: string;
   /** Git 分支，留空用仓库默认分支 */
@@ -184,6 +161,7 @@ export interface MusicWallSettings {
 }
 
 export const DEFAULT_SETTINGS: MusicWallSettings = {
+  language: "system",
   gitRepoUrl: "",
   gitBranch: "",
   gitSubdir: "",

@@ -45,6 +45,7 @@ import { InputModal } from "./ui/InputModal";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { ChoiceModal, PickerModal, type ChoiceOption } from "./ui/smallModals";
 import { MusicWallSettingTab } from "./settings";
+import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
@@ -92,28 +93,28 @@ export default class MusicWallPlugin extends Plugin {
     this.registerExtensions([PLAYER_EXT], PLAYER_VIEW_TYPE);
     this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
 
-    this.addRibbonIcon("library", "新建音乐墙", () => {
+    this.addRibbonIcon("library", t("cmd.createWall"), () => {
       void this.createNewWallCommand();
     });
 
     this.addCommand({
       id: "create-wall",
-      name: "新建音乐墙文件 (.mw)",
+      name: t("cmd.createWallFile"),
       callback: () => void this.createNewWallCommand(),
     });
     this.addCommand({
       id: "create-player",
-      name: "新建音乐播放器文件 (.mwp)",
+      name: t("cmd.createPlayerFile"),
       callback: () => void this.createNewPlayerCommand(),
     });
     this.addCommand({
       id: "open-player",
-      name: "打开音乐播放器",
+      name: t("cmd.openPlayer"),
       callback: () => void this.openPlayerView(),
     });
     this.addCommand({
       id: "search-add-album",
-      name: "添加专辑（当前墙）",
+      name: t("cmd.addAlbum"),
       checkCallback: (checking) => {
         const view = this.activeWallView();
         if (!view) return false;
@@ -123,7 +124,7 @@ export default class MusicWallPlugin extends Plugin {
     });
     this.addCommand({
       id: "export-wall",
-      name: "导出当前音乐墙（分享副本）",
+      name: t("cmd.exportWall"),
       checkCallback: (checking) => {
         const view = this.activeWallView();
         if (!view) return false;
@@ -133,15 +134,15 @@ export default class MusicWallPlugin extends Plugin {
     });
     this.addCommand({
       id: "import-wall",
-      name: "导入 .mw 音乐墙文件",
+      name: t("cmd.importWall"),
       callback: () => void this.importMwFile(this.activeWallView()),
     });
     this.addCommand({
       id: "git-import-wall",
-      name: "从 Git 仓库导入音乐墙",
+      name: t("cmd.gitImport"),
       callback: () => {
         if (!Platform.isDesktopApp) {
-          new Notice("Git 导入仅在桌面端可用");
+          new Notice(t("main.git.desktopOnly"));
           return;
         }
         void this.gitImport(this.activeWallView());
@@ -150,7 +151,7 @@ export default class MusicWallPlugin extends Plugin {
 
     this.addCommand({
       id: "pick-playback-playlist",
-      name: "选择播放歌单（整专连播，需 Cookie）",
+      name: t("cmd.pickPlaylist"),
       callback: () => void this.pickPlaybackPlaylist(),
     });
 
@@ -167,13 +168,13 @@ export default class MusicWallPlugin extends Plugin {
         if (!(target instanceof TFolder)) return;
         menu.addItem((item) =>
           item
-            .setTitle("新建音乐墙")
+            .setTitle(t("cmd.createWall"))
             .setIcon("library")
             .onClick(() => void this.createNewWallIn(target))
         );
         menu.addItem((item) =>
           item
-            .setTitle("新建音乐播放器")
+            .setTitle(t("cmd.newPlayer"))
             .setIcon("disc")
             .onClick(() => void this.createNewPlayerIn(target))
         );
@@ -198,10 +199,12 @@ export default class MusicWallPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
+    applyLanguagePref(this.settings.language ?? "system");
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    applyLanguagePref(this.settings.language ?? "system");
     this.applySmtcSetting();
     this.refreshOpenViews();
   }
@@ -312,7 +315,7 @@ export default class MusicWallPlugin extends Plugin {
   private setupStatusBar(): void {
     this.statusEl = this.addStatusBarItem();
     this.statusEl.addClass("mw-statusbar");
-    this.statusEl.setAttr("aria-label", "打开音乐播放器");
+    this.statusEl.setAttr("aria-label", t("main.statusOpenPlayer"));
     this.statusEl.addEventListener("click", () => void this.openPlayerView());
     this.updateStatusBar();
   }
@@ -322,12 +325,14 @@ export default class MusicWallPlugin extends Plugin {
     const s = this.nowPlaying?.state;
     if (s && s.active) {
       const icon = s.status === "playing" ? "▶" : s.status === "paused" ? "⏸" : "⏹";
-      this.statusEl.setText(`${icon} ${s.title || "未知曲目"}`);
+      this.statusEl.setText(
+        `${icon} ${s.title || t("main.unknownTrack")}`
+      );
       this.statusEl.setAttr("aria-label", `${s.title} · ${s.artist}`);
       this.statusEl.addClass("is-active");
     } else {
-      this.statusEl.setText("音乐播放器");
-      this.statusEl.setAttr("aria-label", "打开音乐播放器");
+      this.statusEl.setText(t("main.statusPlayer"));
+      this.statusEl.setAttr("aria-label", t("main.statusOpenPlayer"));
       this.statusEl.removeClass("is-active");
     }
   }
@@ -365,7 +370,7 @@ export default class MusicWallPlugin extends Plugin {
     }
     const files = this.playerFiles();
     if (!files.length) {
-      new Notice("还没有播放器文件：先执行「新建音乐播放器文件 (.mwp)」");
+      new Notice(t("main.noPlayerFile"));
       return;
     }
     await this.openWall(files[0]);
@@ -440,17 +445,24 @@ export default class MusicWallPlugin extends Plugin {
     try {
       data = parseWall(await this.app.vault.read(target));
     } catch (e: any) {
-      new Notice("读取目标墙失败：" + (e?.message ?? e));
+      new Notice(t("main.readTargetFail", { error: e?.message ?? e }));
       return false;
     }
     if (!insertItem(data, item)) {
-      new Notice(`《${item.meta.name}》已在《${target.basename}》中，迁移取消`);
+      new Notice(
+        t("main.alreadyInTarget", {
+          name: item.meta.name,
+          wall: target.basename,
+        })
+      );
       return false;
     }
     try {
       await this.app.vault.modify(target, JSON.stringify(data, null, 2));
     } catch (e: any) {
-      new Notice("写入目标墙失败：" + (e?.message ?? e));
+      new Notice(
+        t("main.writeTargetFail", { error: e?.message ?? e })
+      );
       return false;
     }
     return true;
@@ -475,7 +487,7 @@ export default class MusicWallPlugin extends Plugin {
     if (!ids.length) return;
     const src = this.allWallViews().find((v) => v.getFile()?.path === srcPath);
     if (!src) {
-      new Notice("拖拽源墙已不在前台标签中，请改用卡片右键「迁移到其他墙…」");
+      new Notice(t("main.dragSourceLost"));
       return;
     }
     const data = src.getData();
@@ -500,12 +512,16 @@ export default class MusicWallPlugin extends Plugin {
     }
     if (items.length === 1) {
       const name = items[0].meta.name;
-      if (okCount) new Notice(`已迁移《${name}》→ ${target.basename}.mw`);
+      if (okCount)
+        new Notice(t("main.migratedOne", { name, target: target.basename }));
       return;
     }
-    const parts = [`已迁移 ${okCount} 张 → ${target.basename}.mw`];
-    if (skipCount) parts.push(`跳过重复 ${skipCount} 张`);
-    new Notice(parts.join("；"));
+    const parts = [
+      t("main.migratedBatch", { ok: okCount, target: target.basename }),
+    ];
+    if (skipCount)
+      parts.push(t("main.migrateSkipped", { count: skipCount }));
+    new Notice(parts.join(t("main.listSep")));
   }
 
   /** 资源管理器文件落点（1.4+ 运行时事件，类型声明未收录，做防御式注册） */
@@ -598,7 +614,7 @@ export default class MusicWallPlugin extends Plugin {
       onPlaylistResolved: (id) => {
         this.settings.playbackPlaylistId = String(id);
         void this.saveSettings();
-        new Notice(`已自动设置播放歌单（ID ${id}）`);
+        new Notice(t("main.playlistResolved", { id }));
       },
     };
   }
@@ -606,47 +622,56 @@ export default class MusicWallPlugin extends Plugin {
   /** 验证当前 Cookie 登录态；成功返回昵称 */
   async verifyCookieNow(): Promise<string> {
     if (!this.settings.neteaseCookie) {
-      new Notice("尚未填写 Cookie");
+      new Notice(t("main.cookieEmpty"));
       return "";
     }
     const { nickname } = await verifyCookie(
       this.requester,
       this.settings.neteaseCookie
     );
-    new Notice(`Cookie 有效：${nickname || "已登录"}`);
+    new Notice(
+      t("main.cookieValid", {
+        nickname: nickname || t("main.cookieLoggedIn"),
+      })
+    );
     return nickname;
   }
 
   async pickPlaybackPlaylist(): Promise<void> {
     if (!this.settings.neteaseCookie) {
-      new Notice("请先在设置中配置网易云 Cookie（登录态）");
+      new Notice(t("main.cookieRequired"));
       return;
     }
     try {
-      new Notice("正在读取账号歌单…");
+      new Notice(t("main.readingPlaylists"));
       const list = await listUserPlaylists(
         this.requester,
         this.settings.neteaseCookie
       );
       if (!list.length) {
-        new Notice("账号下没有歌单，请先在网易云客户端创建一个");
+        new Notice(t("main.noPlaylists"));
         return;
       }
       new PickerModal(
         this.app,
-        "选择作为播放列表的歌单（整张专辑将写入此歌单连播）",
+        t("main.pickPlaylistTitle"),
         list.map((p) => ({
           label: p.name,
-          detail: `${p.trackCount} 首 · ID ${p.id}`,
+          detail: t("main.playlistTracks", {
+            count: p.trackCount,
+            id: p.id,
+          }),
         })),
         (i) => {
           this.settings.playbackPlaylistId = String(list[i].id);
           void this.saveSettings();
-          new Notice(`播放歌单已设为《${list[i].name}》`);
+          new Notice(t("main.playlistSet", { name: list[i].name }));
         }
       ).open();
     } catch (e: any) {
-      new Notice("读取歌单失败：" + (e?.message ?? e));
+      new Notice(
+        t("main.readPlaylistsFail", { error: e?.message ?? e })
+      );
     }
   }
 
@@ -672,9 +697,9 @@ export default class MusicWallPlugin extends Plugin {
   async createNewPlayerCommand(): Promise<void> {
     new InputModal(
       this.app,
-      "新建音乐播放器",
-      "文件名（将成为 .mwp 文件）",
-      "Music Player",
+      t("main.createPlayer.title"),
+      t("main.createPlayer.ph"),
+      t("main.createPlayer.initial"),
       async (name) => {
         const path = this.uniquePath(name, "", PLAYER_EXT);
         await this.app.vault.create(path, this.playerFileContent());
@@ -687,7 +712,11 @@ export default class MusicWallPlugin extends Plugin {
   /** 在指定文件夹（含库根）直接创建默认名播放器并打开 */
   async createNewPlayerIn(folder: TFolder): Promise<void> {
     const parent = folder.isRoot() ? "" : folder.path;
-    const path = this.uniquePath("音乐播放器", parent, PLAYER_EXT);
+    const path = this.uniquePath(
+      t("main.playerDefaultName"),
+      parent,
+      PLAYER_EXT
+    );
     await this.app.vault.create(path, this.playerFileContent());
     const f = this.app.vault.getAbstractFileByPath(path);
     if (f instanceof TFile) await this.openWall(f);
@@ -696,9 +725,9 @@ export default class MusicWallPlugin extends Plugin {
   async createNewWallCommand(): Promise<void> {
     new InputModal(
       this.app,
-      "新建音乐墙",
-      "墙名称（将成为 .mw 文件名）",
-      "我的音乐墙",
+      t("main.createWallModal.title"),
+      t("main.createWallModal.ph"),
+      t("main.createWallModal.initial"),
       async (name) => {
         const path = this.uniquePath(name);
         const wall = emptyWall(name, this.settings.defaultStyle);
@@ -712,7 +741,7 @@ export default class MusicWallPlugin extends Plugin {
   /** 在指定文件夹（含库根）直接创建默认名音乐墙并打开 */
   async createNewWallIn(folder: TFolder): Promise<void> {
     const parent = folder.isRoot() ? "" : folder.path;
-    const name = "新的音乐墙";
+    const name = t("main.newWallName");
     const path = this.uniquePath(name, parent);
     const wall = emptyWall(name, this.settings.defaultStyle);
     await this.app.vault.create(path, JSON.stringify(wall, null, 2));
@@ -724,7 +753,7 @@ export default class MusicWallPlugin extends Plugin {
     const data = view.getData();
     const file = view.getFile();
     if (!data || !file) {
-      new Notice("当前没有可导出的音乐墙");
+      new Notice(t("main.exportNone"));
       return;
     }
     // 导出到当前文件所在目录（分享副本）
@@ -733,9 +762,9 @@ export default class MusicWallPlugin extends Plugin {
       : "";
     new InputModal(
       this.app,
-      "导出音乐墙（分享副本）",
-      "导出文件名（.mw）",
-      `${file.basename} - 分享`,
+      t("main.exportWall.title"),
+      t("main.exportWall.ph"),
+      t("main.exportWall.defaultName", { name: file.basename }),
       async (name) => {
         const folderPrefix = parentDir ? `${parentDir}/` : "";
         const candidate = `${folderPrefix}${name}.${WALL_EXT}`;
@@ -743,24 +772,27 @@ export default class MusicWallPlugin extends Plugin {
         const content = JSON.stringify(data, null, 2);
         if (target instanceof TFile) {
           new ConfirmModal(this.app, {
-            title: "导出覆盖确认",
-            message: `目标文件已存在：${candidate}`,
+            title: t("main.exportOverwrite.title"),
+            message: t("main.exportOverwrite.msg", { path: candidate }),
             details: [
-              `原文件：${target.stat.size} B · 修改于 ${new Date(
-                target.stat.mtime
-              ).toLocaleString()}`,
-              `新内容：${data.items.length} 张专辑`,
+              t("main.exportOverwrite.original", {
+                size: target.stat.size,
+                time: new Date(target.stat.mtime).toLocaleString(),
+              }),
+              t("main.exportOverwrite.incoming", {
+                count: data.items.length,
+              }),
             ],
-            confirmText: "覆盖",
+            confirmText: t("main.exportOverwrite.confirm"),
             danger: true,
             onConfirm: async () => {
               await this.app.vault.modify(target, content);
-              new Notice(`已导出到 ${candidate}`);
+              new Notice(t("main.exportedTo", { path: candidate }));
             },
           }).open();
         } else {
           await this.app.vault.create(candidate, content);
-          new Notice(`已导出到 ${candidate}`);
+          new Notice(t("main.exportedTo", { path: candidate }));
         }
       }
     ).open();
@@ -780,40 +812,54 @@ export default class MusicWallPlugin extends Plugin {
       try {
         data = parseWall(await f.text());
       } catch (e: any) {
-        new Notice("导入失败：" + (e?.message ?? e));
+        new Notice(t("main.importFail", { error: e?.message ?? e }));
         return;
       }
       const options: ChoiceOption[] = [];
       if (targetView && targetView.getData()) {
         options.push({
-          label: `合并进当前墙《${targetView.getFile()?.basename ?? "当前"}》`,
-          description: "按专辑 ID 去重，现有条目不受影响",
+          label: t("main.import.mergeLabel", {
+            name:
+              targetView.getFile()?.basename ?? t("main.importCurrent"),
+          }),
+          description: t("main.import.mergeDesc"),
           onSelect: async () => {
             const cur = targetView.getData()!;
             const { addedCount, skippedCount } = mergeWalls(cur, data);
             await targetView.saveData();
-            new Notice(`导入完成：新增 ${addedCount}，跳过重复 ${skippedCount}`);
+            new Notice(
+              t("main.import.mergeDone", {
+                added: addedCount,
+                skipped: skippedCount,
+              })
+            );
           },
         });
       }
       options.push({
-        label: "创建为新的 .mw 音乐墙文件",
-        description: "放在库根目录，重名将自动加后缀",
+        label: t("main.import.createLabel"),
+        description: t("main.import.createDesc"),
         onSelect: async () => {
-          const path = this.uniquePath(data.name || "导入的音乐墙");
+          const path = this.uniquePath(
+            data.name || t("main.import.defaultName")
+          );
           await this.app.vault.create(path, JSON.stringify(data, null, 2));
           const file = this.app.vault.getAbstractFileByPath(path);
           if (file instanceof TFile) {
             const leaf = this.app.workspace.getLeaf(true);
             await leaf.openFile(file);
           }
-          new Notice(`已创建 ${path}`);
+          new Notice(t("main.import.created", { path }));
         },
       });
       new ChoiceModal(
         this.app,
-        "导入音乐墙文件",
-        `${f.name} · ${data.items.length} 张专辑 · 样式「${data.style}」`,
+        t("main.import.title"),
+        t("main.import.info", {
+          file: f.name,
+          count: data.items.length,
+          style: styleLabel(data.style),
+        }),
         options
       ).open();
     });
@@ -824,20 +870,20 @@ export default class MusicWallPlugin extends Plugin {
 
   async gitImport(targetView: MusicWallView | null): Promise<void> {
     if (!this.settings.gitRepoUrl) {
-      new Notice("请先在设置中填写 Git 远程仓库地址");
+      new Notice(t("main.git.needUrl"));
       return;
     }
     if (!(await checkGit())) {
-      new Notice("未检测到 git 命令。请安装 Git 并确保其在 PATH 中");
+      new Notice(t("main.git.gitNotFound"));
       return;
     }
     const basePath = (this.app.vault.adapter as any).basePath as string;
     if (!basePath) {
-      new Notice("无法定位库路径");
+      new Notice(t("main.git.noBasePath"));
       return;
     }
     const cacheDir = `${basePath}/${GIT_CACHE_SUBDIR}`;
-    new Notice("正在从 Git 仓库拉取…");
+    new Notice(t("main.git.pulling"));
     let files: GitWallFile[];
     try {
       await syncRepo(
@@ -847,16 +893,16 @@ export default class MusicWallPlugin extends Plugin {
       );
       files = await listWallFiles(cacheDir, this.settings.gitSubdir || undefined);
     } catch (e: any) {
-      new Notice("Git 导入失败：" + (e?.message ?? e));
+      new Notice(t("main.git.fail", { error: e?.message ?? e }));
       return;
     }
     if (!files.length) {
-      new Notice("仓库中未找到 .mw 音乐墙文件");
+      new Notice(t("main.git.noWalls"));
       return;
     }
     new PickerModal(
       this.app,
-      "选择要导入的音乐墙",
+      t("main.git.pickTitle"),
       files.map((f) => ({
         label: f.name,
         detail: `${f.relPath} · ${(f.sizeBytes / 1024).toFixed(1)} KB`,
@@ -873,41 +919,52 @@ export default class MusicWallPlugin extends Plugin {
     try {
       data = parseWall(file.content);
     } catch (e: any) {
-      new Notice("仓库中的文件不是合法音乐墙：" + (e?.message ?? e));
+      new Notice(t("main.git.invalid", { error: e?.message ?? e }));
       return;
     }
     const baseName = file.name;
     const options: ChoiceOption[] = [];
     if (targetView && targetView.getData()) {
       options.push({
-        label: `合并进当前墙《${targetView.getFile()?.basename}》`,
-        description: "按专辑 ID 去重",
+        label: t("main.git.mergeLabel", {
+          name: targetView.getFile()?.basename ?? "",
+        }),
+        description: t("main.git.mergeDesc"),
         onSelect: async () => {
           const { addedCount, skippedCount } = mergeWalls(
             targetView.getData()!,
             data
           );
           await targetView.saveData();
-          new Notice(`Git 导入完成：新增 ${addedCount}，跳过重复 ${skippedCount}`);
+          new Notice(
+            t("main.git.mergeDone", {
+              added: addedCount,
+              skipped: skippedCount,
+            })
+          );
         },
       });
     }
     options.push({
-      label: `写入为库文件 ${baseName}`,
-      description: "若同名文件已存在将覆盖（会再次确认）",
+      label: t("main.git.writeLabel", { name: baseName }),
+      description: t("main.git.writeDesc"),
       onSelect: async () => {
         const existing = this.app.vault.getAbstractFileByPath(baseName);
         if (existing instanceof TFile) {
           new ConfirmModal(this.app, {
-            title: "Git 导入覆盖确认",
-            message: `库内已存在 ${baseName}，Git 导入将覆盖它`,
+            title: t("main.git.overwriteTitle"),
+            message: t("main.git.overwriteMsg", { name: baseName }),
             details: [
-              `本地：${existing.stat.size} B · ${new Date(
-                existing.stat.mtime
-              ).toLocaleString()}`,
-              `仓库：${file.sizeBytes} B · ${data.items.length} 张专辑`,
+              t("main.git.localInfo", {
+                size: existing.stat.size,
+                time: new Date(existing.stat.mtime).toLocaleString(),
+              }),
+              t("main.git.repoInfo", {
+                size: file.sizeBytes,
+                count: data.items.length,
+              }),
             ],
-            confirmText: "覆盖",
+            confirmText: t("main.exportOverwrite.confirm"),
             danger: true,
             onConfirm: async () => {
               await this.app.vault.modify(existing, file.content);
@@ -916,7 +973,7 @@ export default class MusicWallPlugin extends Plugin {
           }).open();
         } else {
           await this.app.vault.create(baseName, file.content);
-          new Notice(`已写入 ${baseName}`);
+          new Notice(t("main.git.written", { name: baseName }));
           const f = this.app.vault.getAbstractFileByPath(baseName);
           if (f instanceof TFile) this.openWallFile(f);
         }
@@ -924,8 +981,11 @@ export default class MusicWallPlugin extends Plugin {
     });
     new ChoiceModal(
       this.app,
-      `Git 导入 · ${baseName}`,
-      `${data.items.length} 张专辑 · 样式「${data.style}」`,
+      t("main.git.choiceTitle", { name: baseName }),
+      t("main.git.choiceInfo", {
+        count: data.items.length,
+        style: styleLabel(data.style),
+      }),
       options
     ).open();
   }

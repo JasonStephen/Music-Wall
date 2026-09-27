@@ -11,6 +11,7 @@ import {
   type WallViewState,
 } from "../types";
 import { normalizeOrder } from "./layout";
+import { t } from "../i18n";
 
 const VALID_STYLES: DiscStyle[] = ["vinyl", "cd", "cassette", "cover"];
 const VALID_SORT_MODES: SortMode[] = ["manual", "addedAt", "name", "artist", "year", "rating"];
@@ -89,7 +90,10 @@ function migrate(data: any): MusicWallData {
 
   if (version > WALL_FILE_VERSION) {
     throw new Error(
-      `该音乐墙文件版本为 v${version}，当前插件仅支持到 v${WALL_FILE_VERSION}，请升级插件`
+      t("storeErr.versionTooNew", {
+        version,
+        max: WALL_FILE_VERSION,
+      })
     );
   }
 
@@ -161,10 +165,10 @@ export function parseWall(text: string): MusicWallData {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error("文件不是合法的 JSON，无法作为音乐墙打开");
+    throw new Error(t("storeErr.notJson"));
   }
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.items)) {
-    throw new Error("文件结构不符合 .mw 音乐墙格式（缺少 items 数组）");
+    throw new Error(t("storeErr.badStructure"));
   }
   return migrate(raw);
 }

@@ -19,8 +19,6 @@ import {
 } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
-  LAYOUT_LABELS,
-  SORT_LABELS,
   WALL_DRAG_MIME,
   WALL_VIEW_TYPE,
   clampZoom,
@@ -32,10 +30,10 @@ import {
   type WallItem,
   type WallLayout,
 } from "../types";
+import { layoutLabel, sortLabel, styleLabel, t } from "../i18n";
 import { loadWall, saveWall } from "../core/store";
 import {
   UNGROUPED_ID,
-  UNGROUPED_LABEL,
   isHeadlessSection,
   moveGroup,
   moveInto,
@@ -52,7 +50,7 @@ import { playAlbum } from "../core/playback";
 import { sizedCover } from "../core/metadata";
 import { matchNowPlaying } from "../core/match";
 import type { NowPlayingState } from "../core/nowPlaying";
-import { ALL_STYLES, STYLE_LABELS, buildDiscElement, makeCoverImg } from "./disc";
+import { ALL_STYLES, buildDiscElement, makeCoverImg } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
 import { AlbumPanelModal } from "./AlbumPanelModal";
 import { BatchAddModal } from "./BatchAddModal";
@@ -291,7 +289,9 @@ export class MusicWallView extends FileView implements WallHost {
     return WALL_VIEW_TYPE;
   }
   getDisplayText(): string {
-    return this.file ? `音乐墙 · ${this.file.basename}` : "音乐墙";
+    return this.file
+      ? t("wall.displayNameWith", { name: this.file.basename })
+      : t("wall.displayName");
   }
   getIcon(): string {
     return "music";
@@ -302,7 +302,7 @@ export class MusicWallView extends FileView implements WallHost {
     try {
       this.data = await loadWall(this.app.vault, file);
     } catch (e: any) {
-      new Notice("读取音乐墙失败：" + (e?.message ?? e));
+      new Notice(t("wall.readFail", { error: e?.message ?? e }));
       this.data = null;
     }
     await this.render();
@@ -333,7 +333,7 @@ export class MusicWallView extends FileView implements WallHost {
       if (this.drawer?.isOpen()) return; // 抽屉自己处理
       if (this.editMode) {
         this.exitEditMode();
-        new Notice("已退出布局编辑");
+        new Notice(t("wall.editbar.exited"));
         return;
       }
       this.closeShelfDetail();
@@ -430,7 +430,7 @@ export class MusicWallView extends FileView implements WallHost {
     try {
       this.data = await loadWall(this.app.vault, this.file);
     } catch (e: any) {
-      new Notice("读取音乐墙失败：" + (e?.message ?? e));
+      new Notice(t("wall.readFail", { error: e?.message ?? e }));
     }
   }
 
@@ -508,14 +508,14 @@ export class MusicWallView extends FileView implements WallHost {
       deps: this.plugin.getPlaybackDeps(),
       onAdd: () => {
         onAdd();
-        new Notice(`已添加《${meta.name}》`);
+        new Notice(t("wall.card.added", { name: meta.name }));
       },
     }).open();
   }
   addAlbum(meta: AlbumMeta, source: "search" | "manual"): void {
     if (!this.data) return;
     if (this.getExistingIds().has(meta.albumId)) {
-      new Notice("该专辑已在当前音乐墙中");
+      new Notice(t("wall.card.alreadyIn"));
       return;
     }
     this.data.items.push({
@@ -692,7 +692,7 @@ export class MusicWallView extends FileView implements WallHost {
     const box = root.createDiv({ cls: "mw-zoombox" });
     this.zoomBox = box;
     if (!this.data) {
-      box.createDiv({ cls: "mw-empty", text: "未选择音乐墙文件" });
+      box.createDiv({ cls: "mw-empty", text: t("wall.empty.noFile") });
       return;
     }
 
@@ -794,11 +794,11 @@ export class MusicWallView extends FileView implements WallHost {
       cls: "mw-toolbar__title",
       text: this.file?.basename ?? this.data!.name,
     });
-    title.setAttr("title", "点击重命名墙文件名");
+    title.setAttr("title", t("wall.toolbar.renameTip"));
     title.addEventListener("click", () => this.renameWall());
     left.createDiv({
       cls: "mw-toolbar__count",
-      text: `${this.data!.items.length} 张`,
+      text: t("common.albumCount", { count: this.data!.items.length }),
     });
 
     const actions = bar.createDiv({ cls: "mw-toolbar__actions" });
@@ -823,26 +823,26 @@ export class MusicWallView extends FileView implements WallHost {
       return btn;
     };
 
-    const styleBtn = mkIcon("palette", "样式与布局", () => {
+    const styleBtn = mkIcon("palette", t("wall.toolbar.style"), () => {
       this.drawer?.toggle("style");
     });
-    const filterBtn = mkIcon("filter", "筛选", () => {
+    const filterBtn = mkIcon("filter", t("wall.toolbar.filter"), () => {
       this.drawer?.toggle("filter");
     });
-    const sortBtn = mkIcon("arrow-up-down", "排序", () => {
+    const sortBtn = mkIcon("arrow-up-down", t("wall.toolbar.sort"), () => {
       this.drawer?.toggle("sort");
     });
-    const addBtn = mkIcon("plus", "添加专辑", () => {
+    const addBtn = mkIcon("plus", t("wall.toolbar.add"), () => {
       this.floater?.toggle("add");
     });
-    const searchBtn = mkIcon("search", "搜索本墙专辑", () => {
+    const searchBtn = mkIcon("search", t("wall.toolbar.search"), () => {
       this.floater?.toggle("search");
     });
-    const selectBtn = mkIcon("check-square", "多选", () => {
+    const selectBtn = mkIcon("check-square", t("wall.toolbar.select"), () => {
       if (this.selectMode) this.exitSelectMode();
       else this.enterSelectMode();
     });
-    const moreBtn = mkIcon("more-horizontal", "更多操作", (btn) => {
+    const moreBtn = mkIcon("more-horizontal", t("wall.toolbar.more"), (btn) => {
       const rect = btn.getBoundingClientRect();
       this.openMoreMenu({ x: rect.left, y: rect.bottom + 4 } as MouseEvent);
     });
@@ -896,10 +896,18 @@ export class MusicWallView extends FileView implements WallHost {
       this.syncToolbarState();
       if (this.editMode) this.renderEditBar();
     });
-    drawer.register("style", "样式与布局", (body) => this.panelStyle(body));
-    drawer.register("filter", "筛选", (body, api) => this.panelFilter(body, api));
-    drawer.register("sort", "排序", (body, api) => this.panelSort(body, api));
-    drawer.register("settings", "设置", (body) => this.panelSettings(body));
+    drawer.register("style", t("wall.drawer.style"), (body) =>
+      this.panelStyle(body)
+    );
+    drawer.register("filter", t("wall.drawer.filter"), (body, api) =>
+      this.panelFilter(body, api)
+    );
+    drawer.register("sort", t("wall.drawer.sort"), (body, api) =>
+      this.panelSort(body, api)
+    );
+    drawer.register("settings", t("wall.drawer.settings"), (body) =>
+      this.panelSettings(body)
+    );
     return drawer;
   }
 
@@ -917,8 +925,10 @@ export class MusicWallView extends FileView implements WallHost {
       },
       "float"
     );
-    floater.register("search", "搜索本墙", (body) => this.panelWallSearch(body));
-    floater.register("add", "添加专辑", (body) => {
+    floater.register("search", t("wall.drawer.search"), (body) =>
+      this.panelWallSearch(body)
+    );
+    floater.register("add", t("wall.drawer.add"), (body) => {
       this.searchPanel?.dispose();
       const panel = new AlbumSearchPanel(this);
       this.searchPanel = panel;
@@ -958,8 +968,8 @@ export class MusicWallView extends FileView implements WallHost {
     input.value = value;
     const clear = bar.createEl("button", { cls: "clickable-icon mw-panel__clearicon" });
     clear.setAttr("type", "button");
-    clear.setAttr("aria-label", "清空");
-    clear.setAttr("title", "清空");
+    clear.setAttr("aria-label", t("wall.filterPanel.clear"));
+    clear.setAttr("title", t("wall.filterPanel.clear"));
     setIcon(clear, "x");
     const syncClear = () => clear.toggleClass("is-hidden", !input.value.length);
     input.addEventListener("input", () => {
@@ -980,8 +990,8 @@ export class MusicWallView extends FileView implements WallHost {
   /** 搜索本墙：输入即筛（命中数 + 右端 × 清空） */
   private panelWallSearch(body: HTMLElement): void {
     const sec = body.createDiv({ cls: "mw-panel__section" });
-    sec.createDiv({ cls: "mw-panel__label", text: "关键词" });
-    const input = this.buildSearchField(sec, this.q, "专辑名 / 艺术家 / 标签…", (v) => {
+    sec.createDiv({ cls: "mw-panel__label", text: t("wall.wallSearch.keyword") });
+    const input = this.buildSearchField(sec, this.q, t("wall.wallSearch.ph"), (v) => {
       this.q = v;
       this.syncToolbarState();
       this.rerenderGrid();
@@ -990,15 +1000,21 @@ export class MusicWallView extends FileView implements WallHost {
     const count = sec.createDiv({ cls: "mw-panel__hint" });
     const syncCount = () => {
       if (!this.q) {
-        count.setText(`当前展示 ${this.getVisibleItems().length} 张`);
+        count.setText(
+          t("wall.wallSearch.showing", {
+            count: this.getVisibleItems().length,
+          })
+        );
         return;
       }
-      count.setText(`命中 ${this.getVisibleItems().length} 张`);
+      count.setText(
+        t("wall.wallSearch.hits", { count: this.getVisibleItems().length })
+      );
     };
     syncCount();
     body.createDiv({
       cls: "mw-panel__hint",
-      text: "搜索只筛当前墙，不会改动文件内容（搜索词本身不落盘）。",
+      text: t("wall.wallSearch.note"),
     });
     window.setTimeout(() => input.focus(), 0);
   }
@@ -1012,11 +1028,14 @@ export class MusicWallView extends FileView implements WallHost {
     const current = this.data!.layout ?? "grid";
 
     const secLayout = body.createDiv({ cls: "mw-panel__section" });
-    secLayout.createDiv({ cls: "mw-panel__label", text: "布局" });
+    secLayout.createDiv({
+      cls: "mw-panel__label",
+      text: t("wall.stylePanel.layout"),
+    });
     const layouts = secLayout.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
     for (const l of ["grid", "list", "shelf"] as WallLayout[]) {
       layouts.appendChild(
-        buildLayoutTile(l, LAYOUT_LABELS[l], current === l, (picked) => {
+        buildLayoutTile(l, layoutLabel(l), current === l, (picked) => {
           this.data!.layout = picked === "grid" ? undefined : picked;
           void this.commit();
         })
@@ -1026,11 +1045,14 @@ export class MusicWallView extends FileView implements WallHost {
     if (current === "grid") {
       const cover = firstCover(this.data!.items);
       const secStyle = body.createDiv({ cls: "mw-panel__section" });
-      secStyle.createDiv({ cls: "mw-panel__label", text: "唱片样式" });
+      secStyle.createDiv({
+        cls: "mw-panel__label",
+        text: t("wall.stylePanel.disc"),
+      });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid" });
       for (const s of ALL_STYLES) {
         grid.appendChild(
-          buildStyleTile(s, STYLE_LABELS[s], cover, this.data!.style === s, (picked) => {
+          buildStyleTile(s, styleLabel(s), cover, this.data!.style === s, (picked) => {
             this.data!.style = picked;
             void this.commit();
           })
@@ -1038,14 +1060,14 @@ export class MusicWallView extends FileView implements WallHost {
       }
       body.createDiv({
         cls: "mw-panel__hint",
-        text: "四种唱片样式都带真实缩略预览，点选后整墙同步。",
+        text: t("wall.stylePanel.hintGrid"),
       });
       return;
     }
 
     body.createDiv({
       cls: "mw-panel__hint",
-      text: "唱片样式只在网格布局下生效：列表统一用封面缩略图，展示架按封套陈列。",
+      text: t("wall.stylePanel.hintNonGrid"),
     });
   }
 
@@ -1054,8 +1076,11 @@ export class MusicWallView extends FileView implements WallHost {
     const items = this.data!.items;
 
     const searchSec = body.createDiv({ cls: "mw-panel__section" });
-    searchSec.createDiv({ cls: "mw-panel__label", text: "关键词" });
-    this.buildSearchField(searchSec, this.q, "专辑名 / 艺术家 / 标签…", (v) => {
+    searchSec.createDiv({
+      cls: "mw-panel__label",
+      text: t("wall.filterPanel.keyword"),
+    });
+    this.buildSearchField(searchSec, this.q, t("wall.filterPanel.ph"), (v) => {
       this.q = v;
       this.syncToolbarState();
       this.rerenderGrid();
@@ -1082,7 +1107,7 @@ export class MusicWallView extends FileView implements WallHost {
       head.createDiv({ cls: "mw-panel__label", text: title });
       const clearBtn = head.createEl("button", {
         cls: "mw-panel__clear",
-        text: "清除",
+        text: t("wall.filterPanel.clearFacet"),
       });
       clearBtn.setAttr("type", "button");
       clearBtn.toggleClass("is-disabled", selected.length === 0);
@@ -1111,7 +1136,7 @@ export class MusicWallView extends FileView implements WallHost {
 
     const view = this.ensureView();
     facet(
-      "艺术家",
+      t("wall.filterPanel.artist"),
       uniq((i) => i.meta.artist),
       this.filterArtists,
       (next) => {
@@ -1121,7 +1146,7 @@ export class MusicWallView extends FileView implements WallHost {
       }
     );
     facet(
-      "年代",
+      t("wall.filterPanel.decade"),
       uniq((i) => decadeOf(i.meta.year)),
       this.filterDecades,
       (next) => {
@@ -1135,7 +1160,7 @@ export class MusicWallView extends FileView implements WallHost {
       for (const t of i.meta.tags ?? []) tagOptions.set(t, (tagOptions.get(t) ?? 0) + 1);
     }
     facet(
-      "标签",
+      t("wall.filterPanel.tag"),
       [...tagOptions.entries()].sort((a, b) => a[0].localeCompare(b[0], "zh")),
       this.filterTags,
       (next) => {
@@ -1156,10 +1181,13 @@ export class MusicWallView extends FileView implements WallHost {
         const selected = new Set(this.filterRatings);
         const sec = body.createDiv({ cls: "mw-panel__section" });
         const head = sec.createDiv({ cls: "mw-panel__section-head" });
-        head.createDiv({ cls: "mw-panel__label", text: "评分" });
+        head.createDiv({
+          cls: "mw-panel__label",
+          text: t("wall.filterPanel.ratingKey"),
+        });
         const clearBtn = head.createEl("button", {
           cls: "mw-panel__clear",
-          text: "清除",
+          text: t("wall.filterPanel.clearFacet"),
         });
         clearBtn.setAttr("type", "button");
         clearBtn.toggleClass("is-disabled", selected.size === 0);
@@ -1185,7 +1213,13 @@ export class MusicWallView extends FileView implements WallHost {
             this.rerenderGrid();
             this.syncToolbarState();
           });
-          row.createSpan({ cls: "mw-check__text", text: k === 0 ? "未评分" : `${k} 分` });
+          row.createSpan({
+            cls: "mw-check__text",
+            text:
+              k === 0
+                ? t("wall.filterPanel.unrated")
+                : t("wall.filterPanel.score", { value: k }),
+          });
           row.createSpan({ cls: "mw-check__count", text: String(counts.get(k) ?? 0) });
         }
       }
@@ -1194,7 +1228,7 @@ export class MusicWallView extends FileView implements WallHost {
     if (this.filtering) {
       const reset = body.createEl("button", {
         cls: "mw-btn mw-panel__reset",
-        text: "清除全部筛选",
+        text: t("wall.filterPanel.clearAll"),
       });
       reset.setAttr("type", "button");
       reset.addEventListener("click", () => {
@@ -1262,18 +1296,22 @@ export class MusicWallView extends FileView implements WallHost {
   private openWallMenu(evt: MouseEvent): void {
     const groups = this.data?.groups ?? [];
     const items: CtxItem[] = [
-      { title: "新建分组…", icon: "folder-plus", onPick: () => this.createGroup() },
+      {
+        title: t("wall.group.newItem"),
+        icon: "folder-plus",
+        onPick: () => this.createGroup(),
+      },
     ];
     if (groups.length) {
       items.push(
         { sep: true },
         {
-          title: "展开全部分区",
+          title: t("wall.group.expandAll"),
           icon: "chevrons-down-up",
           onPick: () => this.setAllGroupsCollapsed(false),
         },
         {
-          title: "收起全部分区",
+          title: t("wall.group.collapseAll"),
           icon: "chevrons-up-down",
           onPick: () => this.setAllGroupsCollapsed(true),
         }
@@ -1282,7 +1320,9 @@ export class MusicWallView extends FileView implements WallHost {
     items.push(
       { sep: true },
       {
-        title: this.editMode ? "退出布局编辑" : "编辑布局（拖动排序）",
+        title: this.editMode
+          ? t("wall.ctx.editLayoutExit")
+          : t("wall.ctx.editLayoutDrag"),
         icon: "move",
         onPick: () => (this.editMode ? this.exitEditMode() : this.enterEditMode()),
       }
@@ -1295,25 +1335,36 @@ export class MusicWallView extends FileView implements WallHost {
     const group = this.data?.groups?.find((g) => g.id === groupId);
     if (!group) return;
     this.showCtxMenu(evt, [
-      { title: "重命名分组…", icon: "pencil", onPick: () => this.renameGroup(groupId) },
       {
-        title: group.collapsed ? "展开本组" : "收起本组",
+        title: t("wall.group.renameItem"),
+        icon: "pencil",
+        onPick: () => this.renameGroup(groupId),
+      },
+      {
+        title: group.collapsed
+          ? t("wall.group.expand")
+          : t("wall.group.collapse"),
         icon: group.collapsed ? "chevron-right" : "chevron-down",
         onPick: () => this.toggleGroup(groupId),
       },
       { sep: true },
       {
-        title: "展开全部分区",
+        title: t("wall.group.expandAll"),
         icon: "chevrons-down-up",
         onPick: () => this.setAllGroupsCollapsed(false),
       },
       {
-        title: "收起全部分区",
+        title: t("wall.group.collapseAll"),
         icon: "chevrons-up-down",
         onPick: () => this.setAllGroupsCollapsed(true),
       },
       { sep: true },
-      { title: "删除分组…", icon: "trash", danger: true, onPick: () => this.confirmDeleteGroup(groupId) },
+      {
+        title: t("wall.group.deleteItem"),
+        icon: "trash",
+        danger: true,
+        onPick: () => this.confirmDeleteGroup(groupId),
+      },
     ]);
   }
 
@@ -1325,18 +1376,18 @@ export class MusicWallView extends FileView implements WallHost {
     const collapsed = !!this.data?.ungroupedCollapsed;
     this.showCtxMenu(evt, [
       {
-        title: collapsed ? "展开本组" : "收起本组",
+        title: collapsed ? t("wall.group.expand") : t("wall.group.collapse"),
         icon: collapsed ? "chevron-right" : "chevron-down",
         onPick: () => this.toggleGroup(UNGROUPED_ID),
       },
       { sep: true },
       {
-        title: "展开全部分区",
+        title: t("wall.group.expandAll"),
         icon: "chevrons-down-up",
         onPick: () => this.setAllGroupsCollapsed(false),
       },
       {
-        title: "收起全部分区",
+        title: t("wall.group.collapseAll"),
         icon: "chevrons-up-down",
         onPick: () => this.setAllGroupsCollapsed(true),
       },
@@ -1366,7 +1417,9 @@ export class MusicWallView extends FileView implements WallHost {
     if (!changed) return;
     void this.persist();
     this.rerenderGrid();
-    new Notice(collapsed ? "已收起所有分区" : "已展开所有分区");
+    new Notice(
+      collapsed ? t("wall.group.collapsedAll") : t("wall.group.expandedAll")
+    );
   }
 
   /** 把唱片移动到指定分组（null = 未分组）；顺序按 moveInto 保持稳定 */
@@ -1387,31 +1440,43 @@ export class MusicWallView extends FileView implements WallHost {
       : moveInto(order, [item.albumId], null);
     const name =
       to === UNGROUPED_ID
-        ? UNGROUPED_LABEL
-        : (data.groups?.find((g) => g.id === to)?.name ?? "分组");
-    void this.commit(`已移动到「${name}」`);
+        ? t("wall.group.ungrouped")
+        : (data.groups?.find((g) => g.id === to)?.name ??
+          t("wall.group.fallbackName"));
+    void this.commit(t("wall.group.movedTo", { name }));
   }
 
   /** 排序面板：类型单选 + 独立的升/降序按钮 */
   private panelSort(body: HTMLElement, api: { refresh(): void }): void {
     const sec = body.createDiv({ cls: "mw-panel__section" });
-    sec.createDiv({ cls: "mw-panel__label", text: "排序类型" });
+    sec.createDiv({ cls: "mw-panel__label", text: t("wall.sortPanel.type") });
     const list = sec.createDiv({ cls: "mw-panel__list" });
-    for (const k of Object.keys(SORT_LABELS) as SortMode[]) {
+    const SORT_KEYS: SortMode[] = [
+      "manual",
+      "addedAt",
+      "name",
+      "artist",
+      "year",
+      "rating",
+    ];
+    for (const k of SORT_KEYS) {
       const row = list.createEl("label", { cls: "mw-check" });
       const radio = row.createEl("input", { type: "radio", cls: "mw-check__box" });
       radio.name = "mw-sort-mode";
       radio.checked = this.sortMode === k;
       radio.addEventListener("change", () => this.setSort(k));
-      row.createSpan({ cls: "mw-check__text", text: SORT_LABELS[k] });
+      row.createSpan({ cls: "mw-check__text", text: sortLabel(k) });
       if (k === "manual") {
-        row.createSpan({ cls: "mw-check__count", text: "可拖动" });
+        row.createSpan({
+          cls: "mw-check__count",
+          text: t("wall.sortPanel.draggable"),
+        });
       }
     }
 
     // 升降序与排序类型彻底解耦：独立一排按钮
     const dirSec = body.createDiv({ cls: "mw-panel__section" });
-    dirSec.createDiv({ cls: "mw-panel__label", text: "顺序" });
+    dirSec.createDiv({ cls: "mw-panel__label", text: t("wall.sortPanel.order") });
     const dirs = dirSec.createDiv({ cls: "mw-dirbtns" });
     const mkDir = (asc: boolean, icon: string, text: string) => {
       const btn = dirs.createEl("button", { cls: "mw-btn mw-dirbtn", text });
@@ -1421,13 +1486,15 @@ export class MusicWallView extends FileView implements WallHost {
       btn.addEventListener("click", () => this.setSortAsc(asc));
       return btn;
     };
-    mkDir(true, "arrow-up", "升序");
-    mkDir(false, "arrow-down", "降序");
+    mkDir(true, "arrow-up", t("wall.sortPanel.asc"));
+    mkDir(false, "arrow-down", t("wall.sortPanel.desc"));
 
     const secEdit = body.createDiv({ cls: "mw-panel__section" });
     const editBtn = secEdit.createEl("button", {
       cls: "mw-btn mw-panel__add",
-      text: this.editMode ? "退出布局编辑" : "调整顺序（编辑布局）",
+      text: this.editMode
+        ? t("wall.sortPanel.editExit")
+        : t("wall.sortPanel.edit"),
     });
     editBtn.setAttr("type", "button");
     editBtn.addEventListener("click", () => {
@@ -1439,19 +1506,22 @@ export class MusicWallView extends FileView implements WallHost {
       cls: "mw-panel__hint",
       text:
         this.sortMode === "manual"
-          ? "当前为手动排序：长按唱片或分组头即可拖动，改动实时保存，点 ✓ 或按 Esc 结束。"
-          : "选择「手动排序」后可用拖动的方式排列唱片；也可以随时点上面的按钮进入编辑布局。",
+          ? t("wall.sortPanel.hintManual")
+          : t("wall.sortPanel.hintAuto"),
     });
   }
 
   /** 搜索面板：与搜索行等价的内联输入（供面板入口使用） */
   private panelSearch(body: HTMLElement, api: { refresh(): void }): void {
     const sec = body.createDiv({ cls: "mw-panel__section" });
-    sec.createDiv({ cls: "mw-panel__label", text: "搜索本墙" });
+    sec.createDiv({
+      cls: "mw-panel__label",
+      text: t("wall.drawer.search"),
+    });
     const input = sec.createEl("input", {
       type: "search",
       cls: "mw-panel__input",
-      placeholder: "专辑名 / 艺术家 / 标签…",
+      placeholder: t("wall.filterPanel.ph"),
     });
     input.value = this.q;
     input.addEventListener("input", () => {
@@ -1459,7 +1529,10 @@ export class MusicWallView extends FileView implements WallHost {
       this.syncToolbarState();
       this.rerenderGrid();
     });
-    const reset = sec.createEl("button", { cls: "mw-btn mw-panel__reset", text: "清空" });
+    const reset = sec.createEl("button", {
+      cls: "mw-btn mw-panel__reset",
+      text: t("wall.filterPanel.clear"),
+    });
     reset.setAttr("type", "button");
     reset.addEventListener("click", () => {
       this.q = "";
@@ -1475,7 +1548,7 @@ export class MusicWallView extends FileView implements WallHost {
     const sec = body.createDiv({ cls: "mw-panel__section" });
     const open = sec.createEl("button", {
       cls: "mw-btn",
-      text: "打开插件设置",
+      text: t("wall.settingsPanel.open"),
     });
     open.setAttr("type", "button");
     open.addEventListener("click", () => {
@@ -1488,33 +1561,45 @@ export class MusicWallView extends FileView implements WallHost {
     });
     body.createDiv({
       cls: "mw-panel__hint",
-      text: "列宽、展示架文字档位、Cookie、播放歌单、SMTC 等全局项在插件设置里。",
+      text: t("wall.settingsPanel.hint"),
     });
   }
 
   // ---- 分组操作 ----
 
   private createGroup(): void {
-    new InputModal(this.app, "新建分组", "分组名称", "", (name) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const data = this.data!;
-      if (!data.groups) data.groups = [];
-      const id = newGroupId(data.groups);
-      data.groups.push({ id, name: trimmed });
-      void this.commit(`已新建分组「${trimmed}」：把唱片拖进它的分区即可归组`);
-    }).open();
+    new InputModal(
+      this.app,
+      t("wall.group.newTitle"),
+      t("wall.group.newPh"),
+      "",
+      (name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const data = this.data!;
+        if (!data.groups) data.groups = [];
+        const id = newGroupId(data.groups);
+        data.groups.push({ id, name: trimmed });
+        void this.commit(t("wall.group.created", { name: trimmed }));
+      }
+    ).open();
   }
 
   private renameGroup(id: string): void {
     const group = this.data?.groups?.find((g) => g.id === id);
     if (!group) return;
-    new InputModal(this.app, "重命名分组", "新的分组名称", group.name, (name) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      group.name = trimmed;
-      void this.commit(`分组已重命名为「${trimmed}」`);
-    }).open();
+    new InputModal(
+      this.app,
+      t("wall.group.renameTitle"),
+      t("wall.group.renamePh"),
+      group.name,
+      (name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        group.name = trimmed;
+        void this.commit(t("wall.group.renamed", { name: trimmed }));
+      }
+    ).open();
   }
 
   /**
@@ -1552,32 +1637,39 @@ export class MusicWallView extends FileView implements WallHost {
       if (data.order) data.order = removeFromOrder(data.order, ids);
       void this.commit(
         members.length
-          ? `已删除分组「${group.name}」及其 ${members.length} 张专辑`
-          : `已删除分组「${group.name}」`
+          ? t("wall.group.deletedWithItems", {
+              name: group.name,
+              count: members.length,
+            })
+          : t("wall.group.deleted", { name: group.name })
       );
     };
 
     if (!members.length) {
       // 空分组：普通二次确认即可
       new ConfirmModal(this.app, {
-        title: "删除空分组",
-        message: `确定删除分组「${group.name}」吗？`,
-        details: ["该分组里没有唱片，删除后不可恢复。"],
+        title: t("wall.group.deleteEmptyTitle"),
+        message: t("wall.group.deleteEmptyMsg", { name: group.name }),
+        details: [t("wall.group.deleteEmptyDetail")],
         danger: true,
-        confirmText: "删除分组",
+        confirmText: t("wall.group.deleteEmptyConfirm"),
         onConfirm: doDelete,
       }).open();
       return;
     }
     // 非空分组：必须输入分组名确认（连同组内唱片一起删除）
     const list = members.slice(0, 8).map((m) => m.meta.name);
-    if (members.length > 8) list.push(`等共 ${members.length} 张…`);
+    if (members.length > 8)
+      list.push(t("wall.group.andMore", { count: members.length }));
     new ConfirmModal(this.app, {
-      title: "删除分组",
-      message: `分组「${group.name}」中还有 ${members.length} 张专辑，删除分组会连同它们一起从这面音乐墙移出。`,
+      title: t("wall.group.deleteTitle"),
+      message: t("wall.group.deleteMsg", {
+        name: group.name,
+        count: members.length,
+      }),
       details: list,
       danger: true,
-      confirmText: "删除分组及其唱片",
+      confirmText: t("wall.group.deleteConfirm"),
       requireText: group.name,
       onConfirm: doDelete,
     }).open();
@@ -1602,21 +1694,29 @@ export class MusicWallView extends FileView implements WallHost {
       const host = wrap.createDiv({ cls: "mw-section__cards" });
       const empty = host.createDiv({ cls: "mw-empty" });
       empty.createDiv({
-        text: data.items.length ? "没有符合筛选条件的专辑" : "这面墙还是空的",
+        text: data.items.length
+          ? t("wall.empty.filtered")
+          : t("wall.empty.blank"),
         cls: "mw-empty__title",
       });
       if (!data.items.length) {
         empty.createDiv({
-          text: "「＋」会搜索网易云专辑并抓取完整元数据；顶部图标可切换四种唱片样式与网格/列表/展示架布局，也可以先建几个分组。",
+          text: t("wall.empty.hintSub"),
           cls: "mw-empty__sub",
         });
         const actions = empty.createDiv({ cls: "mw-empty__actions" });
         actions
-          .createEl("button", { cls: "mw-btn mw-btn--primary", text: "＋ 添加" })
+          .createEl("button", {
+            cls: "mw-btn mw-btn--primary",
+            text: t("wall.empty.add"),
+          })
           .addEventListener("click", () => this.openSearchModal());
       } else {
         empty
-          .createEl("button", { cls: "mw-btn", text: "清除筛选" })
+          .createEl("button", {
+            cls: "mw-btn",
+            text: t("wall.empty.clearFilters"),
+          })
           .addEventListener("click", () => {
             this.q = "";
             const view = this.ensureView();
@@ -1660,9 +1760,16 @@ export class MusicWallView extends FileView implements WallHost {
       chev.setAttr("type", "button");
       chev.setAttr(
         "aria-label",
-        section.collapsed ? `展开分组 ${section.name}` : `收起分组 ${section.name}`
+        section.collapsed
+          ? t("wall.group.expandAria", { name: section.name })
+          : t("wall.group.collapseAria", { name: section.name })
       );
-      chev.setAttr("title", section.collapsed ? "展开" : "收起");
+      chev.setAttr(
+        "title",
+        section.collapsed
+          ? t("wall.group.expandTip")
+          : t("wall.group.collapseTip")
+      );
       setIcon(chev, section.collapsed ? "chevron-right" : "chevron-down");
       chev.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1671,12 +1778,12 @@ export class MusicWallView extends FileView implements WallHost {
 
       const title = head.createSpan({ cls: "mw-section__title", text: section.name });
       if (section.id !== UNGROUPED_ID) {
-        title.setAttr("title", "双击重命名分组");
+        title.setAttr("title", t("wall.group.dblRenameTip"));
         title.addEventListener("dblclick", () => this.renameGroup(section.id));
       }
       head.createSpan({
         cls: "mw-section__count",
-        text: `${section.items.length} 张`,
+        text: t("common.albumCount", { count: section.items.length }),
       });
 
       const actions = head.createDiv({ cls: "mw-section__actions" });
@@ -1697,8 +1804,12 @@ export class MusicWallView extends FileView implements WallHost {
         return b;
       };
       if (section.id !== UNGROUPED_ID) {
-        mkAct("pencil", "重命名分组", () => this.renameGroup(section.id));
-        mkAct("trash", "删除分组", () => this.confirmDeleteGroup(section.id), true);
+        mkAct("pencil", t("wall.group.renameBtn"), () =>
+          this.renameGroup(section.id)
+        );
+        mkAct("trash", t("wall.group.deleteBtn"), () =>
+          this.confirmDeleteGroup(section.id)
+        , true);
         // 分组头：任何时候都能直接拖拽换序（不需要编辑模式）；
         // 未分组分区固定排在末尾，不参与换序
         this.wireGroupDrag(head, section.id);
@@ -1766,12 +1877,12 @@ export class MusicWallView extends FileView implements WallHost {
     cap.appendChild(nameEl);
     const artistEl = document.createElement("div");
     artistEl.className = "mw-card__sub";
-    artistEl.textContent = item.meta.artist || "未知艺术家";
+    artistEl.textContent = item.meta.artist || t("common.unknownArtist");
     cap.appendChild(artistEl);
     if (item.meta.year) {
       const yearEl = document.createElement("div");
       yearEl.className = "mw-card__sub mw-card__year";
-      yearEl.textContent = `发行于 ${item.meta.year}`;
+      yearEl.textContent = t("wall.card.released", { year: item.meta.year });
       cap.appendChild(yearEl);
     }
     card.appendChild(cap);
@@ -1842,7 +1953,7 @@ export class MusicWallView extends FileView implements WallHost {
     name.title = item.meta.name;
     const artist = document.createElement("div");
     artist.className = "mw-shelf-cap__artist";
-    artist.textContent = item.meta.artist || "未知艺术家";
+    artist.textContent = item.meta.artist || t("common.unknownArtist");
     cap.append(name, artist);
     card.appendChild(cap);
 
@@ -1923,10 +2034,12 @@ export class MusicWallView extends FileView implements WallHost {
     name.title = item.meta.name;
     const artist = document.createElement("div");
     artist.className = "mw-card__sub";
-    artist.textContent = item.meta.artist || "未知艺术家";
+    artist.textContent = item.meta.artist || t("common.unknownArtist");
     const year = document.createElement("div");
     year.className = "mw-card__sub mw-card__year";
-    year.textContent = item.meta.year ? `发行于 ${item.meta.year}` : "";
+    year.textContent = item.meta.year
+      ? t("wall.card.released", { year: item.meta.year })
+      : "";
     info.append(name, artist, year);
 
     const actions = document.createElement("div");
@@ -1955,7 +2068,7 @@ export class MusicWallView extends FileView implements WallHost {
   private makeSelectBox(item: WallItem): HTMLElement {
     const box = createSelectBox({
       checked: this.isSelected(item.albumId),
-      title: "点选 / 取消点选",
+      title: t("wall.card.selectTip"),
       onToggle: () => {
         if (this.selected.has(item.albumId)) this.selected.delete(item.albumId);
         else this.selected.add(item.albumId);
@@ -1972,7 +2085,7 @@ export class MusicWallView extends FileView implements WallHost {
     const btn = document.createElement("button");
     btn.className = "mw-iconbtn mw-iconbtn--del";
     btn.textContent = "✕";
-    btn.title = "移出音乐墙";
+    btn.title = t("wall.card.delBtn");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.confirmDelete(item);
@@ -1985,7 +2098,7 @@ export class MusicWallView extends FileView implements WallHost {
     const btn = document.createElement("button");
     btn.className = "mw-iconbtn mw-iconbtn--menu";
     btn.textContent = "⋯";
-    btn.title = "更多操作";
+    btn.title = t("wall.card.menuBtn");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const rect = btn.getBoundingClientRect();
@@ -2155,9 +2268,7 @@ export class MusicWallView extends FileView implements WallHost {
   private hintReorderOnce(): void {
     if (this.reorderHintShown) return;
     this.reorderHintShown = true;
-    new Notice(
-      "本墙内换位需要先长按唱片进入「布局编辑」；非编辑状态下拖拽只会迁移到其他音乐墙"
-    );
+    new Notice(t("wall.reorderHint"));
   }
 
   // ---- 布局编辑（手动排序 / 分组换序） ----
@@ -2250,7 +2361,7 @@ export class MusicWallView extends FileView implements WallHost {
       // 分组头任何时候都能拖，不需要编辑态；多选态下不进编辑态（多选拖拽独立）
       if (!isHead && !this.editMode && !this.selectMode) {
         this.enterEditMode();
-        new Notice("已进入布局编辑：拖动唱片调整顺序，按「完成」保存");
+        new Notice(t("wall.editbar.entered"));
       }
       if (pointerDrag) {
         // 触屏：沿用同一个指针，直接开始拖拽
@@ -2311,9 +2422,10 @@ export class MusicWallView extends FileView implements WallHost {
     const ghost = (this.zoomBox ?? this.contentEl).createDiv({ cls: "mw-drag-ghost" });
     const label =
       payload.kind === "group"
-        ? (this.data?.groups?.find((g) => g.id === payload.groupId)?.name ?? "分组")
+        ? (this.data?.groups?.find((g) => g.id === payload.groupId)?.name ??
+          t("wall.group.fallbackName"))
         : payload.kind === "multi-item"
-          ? `已选 ${payload.items.length} 张`
+          ? t("wall.select.dragLabel", { count: payload.items.length })
           : payload.item.meta.name;
     if (payload.kind === "group") ghost.addClass("mw-drag-ghost--group");
     ghost.dataset.dragKind = payload.kind;
@@ -2641,7 +2753,7 @@ export class MusicWallView extends FileView implements WallHost {
         target.anchorId,
         target.place
       );
-      void this.commit("分组顺序已更新");
+      void this.commit(t("wall.group.orderUpdated"));
       return;
     }
 
@@ -2663,7 +2775,7 @@ export class MusicWallView extends FileView implements WallHost {
       data.order = target.target
         ? moveInto(order, ids, target.target.albumId, target.place)
         : moveInto(order, ids, null);
-      void this.commit(`已移动 ${ids.length} 张到分组`);
+      void this.commit(t("wall.order.movedMulti", { count: ids.length }));
       return;
     }
     const item = payload.item;
@@ -2676,7 +2788,7 @@ export class MusicWallView extends FileView implements WallHost {
     if (fromGroup === toGroup) {
       if (!anchor) return;
       data.order = moveWithin(order, item.albumId, anchor.albumId, target.place);
-      void this.commit("顺序已更新");
+      void this.commit(t("wall.order.updated"));
       return;
     }
     // 跨组：先无条件改归属，再按锚点插入；没有锚点（目标分组为空）= 追加到墙末尾
@@ -2685,7 +2797,7 @@ export class MusicWallView extends FileView implements WallHost {
     data.order = anchor
       ? moveInto(order, [item.albumId], anchor.albumId, target.place)
       : moveInto(order, [item.albumId], null);
-    void this.commit("已移动到分组");
+    void this.commit(t("wall.order.movedToGroup"));
   }
 
   // ---- 编辑态 ----
@@ -2730,14 +2842,14 @@ export class MusicWallView extends FileView implements WallHost {
     host.insertBefore(bar, host.firstChild);
     bar.createDiv({
       cls: "mw-editbar__text",
-      text: "布局编辑中：拖动唱片调整顺序，拖动分组头调整分组顺序（改动实时保存）",
+      text: t("wall.editbar.text"),
     });
     // 只有一个「完成」图标：拖动已经实时落盘，没有需要再确认的提交，
     // 也没有可回滚的取消（第五轮反馈 A2：两个按钮收成一个 ✓）
     const done = bar.createEl("button", { cls: "clickable-icon mw-editbar__done" });
     done.setAttr("type", "button");
-    done.setAttr("aria-label", "完成（改动已实时保存）");
-    done.setAttr("title", "完成（改动已实时保存）");
+    done.setAttr("aria-label", t("wall.editbar.done"));
+    done.setAttr("title", t("wall.editbar.done"));
     setIcon(done, "check");
     done.addEventListener("click", () => this.exitEditMode());
     // 编辑条占了顶部一行，顶栏被推下去：面板/浮层的定位要跟着重算
@@ -2815,7 +2927,8 @@ export class MusicWallView extends FileView implements WallHost {
       if (box) syncSelectBox(box, on);
     }
     const count = this.contentEl.querySelector<HTMLElement>(".mw-selectbar__count");
-    if (count) count.setText(`已选 ${this.selected.size} 张`);
+    if (count)
+      count.setText(t("wall.select.count", { count: this.selected.size }));
     const btns = this.contentEl.querySelectorAll<HTMLElement>(
       ".mw-selectbar [data-sel-act]"
     );
@@ -2862,7 +2975,10 @@ export class MusicWallView extends FileView implements WallHost {
     const toolbar = host.querySelector(".mw-toolbar");
     if (toolbar?.nextSibling) host.insertBefore(bar, toolbar.nextSibling);
     else host.appendChild(bar);
-    bar.createDiv({ cls: "mw-selectbar__count", text: `已选 ${this.selected.size} 张` });
+    bar.createDiv({
+      cls: "mw-selectbar__count",
+      text: t("wall.select.count", { count: this.selected.size }),
+    });
     const mkBtn = (
       icon: string,
       label: string,
@@ -2881,13 +2997,23 @@ export class MusicWallView extends FileView implements WallHost {
       b.addEventListener("click", fn);
       return b;
     };
-    mkBtn("list-checks", "全选（仅可见项）", "all", () => this.selectAllVisible());
-    mkBtn("arrow-left-right", "反选（仅可见项）", "invert", () => this.invertSelectionVisible());
-    mkBtn("eraser", "清空已选", "clear", () => this.clearSelection());
-    mkBtn("arrow-right", "迁移到其他墙", "migrate", () => this.migrateSelectedToWall(), "mw-selbtn--primary");
-    mkBtn("folder-input", "移动到分组…", "group", () => this.moveSelectedToGroup());
-    mkBtn("trash", "删除所选", "delete", () => this.confirmDeleteSelected(), "mw-selbtn--danger");
-    mkBtn("x", "退出多选", "exit", () => this.exitSelectMode());
+    mkBtn("list-checks", t("wall.select.all"), "all", () =>
+      this.selectAllVisible()
+    );
+    mkBtn("arrow-left-right", t("wall.select.invert"), "invert", () =>
+      this.invertSelectionVisible()
+    );
+    mkBtn("eraser", t("wall.select.clear"), "clear", () =>
+      this.clearSelection()
+    );
+    mkBtn("arrow-right", t("wall.select.migrate"), "migrate", () =>
+      this.migrateSelectedToWall(), "mw-selbtn--primary");
+    mkBtn("folder-input", t("wall.select.group"), "group", () =>
+      this.moveSelectedToGroup()
+    );
+    mkBtn("trash", t("wall.select.delete"), "delete", () =>
+      this.confirmDeleteSelected(), "mw-selbtn--danger");
+    mkBtn("x", t("wall.select.exit"), "exit", () => this.exitSelectMode());
     this.paintSelection();
   }
 
@@ -2918,33 +3044,40 @@ export class MusicWallView extends FileView implements WallHost {
         : moveInto(order, ids, null);
     const name =
       want === UNGROUPED_ID
-        ? UNGROUPED_LABEL
-        : (data.groups?.find((g) => g.id === want)?.name ?? "分组");
-    void this.commit(`已将 ${ids.length} 张移动到「${name}」`);
+        ? t("wall.group.ungrouped")
+        : (data.groups?.find((g) => g.id === want)?.name ??
+          t("wall.group.fallbackName"));
+    void this.commit(
+      t("wall.group.movedToMulti", { count: ids.length, name })
+    );
   }
 
   /** 多选：移动到分组（本墙内，与单张 pickGroupFor 同语言，不选墙） */
   private moveSelectedToGroup(): void {
     const items = this.selectedItems();
     if (!items.length) {
-      new Notice("请先点选至少一张专辑");
+      new Notice(t("wall.select.needSelect"));
       return;
     }
     const groups = this.data?.groups ?? [];
     if (!groups.length) {
-      new Notice("当前墙没有分组，可先在空白处右键新建分组");
+      new Notice(t("wall.select.noGroups"));
       return;
     }
     const targets: { id: string; label: string }[] = [
-      { id: UNGROUPED_ID, label: UNGROUPED_LABEL },
+      { id: UNGROUPED_ID, label: t("wall.group.ungrouped") },
       ...groups.map((g) => ({ id: g.id, label: g.name })),
     ];
     new PickerModal(
       this.app,
-      `将选中的 ${items.length} 张移动到…`,
-      targets.map((t) => ({
-        label: t.label,
-        detail: `${this.data!.items.filter((i) => (i.groupId ?? UNGROUPED_ID) === t.id).length} 张`,
+      t("wall.pick.multiMove", { count: items.length }),
+      targets.map((gt) => ({
+        label: gt.label,
+        detail: t("wall.pick.groupCount", {
+          count: this.data!.items.filter(
+            (i) => (i.groupId ?? UNGROUPED_ID) === gt.id
+          ).length,
+        }),
       })),
       (i) => {
         const target = targets[i];
@@ -2961,20 +3094,23 @@ export class MusicWallView extends FileView implements WallHost {
   private migrateSelectedToWall(): void {
     const items = this.selectedItems();
     if (!items.length) {
-      new Notice("请先点选至少一张专辑");
+      new Notice(t("wall.select.needSelect"));
       return;
     }
     const files = this.plugin.wallFiles(this.file?.path);
     if (!files.length) {
-      new Notice("库中没有其他 .mw 音乐墙，可先新建一面再迁移");
+      new Notice(t("wall.select.noWalls"));
       return;
     }
     new PickerModal(
       this.app,
-      `将选中的 ${items.length} 张迁移到…`,
+      t("wall.pick.multiMigrate", { count: items.length }),
       files.map((f) => ({
         label: f.basename,
-        detail: f.parent && f.parent.path !== "/" ? f.parent.path : "库根目录",
+        detail:
+          f.parent && f.parent.path !== "/"
+            ? f.parent.path
+            : t("wall.pick.vaultRoot"),
       })),
       (i) => void this.doMigrateSelected(items, files[i])
     ).open();
@@ -3010,27 +3146,32 @@ export class MusicWallView extends FileView implements WallHost {
       this.render();
       this.renderSelectionBar();
     }
-    const parts = [`已迁移 ${okCount} 张 → ${target.basename}.mw`];
-    if (skipCount) parts.push(`跳过重复 ${skipCount} 张`);
-    if (failCount) parts.push(`失败 ${failCount} 张`);
-    new Notice(parts.join("；"));
+    const parts = [
+      t("wall.select.migratedBatch", { ok: okCount, target: target.basename }),
+    ];
+    if (skipCount)
+      parts.push(t("wall.select.migrateSkipped", { count: skipCount }));
+    if (failCount)
+      parts.push(t("wall.select.migrateFailed", { count: failCount }));
+    new Notice(parts.join(t("main.listSep")));
   }
 
   /** 多选删除：一次确认，列出数量 + 前几张 */
   private confirmDeleteSelected(): void {
     const items = this.selectedItems();
     if (!items.length) {
-      new Notice("请先点选至少一张专辑");
+      new Notice(t("wall.select.needSelect"));
       return;
     }
     const list = items.slice(0, 8).map((m) => `《${m.meta.name}》`);
-    if (items.length > 8) list.push(`等共 ${items.length} 张…`);
+    if (items.length > 8)
+      list.push(t("wall.group.andMore", { count: items.length }));
     new ConfirmModal(this.app, {
-      title: `删除 ${items.length} 张专辑`,
-      message: `确定将选中的 ${items.length} 张专辑移出这面音乐墙吗？`,
-      details: [...list, "仅从本墙移除，不影响其他墙与网易云账号数据。"],
+      title: t("wall.select.deleteTitle", { count: items.length }),
+      message: t("wall.select.deleteMsg", { count: items.length }),
+      details: [...list, t("wall.select.deleteNote")],
       danger: true,
-      confirmText: "删除",
+      confirmText: t("common.delete"),
       onConfirm: async () => {
         const data = this.data!;
         const drop = new Set(items.map((i) => i.albumId));
@@ -3042,7 +3183,7 @@ export class MusicWallView extends FileView implements WallHost {
         await this.persist();
         this.render();
         this.renderSelectionBar();
-        new Notice(`已移除 ${items.length} 张专辑`);
+        new Notice(t("wall.select.deleted", { count: items.length }));
       },
     }).open();
   }
@@ -3076,7 +3217,8 @@ export class MusicWallView extends FileView implements WallHost {
       const btn = detail?.querySelector<HTMLElement>(
         `.mw-gf__rate-btn[data-mw-album="${item.albumId}"]`
       );
-      if (btn) btn.setText(next ? "改评分" : "评分");
+      if (btn)
+        btn.setText(next ? t("rating.change") : t("rating.rate"));
     }
   }
 
@@ -3096,7 +3238,7 @@ export class MusicWallView extends FileView implements WallHost {
       item.metaEdited = true;
       await this.persist();
       this.render();
-      new Notice("元数据已保存");
+      new Notice(t("wall.metaSaved"));
       if (reopenDetail) this.openShelfDetail(item);
     }).open();
   }
@@ -3565,19 +3707,22 @@ export class MusicWallView extends FileView implements WallHost {
     const bar = info.createDiv({ cls: "mw-gf__bar" });
     const closeBtn = bar.createEl("button", { cls: "mw-gf__close" });
     setIcon(closeBtn, "x");
-    closeBtn.setAttr("title", "关闭 (Esc)");
+    closeBtn.setAttr("title", t("wall.shelf.closeTip"));
     closeBtn.addEventListener("click", () => this.closeShelfDetail());
 
     // 发行年 + 总时长：顶栏内、操作钮左侧（右页盘片占满，无处安放），随左页信息带一起右移
     const barMeta = bar.createDiv({ cls: "mw-gf__bar-meta" });
     if (meta.year) {
-      barMeta.createDiv({ cls: "mw-gf__year", text: `发行于 ${meta.year}` });
+      barMeta.createDiv({
+        cls: "mw-gf__year",
+        text: t("wall.shelf.released", { year: meta.year }),
+      });
     }
     const totalDur = sumTrackDur(meta.tracks);
     if (totalDur > 0) {
       const durEl = barMeta.createDiv({
         cls: "mw-gf__total",
-        text: `总时长 ${fmtTotalDur(totalDur)}`,
+        text: t("wall.shelf.totalDur", { value: fmtTotalDur(totalDur) }),
       });
       durEl.title = fmtTotalDurTip(totalDur);
     }
@@ -3591,17 +3736,24 @@ export class MusicWallView extends FileView implements WallHost {
       b.setAttr("title", title);
       b.addEventListener("click", fn);
     };
-    mkTool("link", "复制专辑链接", false, async () => {
+    mkTool("link", t("wall.shelf.copyLink"), false, async () => {
       await navigator.clipboard.writeText(`https://music.163.com/album?id=${item.albumId}`);
-      new Notice("已复制");
+      new Notice(t("common.copied"));
     });
-    mkTool("arrow-right", "迁移到其他墙", false, () => this.migrateCard(item));
-    mkTool("trash", "移出音乐墙", true, () => this.confirmDelete(item));
+    mkTool("arrow-right", t("wall.shelf.migrate"), false, () =>
+      this.migrateCard(item)
+    );
+    mkTool("trash", t("wall.shelf.remove"), true, () =>
+      this.confirmDelete(item)
+    );
 
     const metaBox = info.createDiv({ cls: "mw-gf__meta" });
     const nameEl = metaBox.createDiv({ cls: "mw-gf__name", text: meta.name });
     nameEl.title = meta.name;
-    metaBox.createDiv({ cls: "mw-gf__artist", text: meta.artist || "未知艺术家" });
+    metaBox.createDiv({
+      cls: "mw-gf__artist",
+      text: meta.artist || t("common.unknownArtist"),
+    });
     // 评分行：五星只读展示＋“评分”按钮（弹出评分框，悬停预览）
     const gfRateRow = info.createDiv({ cls: "mw-rate-row mw-gf__rate" });
     const gfStars = buildStarsDisplay(item.rating);
@@ -3610,16 +3762,21 @@ export class MusicWallView extends FileView implements WallHost {
     gfRateRow.appendChild(gfStars);
     const gfRateBtn = gfRateRow.createEl("button", {
       cls: "mw-gf__rate-btn",
-      text: normalizeRating(item.rating) ? "改评分" : "评分",
+      text: normalizeRating(item.rating)
+        ? t("rating.change")
+        : t("rating.rate"),
     });
     gfRateBtn.dataset.mwAlbum = String(item.albumId);
     gfRateBtn.setAttr("type", "button");
-    gfRateBtn.setAttr("title", "打开评分框（悬停预览，点击保存，可清除）");
+    gfRateBtn.setAttr("title", t("panel.rateTip"));
     gfRateBtn.addEventListener("click", () => this.rateItem(item));
     const tracks = info.createDiv({ cls: "mw-gf__tracks" });
     const list = meta.tracks ?? [];
     if (!list.length) {
-      tracks.createDiv({ cls: "mw-gf__noTrack", text: "无曲目快照" });
+      tracks.createDiv({
+        cls: "mw-gf__noTrack",
+        text: t("wall.shelf.noTracks"),
+      });
     } else {
       list.forEach((t, i) => {
         const row = tracks.createDiv({ cls: "mw-gf__track" });
@@ -3642,8 +3799,10 @@ export class MusicWallView extends FileView implements WallHost {
     const cdFace = discWrap.createDiv({ cls: "mw-gf__discface is-hidden" });
     cdFace.appendChild(buildDiscElement(item, "cd", { coverSize: 500 }));
     const swap = tray.createDiv({ cls: "mw-gf__swap" });
-    const btnVinyl = swap.createEl("button", { text: "黑胶" });
-    const btnCd = swap.createEl("button", { text: "CD" });
+    const btnVinyl = swap.createEl("button", {
+      text: styleLabel("vinyl"),
+    });
+    const btnCd = swap.createEl("button", { text: styleLabel("cd") });
     const applySwap = (which: "vinyl" | "cd") => {
       vinylFace.toggleClass("is-hidden", which !== "vinyl");
       cdFace.toggleClass("is-hidden", which !== "cd");
@@ -3685,21 +3844,27 @@ export class MusicWallView extends FileView implements WallHost {
   private cardMenuItems(item: WallItem): CtxItem[] {
     const items: CtxItem[] = [
       {
-        title: "播放",
+        title: t("wall.ctx.play"),
         icon: "play",
         onPick: () => void playAlbum(item.meta, this.plugin.getPlaybackDeps()),
       },
       {
-        title: "加入播放器",
+        title: t("wall.ctx.addToPlayer"),
         icon: "disc",
         disabled: !this.plugin.firstPlayerView(),
         onPick: () => {
           if (this.file) this.plugin.addToPlayer(item, this.file.path);
         },
       },
-      { title: "编辑布局", icon: "move", onPick: () => this.enterEditMode() },
       {
-        title: item.rating ? `评分…（当前 ${item.rating} 分）` : "评分…",
+        title: t("wall.ctx.editLayout"),
+        icon: "move",
+        onPick: () => this.enterEditMode(),
+      },
+      {
+        title: item.rating
+          ? t("wall.ctx.rateCurrent", { value: item.rating })
+          : t("wall.ctx.rate"),
         icon: "star",
         onPick: () => this.rateItem(item),
       },
@@ -3707,30 +3872,39 @@ export class MusicWallView extends FileView implements WallHost {
     // 「移动到分组…」走模态选择框（分组一多内联列表就比屏幕还长）
     if ((this.data?.groups ?? []).length) {
       items.push({
-        title: "移动到分组…",
+        title: t("wall.ctx.moveToGroup"),
         icon: "folder-input",
         onPick: () => this.pickGroupFor(item),
       });
     }
     if (!item.locked) {
       items.push({
-        title: "编辑元数据",
+        title: t("wall.ctx.editMeta"),
         icon: "edit",
         onPick: () => this.editItemMeta(item, false),
       });
     }
     items.push(
-      { title: "迁移到其他墙…", icon: "arrow-right", onPick: () => this.migrateCard(item) },
       {
-        title: "复制专辑链接",
+        title: t("wall.ctx.migrate"),
+        icon: "arrow-right",
+        onPick: () => this.migrateCard(item),
+      },
+      {
+        title: t("wall.ctx.copyLink"),
         icon: "link",
         onPick: () => {
           void navigator.clipboard
             .writeText(`https://music.163.com/album?id=${item.albumId}`)
-            .then(() => new Notice("已复制"));
+            .then(() => new Notice(t("common.copied")));
         },
       },
-      { title: "删除", icon: "trash", danger: true, onPick: () => this.confirmDelete(item) }
+      {
+        title: t("wall.ctx.delete"),
+        icon: "trash",
+        danger: true,
+        onPick: () => this.confirmDelete(item),
+      }
     );
     return items;
   }
@@ -3741,18 +3915,22 @@ export class MusicWallView extends FileView implements WallHost {
     if (!groups.length) return;
     const current = item.groupId ?? UNGROUPED_ID;
     const targets: { id: string; label: string }[] = [
-      { id: UNGROUPED_ID, label: UNGROUPED_LABEL },
+      { id: UNGROUPED_ID, label: t("wall.group.ungrouped") },
       ...groups.map((g) => ({ id: g.id, label: g.name })),
     ];
     new PickerModal(
       this.app,
-      `将《${item.meta.name}》移动到…`,
-      targets.map((t) => ({
-        label: t.id === current ? `${t.label} ✓` : t.label,
+      t("wall.pick.moveOne", { name: item.meta.name }),
+      targets.map((gt) => ({
+        label: gt.id === current ? `${gt.label} ✓` : gt.label,
         detail:
-          t.id === current
-            ? "当前所在分组"
-            : `${this.data!.items.filter((i) => (i.groupId ?? UNGROUPED_ID) === t.id).length} 张`,
+          gt.id === current
+            ? t("wall.pick.currentGroup")
+            : t("wall.pick.groupCount", {
+                count: this.data!.items.filter(
+                  (i) => (i.groupId ?? UNGROUPED_ID) === gt.id
+                ).length,
+              }),
       })),
       (i) => {
         const target = targets[i];
@@ -3764,18 +3942,18 @@ export class MusicWallView extends FileView implements WallHost {
 
   private confirmDelete(item: WallItem): void {
     new ConfirmModal(this.app, {
-      title: "删除专辑",
-      message: `确定将《${item.meta.name}》移出这面音乐墙吗？`,
-      details: ["仅从本墙移除，不影响其他墙与网易云账号数据。"],
+      title: t("wall.del.title"),
+      message: t("wall.del.msg", { name: item.meta.name }),
+      details: [t("wall.del.note")],
       danger: true,
-      confirmText: "删除",
+      confirmText: t("common.delete"),
       onConfirm: async () => {
         const data = this.data!;
         data.items = data.items.filter((i) => i !== item);
         if (data.order) data.order = removeFromOrder(data.order, [item.albumId]);
         await this.persist();
         this.render();
-        new Notice(`已移除《${item.meta.name}》`);
+        new Notice(t("wall.del.deleted", { name: item.meta.name }));
       },
     }).open();
   }
@@ -3784,16 +3962,18 @@ export class MusicWallView extends FileView implements WallHost {
   private migrateCard(item: WallItem): void {
     const files = this.plugin.wallFiles(this.file?.path);
     if (!files.length) {
-      new Notice("库中没有其他 .mw 音乐墙，可先新建一面再迁移");
+      new Notice(t("wall.select.noWalls"));
       return;
     }
     new PickerModal(
       this.app,
-      `将《${item.meta.name}》迁移到…`,
+      t("wall.pick.migrateOne", { name: item.meta.name }),
       files.map((f) => ({
         label: f.basename,
         detail:
-          f.parent && f.parent.path !== "/" ? f.parent.path : "库根目录",
+          f.parent && f.parent.path !== "/"
+            ? f.parent.path
+            : t("wall.pick.vaultRoot"),
       })),
       (i) => void this.doMigrate(item, files[i])
     ).open();
@@ -3804,7 +3984,9 @@ export class MusicWallView extends FileView implements WallHost {
     const ok = await this.plugin.migrateItemInto(item, target);
     if (!ok) return;
     await this.takeOutItem(item.albumId);
-    new Notice(`已迁移《${item.meta.name}》→ ${target.basename}.mw`);
+    new Notice(
+      t("main.migratedOne", { name: item.meta.name, target: target.basename })
+    );
   }
 
   /** 「添加专辑」入口（工具栏 ＋ / 命令 / 空态按钮）：打开右上角悬浮搜索框 */
@@ -3816,8 +3998,8 @@ export class MusicWallView extends FileView implements WallHost {
     if (!this.file) return;
     new InputModal(
       this.app,
-      "重命名音乐墙",
-      "新名称",
+      t("wall.rename.title"),
+      t("wall.rename.ph"),
       this.file.basename,
       async (name) => {
         try {
@@ -3836,7 +4018,7 @@ export class MusicWallView extends FileView implements WallHost {
           }
           this.render();
         } catch (e: any) {
-          new Notice("重命名失败：" + (e?.message ?? e));
+          new Notice(t("wall.rename.fail", { error: e?.message ?? e }));
         }
       }
     ).open();
@@ -3847,21 +4029,21 @@ export class MusicWallView extends FileView implements WallHost {
     // （否则木墙上弹出一个白底主题菜单——审计 A1）
     this.showCtxMenu(evt, [
       {
-        title: "导出当前墙（分享副本）",
+        title: t("wall.more.export"),
         icon: "download",
         onPick: () => void this.plugin.exportCurrentWall(this),
       },
       {
-        title: "导入 .mw 文件",
+        title: t("wall.more.import"),
         icon: "upload",
         onPick: () => void this.plugin.importMwFile(this),
       },
       {
-        title: "从 Git 仓库导入",
+        title: t("wall.more.git"),
         icon: "git",
         onPick: () => {
           if (!Platform.isDesktopApp) {
-            new Notice("Git 导入仅在桌面端可用");
+            new Notice(t("main.git.desktopOnly"));
             return;
           }
           void this.plugin.gitImport(this);

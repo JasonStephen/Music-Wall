@@ -3,6 +3,7 @@
 import { App, Modal, Notice } from "obsidian";
 
 import { applyModalTheme } from "./modalTheme";
+import { t } from "../i18n";
 
 export class InputModal extends Modal {
   private title: string;
@@ -40,11 +41,11 @@ export class InputModal extends Modal {
       if (e.key === "Enter") this.submit(input.value);
     });
     const btns = contentEl.createDiv({ cls: "mw-input-modal__buttons" });
-    btns.createEl("button", { text: "取消" }).addEventListener("click", () =>
-      this.close()
-    );
     btns
-      .createEl("button", { text: "确定", cls: "mod-cta" })
+      .createEl("button", { text: t("common.cancel") })
+      .addEventListener("click", () => this.close());
+    btns
+      .createEl("button", { text: t("common.confirm"), cls: "mod-cta" })
       .addEventListener("click", () => this.submit(input.value));
     input.focus();
     input.select();
@@ -53,7 +54,7 @@ export class InputModal extends Modal {
   private submit(value: string) {
     const v = value.trim();
     if (!v) {
-      new Notice("内容不能为空");
+      new Notice(t("inputModal.empty"));
       return;
     }
     this.close();

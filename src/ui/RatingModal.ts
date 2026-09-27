@@ -4,6 +4,7 @@
 import { App, Modal } from "obsidian";
 import { applyModalTheme } from "./modalTheme";
 import { normalizeRating } from "./rating";
+import { t } from "../i18n";
 
 export interface RatingModalArgs {
   /** 专辑名，用于标题 */
@@ -32,21 +33,23 @@ export class RatingModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("mw-rating-modal");
     contentEl.createEl("h2", {
-      text: `为《${this.albumName}》评分`,
+      text: t("rating.title", { name: this.albumName }),
       cls: "mw-rating-modal__heading",
     });
 
     const cur = contentEl.createDiv({ cls: "mw-rating-modal__current" });
     const syncCurrent = (preview?: number) => {
       const v = preview ?? this.current;
-      cur.setText(v ? `当前：${v} / 5 分` : "当前：未评分");
+      cur.setText(
+        v ? t("rating.current", { value: v }) : t("rating.currentUnrated")
+      );
     };
     syncCurrent();
 
     // 五颗星：mouseenter 预览 / mouseleave 还原 / click 保存；focus 兼顾键盘
     const row = contentEl.createDiv({ cls: "mw-rating-modal__stars" });
     row.setAttribute("role", "radiogroup");
-    row.setAttribute("aria-label", "选择 1 到 5 分");
+    row.setAttribute("aria-label", t("rating.chooseAria"));
     const stars: HTMLButtonElement[] = [];
     const paint = (n: number) => {
       stars.forEach((b, i) => b.toggleClass("is-preview", i < n));
@@ -59,8 +62,8 @@ export class RatingModal extends Modal {
       b.setAttr("type", "button");
       // data-star：星位即档位，CSS 按位着该档代表色（弹窗因此是五色图例）
       b.dataset.star = String(i);
-      b.setAttr("aria-label", `${i} 分`);
-      b.setAttr("title", `${i} 分`);
+      b.setAttr("aria-label", t("rating.star", { value: i }));
+      b.setAttr("title", t("rating.star", { value: i }));
       b.textContent = "★";
       b.setAttribute("aria-checked", this.current === i ? "true" : "false");
       b.addEventListener("mouseenter", () => {
@@ -90,19 +93,19 @@ export class RatingModal extends Modal {
 
     contentEl.createDiv({
       cls: "mw-rating-modal__hint",
-      text: "悬停可预览不同星数下的效果，点击星即保存。",
+      text: t("rating.hint"),
     });
 
     const btns = contentEl.createDiv({ cls: "mw-rating-modal__buttons" });
-    const clear = btns.createEl("button", { text: "清除评分" });
+    const clear = btns.createEl("button", { text: t("rating.clear") });
     clear.setAttr("type", "button");
     clear.disabled = this.current === undefined;
-    clear.setAttr("title", "撤回打分，回到未评分");
+    clear.setAttr("title", t("rating.clearTip"));
     clear.addEventListener("click", () => {
       this.close();
       this.onSave(undefined);
     });
-    const cancel = btns.createEl("button", { text: "取消" });
+    const cancel = btns.createEl("button", { text: t("common.cancel") });
     cancel.setAttr("type", "button");
     cancel.addEventListener("click", () => this.close());
   }

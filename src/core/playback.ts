@@ -8,6 +8,7 @@ import { Notice } from "obsidian";
 import type { AlbumMeta } from "../types";
 import type { Requester } from "./metadata";
 import { replacePlaylistWithAlbumTracks, hasLoginCookie, ensureTempPlaylist } from "./playlist";
+import { t } from "../i18n";
 
 export interface PlaybackDeps {
   isDesktop: boolean;
@@ -90,7 +91,7 @@ async function openWeb(url: string, deps: PlaybackDeps): Promise<void> {
  */
 export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<void> {
   if (!meta.tracks?.length) {
-    new Notice("该专辑缺少曲目快照，将打开网页版");
+    new Notice(t("playback.noTracks"));
     await openWeb(h5FallbackUrl(meta), deps);
     return;
   }
@@ -100,15 +101,13 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
 
   // 有登录态但未配置歌单 → 自动创建/复用私密中转歌单，不打扰用户已有歌单
   if (!playlistId && cookieOk && deps.cookie) {
-    new Notice("未配置播放歌单，正在创建私密中转歌单…");
+    new Notice(t("playback.creatingPlaylist"));
     try {
       playlistId = await ensureTempPlaylist(deps.request, deps.cookie);
       deps.onPlaylistResolved?.(playlistId);
     } catch (e: any) {
       new Notice(
-        "自动创建中转歌单失败：" +
-          (e?.message ?? e) +
-          "（若为风控拦截，请在设置中手动指定一个歌单）"
+        t("playback.createPlaylistFail", { error: e?.message ?? e })
       );
     }
   }
@@ -117,7 +116,7 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
 
   if (playlistMode) {
     try {
-      new Notice("正在把专辑写入播放歌单…");
+      new Notice(t("playback.writingPlaylist"));
       const ids = meta.tracks.map((t) => t.id);
       await replacePlaylistWithAlbumTracks(
         deps.request,
@@ -126,25 +125,26 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
         deps.cookie!
       );
       if (await openScheme(orpheusPlaylistUrl(playlistId!), deps)) {
-        new Notice(`《${meta.name}》${ids.length} 首已替换进播放歌单并开始播放`);
+        new Notice(
+          t("playback.playlistWritten", { name: meta.name, count: ids.length })
+        );
         return;
       }
-      new Notice("歌单播放指令未被客户端接收，改用单曲播放");
+      new Notice(t("playback.schemeFallback"));
     } catch (e: any) {
       new Notice(
-        "歌单模式失败：" +
-          (e?.message ?? e) +
-          "（请重新配置 Cookie 或重选播放歌单）；本次改用单曲播放"
+        t("playback.playlistModeFail", { error: e?.message ?? e })
       );
     }
   } else {
     const missing: string[] = [];
-    if (!deps.cookie) missing.push("网易云 Cookie");
-    else if (!cookieOk)
-      missing.push("有效登录 Cookie（当前 Cookie 缺少 MUSIC_U，未登录）");
-    if (!playlistId) missing.push("播放歌单 ID");
+    if (!deps.cookie) missing.push(t("playback.missingCookie"));
+    else if (!cookieOk) missing.push(t("playback.missingValidCookie"));
+    if (!playlistId) missing.push(t("playback.missingPlaylist"));
     new Notice(
-      `整张专辑连播未启用：缺少「${missing.join("」「")}」。本次仅播放第一首`
+      t("playback.continuousOff", {
+        missing: missing.join(t("playback.listSep")),
+      })
     );
   }
 
@@ -152,6 +152,6 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
   if (await openScheme(orpheusSongUrl(meta.tracks[0].id), deps)) return;
 
   // 最后手段：scheme 完全打不开（未安装客户端）才走 H5
-  new Notice("未检测到网易云客户端，改用系统方式打开专辑链接");
+  new Notice(t("playback.noClient"));
   await openWeb(h5FallbackUrl(meta), deps);
 }

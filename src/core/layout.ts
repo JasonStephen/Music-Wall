@@ -8,6 +8,7 @@
 // - order 的「全局性」保证：手动顺序在加入分组、跨组拖动、取消分组后都不丢。
 
 import { GROUP_ID_PREFIX, type WallGroup, type WallItem } from "../types";
+import { t } from "../i18n";
 
 /** 分区条目顺序的重排位置：锚点之前 / 之后 */
 export type Place = "before" | "after";
@@ -25,8 +26,10 @@ export interface WallSection {
 /** 未分组分区的固定 id（空串不会被 groupId 命中） */
 export const UNGROUPED_ID = "";
 
-/** 未分组分区的显示名 */
-export const UNGROUPED_LABEL = "未分组";
+/** 未分组分区的 id（运行时取当前语言） */
+export function ungroupedLabel(): string {
+  return t("wall.group.ungrouped");
+}
 
 /** 排序结果（升序时 dir=1，降序时 dir=-1） */
 export function sortDir(asc: boolean): 1 | -1 {
@@ -187,7 +190,7 @@ export function resolveSections(
   if (ungrouped.length || (!groups.length && !filtering)) {
     sections.push({
       id: UNGROUPED_ID,
-      name: UNGROUPED_LABEL,
+      name: ungroupedLabel(),
       collapsed: groups.length ? ungroupedCollapsed : false,
       items: ungrouped,
     });

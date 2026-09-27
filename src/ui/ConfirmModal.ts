@@ -6,6 +6,7 @@
 import { App, Modal } from "obsidian";
 
 import { applyModalTheme } from "./modalTheme";
+import { t } from "../i18n";
 
 export interface ConfirmOptions {
   title: string;
@@ -63,7 +64,9 @@ export class ConfirmModal extends Modal {
       const field = contentEl.createDiv({ cls: "mw-confirm__field" });
       field.createDiv({
         cls: "mw-confirm__label",
-        text: this.opts.requireHint ?? `请输入「${expect}」以确认：`,
+        text:
+          this.opts.requireHint ??
+          t("confirmModal.requireHint", { text: expect }),
       });
       input = field.createEl("input", { type: "text", cls: "mw-confirm__input" });
       input.setAttr("autocomplete", "off");
@@ -74,12 +77,12 @@ export class ConfirmModal extends Modal {
 
     const btns = contentEl.createDiv({ cls: "mw-confirm__buttons" });
     const cancel = btns.createEl("button", {
-      text: this.opts.cancelText ?? "取消",
+      text: this.opts.cancelText ?? t("common.cancel"),
     });
     cancel.addEventListener("click", () => this.close());
 
     const ok = btns.createEl("button", {
-      text: this.opts.confirmText ?? "确认",
+      text: this.opts.confirmText ?? t("common.confirm"),
       cls: this.opts.danger ? "mod-warning" : "mod-cta",
     });
 
@@ -95,7 +98,13 @@ export class ConfirmModal extends Modal {
       else ok.setAttr("disabled", "true");
       if (hint) {
         const typed = !!input?.value.trim();
-        hint.setText(okNow ? "" : typed ? "名称不一致" : "必须输入完整名称");
+        hint.setText(
+          okNow
+            ? ""
+            : typed
+              ? t("confirmModal.mismatch")
+              : t("confirmModal.required")
+        );
         hint.toggleClass("is-error", typed && !okNow);
       }
     };

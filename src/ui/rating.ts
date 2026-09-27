@@ -4,6 +4,8 @@
 // 星心可用区直径由星宽 31% 提到 37%，数字四周透得出气。星色走 currentColor，CSS 按档位注入。
 // 注：详情五星与评分弹窗大星没有叠字，仍用 ★ 字符承载，不受本改动影响。
 
+import { t } from "../i18n";
+
 /** 徽标胖五角星 path：viewBox 0 0 24 24，中心 (12,12)，外接径 10.5，内半径比 0.46。
  *  想调胖瘦只改这个 d：5 个外顶点在 -90°+k·72°、半径 10.5；5 个内凹点错开 36°、半径 10.5×比值。 */
 const BADGE_STAR_PATH =
@@ -40,8 +42,8 @@ export function buildRatingBadge(rating: number): HTMLElement {
   const badge = document.createElement("div");
   badge.className = "mw-rating-badge";
   badge.dataset.rating = String(rating);
-  badge.setAttribute("aria-label", `评分 ${rating} / 5`);
-  badge.setAttribute("title", `评分 ${rating} / 5`);
+  badge.setAttribute("aria-label", t("rating.aria", { value: rating }));
+  badge.setAttribute("title", t("rating.aria", { value: rating }));
   const num = document.createElement("span");
   num.className = "mw-rating-badge__num";
   num.textContent = String(rating);
@@ -55,8 +57,14 @@ export function buildStarsDisplay(rating: unknown): HTMLElement {
   const r = normalizeRating(rating) ?? 0;
   const wrap = document.createElement("div");
   wrap.className = "mw-stars";
-  wrap.setAttribute("aria-label", r ? `评分 ${r} / 5` : "未评分");
-  wrap.setAttribute("title", r ? `评分 ${r} / 5` : "未评分");
+  wrap.setAttribute(
+    "aria-label",
+    r ? t("rating.aria", { value: r }) : t("rating.unrated")
+  );
+  wrap.setAttribute(
+    "title",
+    r ? t("rating.aria", { value: r }) : t("rating.unrated")
+  );
   if (!r) wrap.addClass("is-unrated");
   else wrap.dataset.rating = String(r);
   for (let i = 1; i <= 5; i++) {
@@ -73,8 +81,14 @@ export function buildStarsDisplay(rating: unknown): HTMLElement {
 /** 原地刷新只读五星（详情评分保存后用，避免重建整个详情） */
 export function paintStarsDisplay(wrap: HTMLElement, rating: unknown): void {
   const r = normalizeRating(rating) ?? 0;
-  wrap.setAttribute("aria-label", r ? `评分 ${r} / 5` : "未评分");
-  wrap.setAttribute("title", r ? `评分 ${r} / 5` : "未评分");
+  wrap.setAttribute(
+    "aria-label",
+    r ? t("rating.aria", { value: r }) : t("rating.unrated")
+  );
+  wrap.setAttribute(
+    "title",
+    r ? t("rating.aria", { value: r }) : t("rating.unrated")
+  );
   wrap.toggleClass("is-unrated", !r);
   if (r) wrap.dataset.rating = String(r);
   else delete wrap.dataset.rating;

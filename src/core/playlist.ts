@@ -2,6 +2,7 @@
 // 接口格式对齐 2026 年验证可用的 ncm-cli（weapi）实现。
 
 import { weapiPost, type Requester } from "./metadata";
+import { t } from "../i18n";
 
 export interface UserPlaylistBrief {
   id: number;
@@ -20,13 +21,11 @@ export async function verifyCookie(
   cookie: string
 ): Promise<{ uid: number; nickname: string }> {
   if (!hasLoginCookie(cookie)) {
-    throw new Error(
-      "Cookie 中未包含 MUSIC_U（登录凭证），请确认已在网页登录后复制完整 Cookie"
-    );
+    throw new Error(t("playlistErr.noMusicU"));
   }
   const r = await weapiPost(request, "/api/w/nuser/account/get", {}, cookie);
   const uid = r?.account?.id ?? r?.profile?.userId;
-  if (!uid) throw new Error("Cookie 无效或已过期，请在网易云网页端重新登录并更新");
+  if (!uid) throw new Error(t("playlistErr.cookieInvalid"));
   return { uid, nickname: r?.account?.nickname ?? r?.profile?.nickname ?? "" };
 }
 
@@ -104,7 +103,11 @@ export async function manipulateTracks(
       );
     }
     if (r?.code !== 200) {
-      throw new Error(`歌单${op === "add" ? "加歌" : "删歌"}失败（code=${r?.code}）`);
+      throw new Error(
+        t(op === "add" ? "playlistErr.addFail" : "playlistErr.delFail", {
+          code: r?.code,
+        })
+      );
     }
   }
 }
@@ -153,7 +156,12 @@ export async function ensureTempPlaylist(
   const r = await weapiPost(request, "/api/playlist/create", { name, privacy: 10 }, cookie);
   const id = r?.id ?? r?.playlist?.id;
   if (!id) {
-    throw new Error(`创建中转歌单失败（code=${r?.code}${r?.message ? "：" + r.message : ""}）`);
+    throw new Error(
+      t("playlistErr.createFail", {
+        code: r?.code,
+        detail: r?.message ? "：" + r.message : "",
+      })
+    );
   }
   return Number(id);
 }

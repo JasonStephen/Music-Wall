@@ -1,6 +1,8 @@
 // 时长格式化：单曲 "m:ss" 与整专总时长档位化展示。
 // 网格/详情面板（AlbumPanelModal）与展示架开盒详情（MusicWallView）共用。
 
+import { t } from "../i18n";
+
 /** 毫秒 → "m:ss"（单曲时长） */
 export function fmtDur(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -24,9 +26,11 @@ export function fmtTotalDur(ms: number): string {
   const totalSec = Math.max(0, Math.round(ms / 1000));
   const totalMin = Math.round(totalSec / 60);
   const totalHour = totalSec / 3600;
-  if (totalHour > 10) return `${Math.round(totalHour)} 小时`;
-  if (totalHour >= 1) return `${totalHour.toFixed(1)} 小时`;
-  return `${totalMin} 分钟`;
+  if (totalHour > 10)
+    return t("duration.hour", { value: Math.round(totalHour) });
+  if (totalHour >= 1)
+    return t("duration.hour", { value: totalHour.toFixed(1) });
+  return t("duration.minute", { value: totalMin });
 }
 
 /** 总时长悬停提示："总分钟:秒"（秒两位补零，不显示小时） */

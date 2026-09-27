@@ -5,6 +5,7 @@
 import { App, Modal } from "obsidian";
 
 import { applyModalTheme } from "./modalTheme";
+import { t } from "../i18n";
 
 export interface ChoiceOption {
   label: string;
@@ -45,9 +46,9 @@ export class ChoiceModal extends Modal {
       });
     }
     const cancel = contentEl.createDiv({ cls: "mw-choice__cancel" });
-    cancel.createEl("button", { text: "取消" }).addEventListener("click", () =>
-      this.close()
-    );
+    cancel
+      .createEl("button", { text: t("common.cancel") })
+      .addEventListener("click", () => this.close());
   }
 
   onClose(): void {

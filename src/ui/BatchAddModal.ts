@@ -9,6 +9,7 @@ import { renderAlbumPanel } from "./AlbumPanelModal";
 import { applyModalTheme } from "./modalTheme";
 import { sizedCover } from "../core/metadata";
 import { createSelectBox } from "./selectBox";
+import { t } from "../i18n";
 
 export interface BatchHost {
   fetchAlbumDetail(albumId: number): Promise<AlbumMeta>;
@@ -52,9 +53,9 @@ interface BatchRow {
 
 /** 把网易接口错误码翻译成人话（code=405 等限流类已自动重试，仍失败才到这里） */
 export function batchErrorText(raw: string): string {
-  if (/code=\s*404\b/.test(raw)) return "ID 不存在或不是专辑 ID，请核对";
-  if (/code=\s*405\b/.test(raw)) return "接口限流或资源不可用（已自动重试），可稍后再试";
-  if (/code=\s*-46\d\b/.test(raw)) return "触发网易验证，请稍后重试";
+  if (/code=\s*404\b/.test(raw)) return t("batch.err404");
+  if (/code=\s*405\b/.test(raw)) return t("batch.err405");
+  if (/code=\s*-46\d\b/.test(raw)) return t("batch.err46x");
   return raw;
 }
 
@@ -97,25 +98,28 @@ export class BatchAddModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("mw-batch");
-    contentEl.createEl("h2", { text: "批量添加专辑", cls: "mw-batch__heading" });
+    contentEl.createEl("h2", {
+      text: t("batch.title"),
+      cls: "mw-batch__heading",
+    });
     contentEl.createEl("p", {
       cls: "mw-batch__hint",
-      text: "仅支持数字编号，分号隔开（支持中英文分号）。例如：12345;67890；24680",
+      text: t("batch.hint"),
     });
 
     const input = contentEl.createEl("textarea", {
       cls: "mw-batch__input",
-      placeholder: "粘贴专辑数字 ID，分号隔开，如：4865712;4889867",
+      placeholder: t("batch.inputPh"),
     });
     input.rows = 3;
 
     const errLine = contentEl.createDiv({ cls: "mw-batch__error" });
     const btnRow = contentEl.createDiv({ cls: "mw-batch__btnrow" });
     const parseBtn = btnRow.createEl("button", {
-      text: "解析并预览",
+      text: t("batch.parse"),
       cls: "mod-cta",
     });
-    const cancelBtn = btnRow.createEl("button", { text: "取消" });
+    const cancelBtn = btnRow.createEl("button", { text: t("common.cancel") });
     cancelBtn.addEventListener("click", () => this.close());
 
     const listWrap = contentEl.createDiv({ cls: "mw-batch__list" });
@@ -128,7 +132,10 @@ export class BatchAddModal extends Modal {
       const keepScroll = listWrap.scrollTop;
       listWrap.empty();
       if (!rows.length) {
-        listWrap.createDiv({ cls: "mw-batch__empty", text: "解析后在这里预览全部专辑，可点行查看详情。" });
+        listWrap.createDiv({
+          cls: "mw-batch__empty",
+          text: t("batch.emptyList"),
+        });
         return;
       }
       // 顶部选择行：全选 / 取消全选（仅待添加行参与），确认只添加勾中的
@@ -137,7 +144,7 @@ export class BatchAddModal extends Modal {
         const selRow = listWrap.createDiv({ cls: "mw-batch__selectrow" });
         const allOn = readyRows.every((r) => r.picked);
         const toggle = selRow.createEl("button", {
-          text: allOn ? "取消全选" : "全选",
+          text: allOn ? t("batch.deselectAll") : t("batch.selectAll"),
           cls: "mw-batch__selectall",
         });
         toggle.addEventListener("click", (e) => {
@@ -149,7 +156,10 @@ export class BatchAddModal extends Modal {
         const pickedCount = readyRows.filter((r) => r.picked).length;
         selRow.createDiv({
           cls: "mw-batch__selectcount",
-          text: `已选 ${pickedCount} / 可添加 ${readyRows.length}`,
+          text: t("batch.selectCount", {
+            picked: pickedCount,
+            ready: readyRows.length,
+          }),
         });
       }
       const rerenderKeepScroll = () => {
@@ -165,7 +175,7 @@ export class BatchAddModal extends Modal {
           el.appendChild(
             createSelectBox({
               checked: row.picked,
-              title: "勾选 / 取消勾选添加",
+              title: t("batch.rowCheckboxTip"),
               onToggle: () => {
                 row.picked = !row.picked;
                 rerenderKeepScroll();
@@ -189,40 +199,81 @@ export class BatchAddModal extends Modal {
           info.createDiv({ cls: "mw-batch-row__name", text: st.meta.name });
           info.createDiv({
             cls: "mw-batch-row__sub",
-            text: `${st.meta.artist || "未知"} · ${st.meta.year ?? ""} · ${st.meta.trackCount} 曲`,
+            text: t("batch.rowSub", {
+              artist: st.meta.artist || t("search.unknown"),
+              year: st.meta.year ?? "",
+              count: st.meta.trackCount,
+            }),
           });
         } else if (st.kind === "exists") {
-          info.createDiv({ cls: "mw-batch-row__name", text: st.meta ? st.meta.name : `ID ${row.id}` });
-          info.createDiv({ cls: "mw-batch-row__sub", text: "已在当前墙中，确认时跳过" });
+          info.createDiv({
+            cls: "mw-batch-row__name",
+            text: st.meta ? st.meta.name : `ID ${row.id}`,
+          });
+          info.createDiv({
+            cls: "mw-batch-row__sub",
+            text: t("batch.exists"),
+          });
         } else if (st.kind === "loading" || st.kind === "pending") {
-          info.createDiv({ cls: "mw-batch-row__name", text: `ID ${row.id}` });
-          info.createDiv({ cls: "mw-batch-row__sub", text: "拉取中…" });
+          info.createDiv({
+            cls: "mw-batch-row__name",
+            text: `ID ${row.id}`,
+          });
+          info.createDiv({
+            cls: "mw-batch-row__sub",
+            text: t("batch.loading"),
+          });
         } else if (st.kind === "duplicate") {
-          info.createDiv({ cls: "mw-batch-row__name", text: `ID ${row.id}` });
-          info.createDiv({ cls: "mw-batch-row__sub", text: "输入重复，确认时跳过" });
+          info.createDiv({
+            cls: "mw-batch-row__name",
+            text: `ID ${row.id}`,
+          });
+          info.createDiv({
+            cls: "mw-batch-row__sub",
+            text: t("batch.duplicated"),
+          });
         } else {
-          info.createDiv({ cls: "mw-batch-row__name", text: `ID ${row.id}` });
-          info.createDiv({ cls: "mw-batch-row__sub", text: `拉取失败：${batchErrorText(st.message)}` });
+          info.createDiv({
+            cls: "mw-batch-row__name",
+            text: `ID ${row.id}`,
+          });
+          info.createDiv({
+            cls: "mw-batch-row__sub",
+            text: t("batch.fetchFailed", {
+              error: batchErrorText(st.message),
+            }),
+          });
         }
         const badge = el.createDiv({ cls: "mw-batch-row__badge" });
         const badgeText =
-          st.kind === "ready" ? "待添加" : st.kind === "exists" ? "已存在" : st.kind === "duplicate" ? "重复" : st.kind === "error" ? "失败" : "拉取中";
+          st.kind === "ready"
+            ? t("batch.badgeReady")
+            : st.kind === "exists"
+              ? t("batch.badgeExists")
+              : st.kind === "duplicate"
+                ? t("batch.badgeDuplicate")
+                : st.kind === "error"
+                  ? t("batch.badgeError")
+                  : t("batch.badgeLoading");
         badge.setText(badgeText);
         badge.addClass(`is-${st.kind}`);
         const ops = el.createDiv({ cls: "mw-batch-row__ops" });
         if (st.kind === "ready" || st.kind === "exists") {
-          const detail = ops.createEl("button", { text: "详情" });
+          const detail = ops.createEl("button", { text: t("batch.detail") });
           detail.addEventListener("click", (e) => {
             e.stopPropagation();
             const meta = st.meta;
             if (meta) this.openDetail(meta);
-            else new Notice("该专辑暂无详情");
+            else new Notice(t("batch.noDetail"));
           });
           const previewMeta: AlbumMeta | undefined = st.meta;
           if (previewMeta) {
             const metaForPlay: AlbumMeta = previewMeta;
-            const preview = ops.createEl("button", { text: "试听", cls: "mw-batch-row__preview" });
-            preview.setAttr("title", "未添加也可试听，原理与播放一致");
+            const preview = ops.createEl("button", {
+              text: t("batch.preview"),
+              cls: "mw-batch-row__preview",
+            });
+            preview.setAttr("title", t("batch.previewTip"));
             preview.addEventListener("click", (e) => {
               e.stopPropagation();
               void playAlbum(metaForPlay, this.host.getPlaybackDeps());
@@ -230,7 +281,7 @@ export class BatchAddModal extends Modal {
           }
         }
         if (st.kind === "error") {
-          const retry = ops.createEl("button", { text: "重试" });
+          const retry = ops.createEl("button", { text: t("batch.retry") });
           retry.addEventListener("click", (e) => {
             e.stopPropagation();
             void this.fetchOne(row, () => renderList());
@@ -253,10 +304,17 @@ export class BatchAddModal extends Modal {
     parseBtn.addEventListener("click", () => {
       const { ids, invalid } = parseBatchInput(input.value);
       errLine.setText(
-        invalid.length ? `以下内容不是纯数字 ID，已忽略：${invalid.slice(0, 10).join("、")}${invalid.length > 10 ? ` 等 ${invalid.length} 项` : ""}` : ""
+        invalid.length
+          ? t("batch.invalidLine", {
+              items: invalid.slice(0, 10).join("、"),
+            }) +
+              (invalid.length > 10
+                ? t("batch.invalidMore", { count: invalid.length })
+                : "")
+          : ""
       );
       if (!ids.length) {
-        new Notice("没有可识别的数字编号");
+        new Notice(t("batch.invalidNotice"));
         return;
       }
       const seen = new Set<number>();
@@ -295,10 +353,19 @@ export class BatchAddModal extends Modal {
     const fail = rows.filter((r) => r.status.kind === "error").length;
     foot.createDiv({
       cls: "mw-batch__summary",
-      text: `共 ${rows.length} 个：待添加 ${ready}（已选 ${picked}）· 已存在 ${exists} · 重复 ${dup} · 失败 ${fail}`,
+      text: t("batch.summary", {
+        total: rows.length,
+        ready,
+        picked,
+        exists,
+        dup,
+        fail,
+      }),
     });
     const row = foot.createDiv({ cls: "mw-batch__btnrow" });
-    const retryAll = row.createEl("button", { text: "重试失败项" });
+    const retryAll = row.createEl("button", {
+      text: t("batch.retryFailed"),
+    });
     retryAll.toggleClass("is-disabled", fail === 0);
     if (fail === 0) retryAll.setAttr("disabled", "true");
     else {
@@ -310,7 +377,9 @@ export class BatchAddModal extends Modal {
       });
     }
     const confirm = row.createEl("button", {
-      text: picked ? `确认添加选中 ${picked} 张` : "确认添加",
+      text: picked
+        ? t("batch.confirmAddN", { count: picked })
+        : t("batch.confirmAdd"),
       cls: "mod-cta",
     });
     confirm.toggleClass("is-disabled", picked === 0);
@@ -337,7 +406,11 @@ export class BatchAddModal extends Modal {
           skipped++;
         }
       }
-      new Notice(added ? `批量添加完成：新增 ${added}，跳过 ${skipped}` : "没有勾选可添加的专辑");
+      new Notice(
+        added
+          ? t("batch.doneNotice", { added, skipped })
+          : t("batch.noneNotice")
+      );
       if (added) onDone();
     });
   }
@@ -450,14 +523,20 @@ class DetailPreviewModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("mw-album-modal");
-    contentEl.createEl("h2", { text: "专辑详情", cls: "mw-album-modal__heading" });
+    contentEl.createEl("h2", {
+      text: t("batch.detailTitle"),
+      cls: "mw-album-modal__heading",
+    });
     const panel = contentEl.createDiv();
     renderAlbumPanel(panel, { meta: this.meta, style: this.style, source: "search" });
     const btns = contentEl.createDiv({ cls: "mw-album-modal__buttons" });
-    const back = btns.createEl("button", { text: "返回" });
+    const back = btns.createEl("button", { text: t("common.back") });
     back.addEventListener("click", () => this.close());
-    const preview = btns.createEl("button", { text: "▶ 试听", cls: "mod-cta" });
-    preview.setAttr("title", "未添加也可试听，原理与播放一致");
+    const preview = btns.createEl("button", {
+      text: t("panel.preview"),
+      cls: "mod-cta",
+    });
+    preview.setAttr("title", t("panel.previewTip"));
     preview.addEventListener("click", () => {
       void playAlbum(this.meta, this.deps);
     });

@@ -3,7 +3,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
 import {
-  PLAYER_BG_LABELS,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_STEP,
@@ -12,7 +11,14 @@ import {
   type PlayerBackground,
   type ShelfCaption,
 } from "./types";
-import { STYLE_LABELS } from "./ui/disc";
+import {
+  playerBgLabel,
+  shelfCaptionLabel,
+  styleLabel,
+  t,
+  type LanguagePref,
+} from "./i18n";
+import { ALL_STYLES } from "./ui/disc";
 
 export class MusicWallSettingTab extends PluginSettingTab {
   private plugin: MusicWallPlugin;
@@ -27,10 +33,31 @@ export class MusicWallSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("Git 远程仓库地址")
-      .setDesc("填入存放 .mw 音乐墙文件的仓库 URL（https），用于「Git 导入」（仅桌面端）")
-      .addText((t) =>
-        t
+      .setName(t("settings.lang.name"))
+      .setDesc(t("settings.lang.desc"))
+      .addDropdown((d) => {
+        const opts: Record<LanguagePref, string> = {
+          system: t("settings.lang.system"),
+          "zh-CN": "简体中文",
+          "zh-TW": "繁體中文",
+          en: "English",
+        };
+        for (const [v, label] of Object.entries(opts)) d.addOption(v, label);
+        d.setValue(this.plugin.settings.language ?? "system").onChange(
+          async (v) => {
+            this.plugin.settings.language = v as LanguagePref;
+            await this.plugin.saveSettings();
+            // saveSettings 已应用语言并刷新视图；重绘设置页自身
+            this.display();
+          }
+        );
+      });
+
+    new Setting(containerEl)
+      .setName(t("settings.gitUrl.name"))
+      .setDesc(t("settings.gitUrl.desc"))
+      .addText((te) =>
+        te
           .setPlaceholder("https://github.com/user/music-walls.git")
           .setValue(this.plugin.settings.gitRepoUrl)
           .onChange(async (v) => {
@@ -40,10 +67,10 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Git 分支")
-      .setDesc("留空则使用仓库默认分支")
-      .addText((t) =>
-        t
+      .setName(t("settings.gitBranch.name"))
+      .setDesc(t("settings.gitBranch.desc"))
+      .addText((te) =>
+        te
           .setPlaceholder("main")
           .setValue(this.plugin.settings.gitBranch)
           .onChange(async (v) => {
@@ -53,10 +80,10 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Git 子目录")
-      .setDesc("仅扫描该子目录下的 .mw 文件；留空扫描整个仓库")
-      .addText((t) =>
-        t
+      .setName(t("settings.gitSubdir.name"))
+      .setDesc(t("settings.gitSubdir.desc"))
+      .addText((te) =>
+        te
           .setPlaceholder("walls")
           .setValue(this.plugin.settings.gitSubdir)
           .onChange(async (v) => {
@@ -66,29 +93,29 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("网易云 Cookie（可选）")
-      .setDesc(
-        "登录后的完整 Cookie（必须包含 MUSIC_U）才能整专连播；留空亦可浏览/搜索。注意：仅存于本机"
-      )
-      .addTextArea((t) => {
-        t.setPlaceholder("__remember_uid=...; MUSIC_U=...;")
+      .setName(t("settings.cookie.name"))
+      .setDesc(t("settings.cookie.desc"))
+      .addTextArea((te) => {
+        te.setPlaceholder("__remember_uid=...; MUSIC_U=...;")
           .setValue(this.plugin.settings.neteaseCookie)
           .onChange(async (v) => {
             this.plugin.settings.neteaseCookie = v.trim();
             await this.plugin.saveSettings();
           });
-        t.inputEl.rows = 3;
+        te.inputEl.rows = 3;
       })
       .addButton((b) =>
         b
-          .setButtonText("验证")
-          .setTooltip("检查 Cookie 登录态并显示账号昵称")
+          .setButtonText(t("settings.cookie.verify"))
+          .setTooltip(t("settings.cookie.verifyTip"))
           .onClick(async () => {
             b.setDisabled(true);
             try {
               await this.plugin.verifyCookieNow();
             } catch (e: any) {
-              new Notice("Cookie 无效：" + (e?.message ?? e));
+              new Notice(
+                t("settings.cookie.invalid", { error: e?.message ?? e })
+              );
             } finally {
               b.setDisabled(false);
             }
@@ -96,13 +123,11 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("播放歌单 ID")
-      .setDesc(
-        "配合上方 Cookie 实现整张专辑连播：播放时把专辑曲目写入该歌单并让客户端切到该歌单播放。留空且 Cookie 有效时会自动创建/复用私密中转歌单「Music Wall 临时播放」。可点右侧按钮从账号歌单中选择"
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder("如 123456789")
+      .setName(t("settings.playlist.name"))
+      .setDesc(t("settings.playlist.desc"))
+      .addText((te) =>
+        te
+          .setPlaceholder(t("settings.playlist.ph"))
           .setValue(this.plugin.settings.playbackPlaylistId)
           .onChange(async (v) => {
             this.plugin.settings.playbackPlaylistId = v.trim();
@@ -111,8 +136,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
       )
       .addButton((b) =>
         b
-          .setButtonText("从账号选择")
-          .setTooltip("需已配置 Cookie")
+          .setButtonText(t("settings.playlist.pick"))
+          .setTooltip(t("settings.playlist.pickTip"))
           .onClick(() => {
             void this.plugin.pickPlaybackPlaylist();
             this.display();
@@ -120,10 +145,10 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("新建墙的默认样式")
+      .setName(t("settings.defaultStyle.name"))
       .addDropdown((d) => {
-        for (const [v, label] of Object.entries(STYLE_LABELS)) {
-          d.addOption(v, label);
+        for (const v of ALL_STYLES) {
+          d.addOption(v, styleLabel(v));
         }
         d.setValue(this.plugin.settings.defaultStyle).onChange(async (v) => {
           this.plugin.settings.defaultStyle = v as DiscStyle;
@@ -131,17 +156,13 @@ export class MusicWallSettingTab extends PluginSettingTab {
         });
       });
 
-    const CAPTION_LABELS: Record<ShelfCaption, string> = {
-      hidden: "隐藏",
-      pull: "抽出时显示",
-      always: "常驻显示",
-    };
+    const CAPTION_KEYS: ShelfCaption[] = ["hidden", "pull", "always"];
     new Setting(containerEl)
-      .setName("展示架文字显示")
-      .setDesc("仅「展示架」布局生效：专辑名/艺术家的显示档位")
+      .setName(t("settings.shelfCaption.name"))
+      .setDesc(t("settings.shelfCaption.desc"))
       .addDropdown((d) => {
-        for (const [v, label] of Object.entries(CAPTION_LABELS)) {
-          d.addOption(v, label);
+        for (const v of CAPTION_KEYS) {
+          d.addOption(v, shelfCaptionLabel(v));
         }
         d.setValue(this.plugin.settings.shelfCaption).onChange(async (v) => {
           this.plugin.settings.shelfCaption = v as ShelfCaption;
@@ -151,8 +172,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("唱片最小列宽 (px)")
-      .setDesc("越小一屏容纳越多；影响网格 auto-fill 列数")
+      .setName(t("settings.colWidth.name"))
+      .setDesc(t("settings.colWidth.desc"))
       .addSlider((s) =>
         s
           .setLimits(140, 320, 10)
@@ -165,11 +186,12 @@ export class MusicWallSettingTab extends PluginSettingTab {
           })
       );
 
+    const BG_KEYS: PlayerBackground[] = ["white", "dark", "art", "wood"];
     new Setting(containerEl)
-      .setName("播放器背景")
-      .setDesc("播放器页（.mwp）背景：白色 / 深色 / 跟随专辑封面动态取色 / 木地板。也可在播放器顶栏直接切换")
+      .setName(t("settings.playerBg.name"))
+      .setDesc(t("settings.playerBg.desc"))
       .addDropdown((d) => {
-        for (const [v, label] of Object.entries(PLAYER_BG_LABELS)) d.addOption(v, label);
+        for (const v of BG_KEYS) d.addOption(v, playerBgLabel(v));
         d.setValue(this.plugin.settings.playerBackground).onChange(async (v) => {
           this.plugin.settings.playerBackground = v as PlayerBackground;
           await this.plugin.saveSettings();
@@ -177,10 +199,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("界面缩放")
-      .setDesc(
-        "音乐墙与播放器页的全局缩放（含侧边抽屉与弹窗）。100% 为默认；也可在墙/播放器内用 Ctrl+滚轮 或 Alt+滚轮 直接调整。"
-      )
+      .setName(t("settings.zoom.name"))
+      .setDesc(t("settings.zoom.desc"))
       .addSlider((s) =>
         s
           .setLimits(ZOOM_MIN * 100, ZOOM_MAX * 100, ZOOM_STEP * 100)
@@ -195,12 +215,10 @@ export class MusicWallSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("SMTC 正在播放")
-      .setDesc(
-        "仅 Windows 桌面端：读取系统媒体会话（需在网易云设置里开启「开启SMTC」），播放器页可显示与控制正在播放的内容，音乐墙上命中唱片会高亮。关闭后不再轮询系统。"
-      )
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.smtcEnabled).onChange(async (v) => {
+      .setName(t("settings.smtc.name"))
+      .setDesc(t("settings.smtc.desc"))
+      .addToggle((te) =>
+        te.setValue(this.plugin.settings.smtcEnabled).onChange(async (v) => {
           this.plugin.settings.smtcEnabled = v;
           await this.plugin.saveSettings();
           this.plugin.refreshOpenViews();

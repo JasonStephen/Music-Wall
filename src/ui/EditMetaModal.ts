@@ -4,6 +4,7 @@ import { App, Modal, Notice } from "obsidian";
 import type { AlbumMeta } from "../types";
 
 import { applyModalTheme } from "./modalTheme";
+import { t } from "../i18n";
 
 export class EditMetaModal extends Modal {
   private meta: AlbumMeta;
@@ -21,7 +22,9 @@ export class EditMetaModal extends Modal {
     applyModalTheme(this.modalEl);
     const { contentEl } = this;
     contentEl.addClass("mw-edit-modal");
-    contentEl.createEl("h2", { text: `编辑元数据 · 专辑 ${this.meta.albumId}` });
+    contentEl.createEl("h2", {
+      text: t("editMeta.title", { id: this.meta.albumId }),
+    });
 
     const field = (label: string, key: keyof AlbumMeta, type = "text") => {
       const wrap = contentEl.createDiv({ cls: "mw-edit-field" });
@@ -34,14 +37,14 @@ export class EditMetaModal extends Modal {
       return input;
     };
 
-    field("专辑名", "name");
-    field("艺术家", "artist");
-    field("发行年份", "year");
-    field("唱片公司", "company");
-    field("封面 URL", "cover");
+    field(t("editMeta.name"), "name");
+    field(t("editMeta.artist"), "artist");
+    field(t("editMeta.year"), "year");
+    field(t("editMeta.company"), "company");
+    field(t("editMeta.cover"), "cover");
 
     const descWrap = contentEl.createDiv({ cls: "mw-edit-field" });
-    descWrap.createDiv({ cls: "mw-edit-label", text: "简介" });
+    descWrap.createDiv({ cls: "mw-edit-label", text: t("editMeta.desc") });
     const desc = descWrap.createEl("textarea", { cls: "mw-edit-textarea" });
     desc.value = this.meta.description ?? "";
     desc.addEventListener("input", () => {
@@ -49,7 +52,10 @@ export class EditMetaModal extends Modal {
     });
 
     const tagsWrap = contentEl.createDiv({ cls: "mw-edit-field" });
-    tagsWrap.createDiv({ cls: "mw-edit-label", text: "标签（逗号分隔）" });
+    tagsWrap.createDiv({
+      cls: "mw-edit-label",
+      text: t("editMeta.tags"),
+    });
     const tags = tagsWrap.createEl("input", { type: "text" });
     tags.value = (this.meta.tags ?? []).join(",");
     tags.addEventListener("input", () => {
@@ -60,14 +66,14 @@ export class EditMetaModal extends Modal {
     });
 
     const btns = contentEl.createDiv({ cls: "mw-edit-buttons" });
-    btns.createEl("button", { text: "取消" }).addEventListener("click", () =>
-      this.close()
-    );
     btns
-      .createEl("button", { text: "保存", cls: "mod-cta" })
+      .createEl("button", { text: t("common.cancel") })
+      .addEventListener("click", () => this.close());
+    btns
+      .createEl("button", { text: t("common.save"), cls: "mod-cta" })
       .addEventListener("click", () => {
         if (!this.meta.name?.trim()) {
-          new Notice("专辑名不能为空");
+          new Notice(t("editMeta.nameRequired"));
           return;
         }
         this.onSave(this.meta);

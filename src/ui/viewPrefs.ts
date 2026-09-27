@@ -7,12 +7,13 @@
 import type { DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
 import { sizedCover } from "../core/metadata";
+import { t } from "../i18n";
 
 /** 预览取图尺寸：瓷砖实际只有 ~120-180px，取 220 足够清晰又不浪费流量 */
 const PRESET_COVER_SIZE = 220;
 
 /** 预览用假条目：封面取「当前墙第一张」或内置渐变占位 */
-export function presetItem(cover: string, name = "样式预览"): WallItem {
+export function presetItem(cover: string, name?: string): WallItem {
   return {
     albumId: 0,
     source: "manual",
@@ -20,7 +21,7 @@ export function presetItem(cover: string, name = "样式预览"): WallItem {
     addedAt: new Date(0).toISOString(),
     meta: {
       albumId: 0,
-      name,
+      name: name ?? t("viewPrefs.presetName"),
       artist: "",
       cover,
       trackCount: 0,

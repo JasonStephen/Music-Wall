@@ -15,6 +15,7 @@
 // 所有「用 rect 差值去写样式」的地方都要除以缩放系数，见 zoom()`。
 
 import { ZOOM_STEP, clampZoom, type MusicWallSettings } from "../types";
+import { t } from "../i18n";
 
 export interface ZoomHost {
   settings: MusicWallSettings;
@@ -100,7 +101,7 @@ export function showZoomToast(host: HTMLElement, scale: number): void {
   if (!toast) {
     toast = host.createDiv({ cls: "mw-zoomtoast" });
   }
-  toast.setText(`缩放 ${Math.round(scale * 100)}%`);
+  toast.setText(t("zoom.toast", { value: Math.round(scale * 100) }));
   toast.addClass("is-visible");
   const el = toast;
   const prev = Number(el.dataset.timer ?? 0);

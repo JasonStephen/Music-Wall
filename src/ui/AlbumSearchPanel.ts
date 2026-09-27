@@ -8,6 +8,7 @@ import { Notice, setIcon } from "obsidian";
 import type { AlbumMeta, AlbumSummary } from "../types";
 import { parseAlbumInput, sizedCover } from "../core/metadata";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
+import { t } from "../i18n";
 
 export interface WallHost {
   searchAlbums(keyword: string, offset: number): Promise<AlbumSummary[]>;
@@ -43,7 +44,7 @@ export class AlbumSearchPanel {
     container.addClass("mw-search-panel");
     container.createEl("p", {
       cls: "mw-search-panel__hint",
-      text: "自动抓取完整元数据并锁定；也可直接粘贴专辑链接 / ID。",
+      text: t("search.hint"),
     });
 
     const bar = container.createDiv({ cls: "mw-search-panel__bar" });
@@ -51,7 +52,7 @@ export class AlbumSearchPanel {
     const input = field.createEl("input", {
       type: "text",
       cls: "mw-panel__input",
-      placeholder: "专辑名 / 歌手 / 链接 / ID",
+      placeholder: t("search.inputPh"),
     });
     this.inputEl = input;
     input.value = this.keyword;
@@ -61,8 +62,8 @@ export class AlbumSearchPanel {
     // 右端 × 清空（面板统一形态：不再用整宽「清空」按钮）
     const clear = field.createEl("button", { cls: "clickable-icon mw-panel__clearicon" });
     clear.setAttr("type", "button");
-    clear.setAttr("aria-label", "清空");
-    clear.setAttr("title", "清空");
+    clear.setAttr("aria-label", t("search.clear"));
+    clear.setAttr("title", t("search.clear"));
     setIcon(clear, "x");
     const syncClear = () => clear.toggleClass("is-hidden", !input.value.length);
     input.addEventListener("input", syncClear);
@@ -74,16 +75,19 @@ export class AlbumSearchPanel {
     });
     syncClear();
     bar
-      .createEl("button", { cls: "mw-btn mw-btn--primary", text: "搜索" })
+      .createEl("button", {
+        cls: "mw-btn mw-btn--primary",
+        text: t("search.btn"),
+      })
       .addEventListener("click", () => void this.doSearch());
     // 批量入口：搜索右侧的紧凑次按钮（与搜索同行同高，不独占一行）
     const batchBtn = bar.createEl("button", {
       cls: "mw-btn mw-search-panel__batch",
-      text: "批量",
+      text: t("search.batch"),
     });
     batchBtn.setAttr("type", "button");
-    batchBtn.setAttr("title", "批量添加（数字 ID，分号隔开）");
-    batchBtn.setAttr("aria-label", "批量添加（数字 ID，分号隔开）");
+    batchBtn.setAttr("title", t("search.batchTip"));
+    batchBtn.setAttr("aria-label", t("search.batchTip"));
     batchBtn.addEventListener("click", () => this.openBatch());
 
     this.statusEl = container.createDiv({ cls: "mw-search-panel__status" });
@@ -123,11 +127,11 @@ export class AlbumSearchPanel {
   /** 按 ID 直取专辑；返回是否走通（true=已提示/已弹确认框） */
   private async quickAddById(albumId: number): Promise<boolean> {
     if (this.host.getExistingIds().has(albumId)) {
-      new Notice("该专辑已在当前音乐墙中");
+      new Notice(t("search.alreadyAdded"));
       this.setStatus("");
       return true;
     }
-    this.setStatus("正在拉取专辑元数据…");
+    this.setStatus(t("search.fetching"));
     try {
       const meta = await this.host.fetchAlbumDetail(albumId);
       this.setStatus("");
@@ -137,7 +141,7 @@ export class AlbumSearchPanel {
       });
       return true;
     } catch (e: any) {
-      this.setStatus("获取失败：" + (e?.message ?? e));
+      this.setStatus(t("search.fetchFail", { error: e?.message ?? e }));
       return false;
     }
   }
@@ -149,7 +153,7 @@ export class AlbumSearchPanel {
   private async loadMore(): Promise<void> {
     if (this.loading || !this.keyword) return;
     this.loading = true;
-    this.setStatus("搜索中…");
+    this.setStatus(t("search.searching"));
     try {
       const batch = await this.host.searchAlbums(this.keyword, this.offset);
       this.results.push(...batch);
@@ -162,14 +166,16 @@ export class AlbumSearchPanel {
         const id = parseAlbumInput(this.keyword);
         if (id !== null) {
           if (!(await this.quickAddById(id))) {
-            this.setStatus("没有结果，换个关键词试试");
+            this.setStatus(t("search.noResults"));
           }
           return;
         }
       }
-      this.setStatus(this.results.length === 0 ? "没有结果，换个关键词试试" : "");
+      this.setStatus(
+        this.results.length === 0 ? t("search.noResults") : ""
+      );
     } catch (e: any) {
-      this.setStatus("搜索失败：" + (e?.message ?? e));
+      this.setStatus(t("search.searchFail", { error: e?.message ?? e }));
     } finally {
       this.loading = false;
     }
@@ -195,12 +201,16 @@ export class AlbumSearchPanel {
       info.createDiv({ cls: "mw-search-row__name", text: a.name });
       info.createDiv({
         cls: "mw-search-row__sub",
-        text: `${a.artist || "未知"} · ${a.year ?? ""} · ${a.trackCount} 曲`,
+        text: t("search.rowSub", {
+          artist: a.artist || t("search.unknown"),
+          year: a.year ?? "",
+          count: a.trackCount,
+        }),
       });
 
       const btn = row.createEl("button", {
         cls: "mw-search-row__add",
-        text: added ? "已添加" : "添加",
+        text: added ? t("search.added") : t("search.add"),
       });
       btn.disabled = added;
       btn.addEventListener("click", () => void this.onAddClick(a, btn));
@@ -208,16 +218,19 @@ export class AlbumSearchPanel {
       // 试听：未添加也能播，原理与播放一致，点即播
       const preview = row.createEl("button", {
         cls: "mw-search-row__preview",
-        text: "试听",
+        text: t("search.preview"),
       });
       preview.setAttr("type", "button");
-      preview.setAttr("title", "未添加也可试听，原理与播放一致");
+      preview.setAttr("title", t("search.previewTip"));
       preview.addEventListener("click", () => void this.onPreviewClick(a, preview));
     }
 
     if (this.hasMore && this.results.length) {
       list
-        .createEl("button", { cls: "mw-search-more", text: "加载更多" })
+        .createEl("button", {
+          cls: "mw-search-more",
+          text: t("search.loadMore"),
+        })
         .addEventListener("click", () => void this.loadMore());
     }
   }
@@ -225,17 +238,17 @@ export class AlbumSearchPanel {
   private async onPreviewClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
     const deps = this.host.getPlaybackDeps?.();
     if (!deps) {
-      new Notice("当前视图不支持试听");
+      new Notice(t("search.noPreview"));
       return;
     }
     btn.disabled = true;
     const old = btn.textContent;
-    btn.textContent = "拉取中…";
+    btn.textContent = t("search.pulling");
     try {
       const meta = await this.host.fetchAlbumDetail(summary.albumId);
       await playAlbum(meta, deps);
     } catch (e: any) {
-      new Notice("试听失败：" + (e?.message ?? e));
+      new Notice(t("search.previewFail", { error: e?.message ?? e }));
     } finally {
       btn.textContent = old;
       btn.disabled = false;
@@ -250,7 +263,7 @@ export class AlbumSearchPanel {
       this.batchOpener();
       return;
     }
-    new Notice("当前视图不支持批量添加");
+    new Notice(t("search.noBatch"));
   }
 
   /** 由宿主视图注入（MusicWallView.buildFloater），避免面板直接依赖 App */
@@ -258,7 +271,7 @@ export class AlbumSearchPanel {
 
   private async onAddClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
     btn.disabled = true;
-    btn.textContent = "拉取中…";
+    btn.textContent = t("search.pulling");
     try {
       const meta = await this.host.fetchAlbumDetail(summary.albumId);
       this.host.confirmAdd(meta, () => {
@@ -266,9 +279,9 @@ export class AlbumSearchPanel {
         this.markAdded(summary.albumId);
       });
     } catch (e: any) {
-      new Notice("获取专辑详情失败：" + (e?.message ?? e));
+      new Notice(t("search.detailFail", { error: e?.message ?? e }));
     } finally {
-      btn.textContent = "添加";
+      btn.textContent = t("search.add");
       btn.disabled = this.host.getExistingIds().has(summary.albumId);
     }
   }

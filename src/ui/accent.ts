@@ -10,6 +10,7 @@
 // 由调用方回退到主题强调色与「浅字 + 文字阴影」，保证不会出现「白底白字 / 黑底黑字」。
 
 import { requestUrl } from "obsidian";
+import { t } from "../i18n";
 
 /** 采样尺寸：24×24 足够看出主色与平均亮度，代价可忽略 */
 const SAMPLE = 24;
@@ -213,7 +214,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("封面解码失败"));
+    img.onerror = () => reject(new Error(t("accent.decodeFail")));
     img.src = src;
   });
 }

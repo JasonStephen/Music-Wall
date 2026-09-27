@@ -6,7 +6,6 @@
 import { FileView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
-  PLAYER_BG_LABELS,
   PLAYER_VIEW_TYPE,
   WALL_DRAG_MIME,
   clampZoom,
@@ -15,18 +14,18 @@ import {
   type PlayerBackground,
   type WallItem,
 } from "../types";
+import { playerBgLabel, styleLabel, t } from "../i18n";
 import { sizedCover } from "../core/metadata";
 import { playAlbum } from "../core/playback";
 import { matchNowPlaying, type NowPlayingMatch } from "../core/match";
 import { type NowPlayingState } from "../core/nowPlaying";
-import { STYLE_LABELS } from "./disc";
 import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
 import { coverTone, peekTone, onAccentFor } from "./accent";
 import { setModalTheme } from "./modalTheme";
-import { DEFAULT_COVER, DEFAULT_COVER_NAME } from "./defaultCover";
+import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -40,21 +39,7 @@ const ART_LIGHT_LUMA = 0.5;
 /** 播放器可选的设备外观：磁带机因无法达到交付要求已移除（音乐墙上的磁带样式不受影响） */
 const PLAYER_STYLES: DiscStyle[] = ["vinyl", "cd", "cover"];
 
-/** 各样式在播放器里对应的设备外观（芯片悬停提示） */
-const PLAYER_STYLE_TITLES: Record<DiscStyle, string> = {
-  vinyl: "唱片机外观",
-  cd: "CD 播放器外观",
-  cassette: "磁带机外观",
-  cover: "大封面外观",
-};
-
 /** 背景模式悬停提示 */
-const BG_TITLES: Record<PlayerBackground, string> = {
-  white: "纯白背景",
-  dark: "深色背景",
-  art: "跟随专辑封面动态取色",
-  wood: "木地板背景",
-};
 const ALL_BGS: PlayerBackground[] = ["white", "dark", "art", "wood"];
 
 function fmtClock(ms: number): string {
@@ -114,7 +99,9 @@ export class MusicPlayerView extends FileView {
     return PLAYER_VIEW_TYPE;
   }
   getDisplayText(): string {
-    return this.file ? `播放器 · ${this.file.basename}` : "音乐播放器";
+    return this.file
+      ? t("player.displayNameWith", { name: this.file.basename })
+      : t("player.displayName");
   }
   getIcon(): string {
     return "disc";
@@ -225,7 +212,7 @@ export class MusicPlayerView extends FileView {
     if (!srcPath || typeof albumId !== "number") return;
     const item = await this.plugin.resolveWallItem(srcPath, albumId);
     if (!item) {
-      new Notice("未能在来源音乐墙中找到这张唱片");
+      new Notice(t("player.noSource"));
       return;
     }
     this.playInPlayer(item.meta, srcPath);
@@ -360,7 +347,7 @@ export class MusicPlayerView extends FileView {
       // 移除 --mw-player-art 让 .mw-bg--art 落回深色基底，白字天然可读（第七轮）。
       if (tone.luma === null && !tone.accent) {
         root.style.removeProperty("--mw-player-art");
-        console.warn("[music-wall] 封面取色失败，封面背景回退深色基底：", key);
+        console.warn(t("player.accentFail"), key);
       }
     });
   }
@@ -392,12 +379,12 @@ export class MusicPlayerView extends FileView {
     const bar = root.createDiv({ cls: "mw-player__bar" });
     bar.createDiv({
       cls: "mw-player__title",
-      text: this.file?.basename ?? "音乐播放器",
+      text: this.file?.basename ?? t("player.displayName"),
     });
     const btn = bar.createEl("button", { cls: "clickable-icon mw-toolbtn" });
     btn.setAttr("type", "button");
-    btn.setAttr("aria-label", "样式与背景");
-    btn.setAttr("title", "样式与背景");
+    btn.setAttr("aria-label", t("player.styleBg"));
+    btn.setAttr("title", t("player.styleBg"));
     setIcon(btn, "palette");
     btn.addEventListener("click", () => this.drawer?.toggle("settings"));
     this.styleBtn = btn;
@@ -411,15 +398,18 @@ export class MusicPlayerView extends FileView {
       // 抽屉与上拉曲目面板互斥：都占右侧/底部，同时开会互相遮挡
       if (open) this.togglePlaylist(false);
     });
-    drawer.register("settings", "样式与背景", (panel) => {
+    drawer.register("settings", t("player.styleBg"), (panel) => {
       // 样式：与音乐墙上四种样式同一套缩略预览（无专辑时给默认封面，别再空砖）
       const cover = (this.displayAlbum()?.cover ?? "") || DEFAULT_COVER;
       const secStyle = panel.createDiv({ cls: "mw-panel__section" });
-      secStyle.createDiv({ cls: "mw-panel__label", text: "样式" });
+      secStyle.createDiv({
+        cls: "mw-panel__label",
+        text: t("player.style"),
+      });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
       for (const s of PLAYER_STYLES) {
         grid.appendChild(
-          buildStyleTile(s, STYLE_LABELS[s], cover, this.discStyle === s, (picked) => {
+          buildStyleTile(s, styleLabel(s), cover, this.discStyle === s, (picked) => {
             this.discStyle = picked;
             // 清空 albumKey 让 updateNow 立即重建设备与曲目列表
             this.albumKey = "";
@@ -434,15 +424,25 @@ export class MusicPlayerView extends FileView {
       }
       panel.createDiv({
         cls: "mw-panel__hint",
-        text: PLAYER_STYLE_TITLES[this.discStyle] + "（磁带机外观已移除）",
+        text: t("player.styleHint", {
+          text: t("player.styleTitle." + this.discStyle),
+        }),
       });
 
       const secBg = panel.createDiv({ cls: "mw-panel__section" });
-      secBg.createDiv({ cls: "mw-panel__label", text: "背景" });
+      secBg.createDiv({
+        cls: "mw-panel__label",
+        text: t("player.bg"),
+      });
       const bgs = secBg.createDiv({ cls: "mw-preset-grid" });
       for (const b of ALL_BGS) {
         bgs.appendChild(
-          buildBgTile(b, PLAYER_BG_LABELS[b], BG_TITLES[b], this.bg === b, (picked) => {
+          buildBgTile(
+            b,
+            playerBgLabel(b),
+            t("player.bgTip." + b),
+            this.bg === b,
+            (picked) => {
             const bg = picked as PlayerBackground;
             this.bg = bg;
             this.applyBackground();
@@ -469,14 +469,17 @@ export class MusicPlayerView extends FileView {
     this.el.artist = meta.createDiv({ cls: "mw-np__artist" });
     const line = meta.createDiv({ cls: "mw-np__line" });
     this.el.status = line.createSpan({ cls: "mw-np__status" });
-    this.el.jump = line.createEl("button", { cls: "mw-np__jump", text: "定位到墙上唱片" });
+    this.el.jump = line.createEl("button", {
+      cls: "mw-np__jump",
+      text: t("player.jump"),
+    });
     this.el.jump.addEventListener("click", () => void this.jumpToWall());
     this.el.source = meta.createDiv({ cls: "mw-np__source" });
 
     const controls = stack.createDiv({ cls: "mw-np__controls" });
     this.el.btnPrev = controls.createEl("button", { cls: "mw-np__ctrl", text: "" });
     setIcon(this.el.btnPrev, "skip-back");
-    this.el.btnPrev.title = "上一首";
+    this.el.btnPrev.title = t("player.prevTip");
     this.el.btnPrev.addEventListener("click", () => void this.control("prev"));
 
     this.el.btnToggle = controls.createEl("button", {
@@ -484,12 +487,12 @@ export class MusicPlayerView extends FileView {
       text: "",
     });
     setIcon(this.el.btnToggle, "play");
-    this.el.btnToggle.title = "播放/暂停";
+    this.el.btnToggle.title = t("player.toggleTip");
     this.el.btnToggle.addEventListener("click", () => void this.control("toggle"));
 
     this.el.btnNext = controls.createEl("button", { cls: "mw-np__ctrl", text: "" });
     setIcon(this.el.btnNext, "skip-forward");
-    this.el.btnNext.title = "下一首";
+    this.el.btnNext.title = t("player.nextTip");
     this.el.btnNext.addEventListener("click", () => void this.control("next"));
 
     this.el.btnPlaylist = controls.createEl("button", {
@@ -497,7 +500,7 @@ export class MusicPlayerView extends FileView {
       text: "",
     });
     setIcon(this.el.btnPlaylist, "list");
-    this.el.btnPlaylist.title = "曲目列表";
+    this.el.btnPlaylist.title = t("player.playlistTip");
     this.el.btnPlaylist.addEventListener("click", () =>
       this.togglePlaylist(!this.playlistOpen)
     );
@@ -514,14 +517,17 @@ export class MusicPlayerView extends FileView {
 
   private buildPlaylist(panel: HTMLElement): void {
     const head = panel.createDiv({ cls: "mw-player__playlist-head" });
-    this.el.tracksTitle = head.createSpan({ cls: "mw-player__playlist-title", text: "曲目" });
+    this.el.tracksTitle = head.createSpan({
+      cls: "mw-player__playlist-title",
+      text: t("player.tracks"),
+    });
     this.el.tracksNote = head.createSpan({
       cls: "mw-player__playlist-note",
-      text: "仅展示，播放顺序由客户端歌单决定",
+      text: t("player.tracksNote"),
     });
     const close = head.createEl("button", { cls: "mw-player__playlist-close" });
     setIcon(close, "chevron-down");
-    close.title = "收起";
+    close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
     this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
     this.updateTrackList();
@@ -536,12 +542,14 @@ export class MusicPlayerView extends FileView {
     const album = this.displayAlbum();
     const tracks = album?.tracks ?? [];
     if (this.el.tracksTitle) {
-      this.el.tracksTitle.textContent = album ? `曲目 · ${album.name}` : "曲目";
+      this.el.tracksTitle.textContent = album
+        ? t("player.tracksWithName", { name: album.name })
+        : t("player.tracks");
     }
     if (!tracks.length) {
       host.createDiv({
         cls: "mw-np__noTrack",
-        text: album ? "该专辑无曲目快照" : "尚未选择专辑",
+        text: album ? t("player.noTracks") : t("player.noAlbum"),
       });
       return;
     }
@@ -570,22 +578,22 @@ export class MusicPlayerView extends FileView {
 
     if (this.el.title) {
       this.el.title.textContent = this.now.active
-        ? this.now.title || "（未知曲目）"
+        ? this.now.title || t("player.unknownTrack")
         : album
           ? album.name
-          : "未在播放";
+          : t("player.notPlaying");
     }
     if (this.el.artist) {
       this.el.artist.textContent = this.now.active
-        ? this.now.artist || "未知艺术家"
+        ? this.now.artist || t("common.unknownArtist")
         : album
-          ? album.artist || "未知艺术家"
-          : "拖一张唱片进来开始";
+          ? album.artist || t("common.unknownArtist")
+          : t("player.dragHint");
     }
     if (this.el.status) this.el.status.textContent = this.statusText();
     if (this.el.source) {
       this.el.source.textContent = this.current
-        ? `来源墙：${this.current.srcPath}`
+        ? t("player.sourceWall", { path: this.current.srcPath })
         : "";
     }
     if (this.el.jump) this.el.jump.toggleClass("is-hidden", !this.match);
@@ -611,19 +619,19 @@ export class MusicPlayerView extends FileView {
   }
 
   private statusText(): string {
-    if (!this.now.supported) return "SMTC 不可用（仅 Windows 桌面端支持）";
+    if (!this.now.supported) return t("player.smtcOff");
     if (!this.now.active) {
-      return this.current ? "已向客户端发送播放指令" : "未检测到系统播放会话";
+      return this.current ? t("player.smtcSent") : t("player.smtcNone");
     }
     switch (this.now.status) {
       case "playing":
-        return "正在播放";
+        return t("player.stPlaying");
       case "paused":
-        return "已暂停";
+        return t("player.stPaused");
       case "stopped":
-        return "已停止";
+        return t("player.stStopped");
       default:
-        return "空闲";
+        return t("player.stIdle");
     }
   }
 
@@ -644,7 +652,7 @@ export class MusicPlayerView extends FileView {
       ? { ...album, cover: album.cover || DEFAULT_COVER }
       : {
           albumId: 0,
-          name: DEFAULT_COVER_NAME,
+          name: defaultCoverName(),
           artist: "",
           cover: DEFAULT_COVER,
           trackCount: 0,
@@ -693,11 +701,11 @@ export class MusicPlayerView extends FileView {
   private async control(action: "play" | "pause" | "toggle" | "next" | "prev"): Promise<void> {
     const np = this.plugin.nowPlaying;
     if (!np.supported) {
-      new Notice("当前平台不支持 SMTC 控制（仅 Windows 桌面端）");
+      new Notice(t("player.ctrlUnsupported"));
       return;
     }
     const ok = await np[action]();
-    if (!ok) new Notice("控制指令未被播放器接受");
+    if (!ok) new Notice(t("player.ctrlRejected"));
   }
 
   // ---- 跳转到所在墙 ----
@@ -707,7 +715,7 @@ export class MusicPlayerView extends FileView {
     if (!albumId) return;
     const found = await this.plugin.findAlbumWall(albumId);
     if (!found) {
-      new Notice("未在库中找到该专辑所在的音乐墙");
+      new Notice(t("player.jumpNotFound"));
       return;
     }
     await this.plugin.openWall(found.file);

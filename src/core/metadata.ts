@@ -3,6 +3,7 @@
 
 import { encryptLinux, encryptWeApi } from "./crypto";
 import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
+import { t } from "../i18n";
 
 export interface HttpRequest {
   url: string;
@@ -67,7 +68,7 @@ function parseJson(text: string): any {
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error("网易云返回了非 JSON 数据（可能触发风控），请稍后重试或配置 Cookie");
+    throw new Error(t("metaErr.notJson"));
   }
 }
 
@@ -115,7 +116,7 @@ export async function searchAlbums(
   const res = await request(req);
   const data = parseJson(res.text);
   if (data.code !== 200) {
-    throw new Error(`搜索失败（code=${data.code}）`);
+    throw new Error(t("metaErr.searchFail", { code: data.code }));
   }
   const albums: any[] = data?.result?.albums ?? [];
   return albums.map((a) => ({
@@ -140,7 +141,7 @@ export async function fetchAlbumDetail(
 ): Promise<AlbumMeta> {
   const data = await weapiPost(request, `/api/v1/album/${albumId}`, {}, cookie);
   if (data.code !== 200 || !data.album) {
-    throw new Error(`获取专辑详情失败（code=${data.code}）`);
+    throw new Error(t("metaErr.detailFail", { code: data.code }));
   }
   const album = data.album;
   const songs: any[] = data.songs ?? album.songs ?? [];

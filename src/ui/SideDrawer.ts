@@ -8,6 +8,7 @@
 // - Esc / 关闭钮收起；外部按钮的激活态由 onAfterChange 回调同步。
 
 import { setIcon } from "obsidian";
+import { t } from "../i18n";
 
 export type DrawerKey =
   | "style"
@@ -61,8 +62,8 @@ export class SideDrawer {
     const head = this.panel.createDiv({ cls: "mw-drawer__head" });
     this.titleEl = head.createDiv({ cls: "mw-drawer__title" });
     const closeBtn = head.createEl("button", { cls: "clickable-icon mw-drawer__close" });
-    closeBtn.setAttr("aria-label", "关闭面板");
-    closeBtn.setAttr("title", "关闭 (Esc)");
+    closeBtn.setAttr("aria-label", t("common.closePanel"));
+    closeBtn.setAttr("title", t("common.closeEsc"));
     setIcon(closeBtn, "x");
     closeBtn.addEventListener("click", () => this.close());
 

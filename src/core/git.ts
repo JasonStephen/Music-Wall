@@ -1,4 +1,6 @@
 // Git 导入：调用系统 git CLI（仅桌面端）。
+
+import { t } from "../i18n";
 // clone/pull 到插件缓存目录，扫描 .mw 文件供用户选择导入（覆盖前由调用方弹确认框）。
 
 export interface GitWallFile {
@@ -67,7 +69,7 @@ export async function syncRepo(
   branch?: string
 ): Promise<void> {
   const n = requireNode();
-  if (!n) throw new Error("当前环境无法调用系统 git（移动端不支持 Git 导入）");
+  if (!n) throw new Error(t("main.git.noNode"));
   const { fs, path, cp } = n;
   const gitDir = path.join(cacheDir, ".git");
   if (fs.existsSync(gitDir)) {
@@ -92,7 +94,7 @@ export async function listWallFiles(
   subdir?: string
 ): Promise<GitWallFile[]> {
   const n = requireNode();
-  if (!n) throw new Error("无法访问文件系统");
+  if (!n) throw new Error(t("main.git.noFs"));
   const { fs, path } = n;
   const root = subdir ? path.join(cacheDir, subdir) : cacheDir;
   const out: GitWallFile[] = [];

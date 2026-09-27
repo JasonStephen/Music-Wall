@@ -10,13 +10,7 @@ export interface DiscOptions {
   coverSize?: number;
 }
 
-export const STYLE_LABELS: Record<DiscStyle, string> = {
-  vinyl: "黑胶",
-  cd: "CD",
-  cassette: "磁带",
-  cover: "封面",
-};
-
+/** 四种唱片样式列表（顺序=预设瓷砖展示顺序） */
 export const ALL_STYLES: DiscStyle[] = ["vinyl", "cd", "cassette", "cover"];
 
 function makeImg(src: string, alt: string): HTMLImageElement {

@@ -10,6 +10,7 @@ import { playAlbum, type PlaybackDeps } from "../core/playback";
 import { applyModalTheme } from "./modalTheme";
 import { buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating";
 import { RatingModal } from "./RatingModal";
+import { t } from "../i18n";
 
 export interface PanelOptions {
   meta: AlbumMeta;
@@ -46,7 +47,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
   right.createDiv({ cls: "mw-panel__title", text: opts.meta.name });
   right.createDiv({
     cls: "mw-panel__artist",
-    text: opts.meta.artist || "未知艺术家",
+    text: opts.meta.artist || t("common.unknownArtist"),
   });
 
   const meta = right.createDiv({ cls: "mw-panel__meta" });
@@ -64,10 +65,12 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
     rateRow.appendChild(stars);
     const rateBtn = rateRow.createEl("button", {
       cls: "mw-rate-row__btn",
-      text: normalizeRating(opts.rating) ? "改评分" : "评分",
+      text: normalizeRating(opts.rating)
+        ? t("panel.changeRate")
+        : t("panel.rate"),
     });
     rateBtn.setAttr("type", "button");
-    rateBtn.setAttr("title", "打开评分框（悬停预览，点击保存，可清除）");
+    rateBtn.setAttr("title", t("panel.rateTip"));
     rateBtn.addEventListener("click", () => {
       new RatingModal(hostApp, {
         albumName: opts.meta.name,
@@ -76,36 +79,39 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
           opts.onRate?.(r);
           const next = normalizeRating(r);
           paintStarsDisplay(stars, next);
-          rateBtn.setText(next ? "改评分" : "评分");
+          rateBtn.setText(next ? t("panel.changeRate") : t("panel.rate"));
           opts.rating = next;
         },
       }).open();
     });
   }
-  row("发行", opts.meta.year);
-  row("曲目数", opts.meta.trackCount);
+  row(t("panel.release"), opts.meta.year);
+  row(t("panel.trackCount"), opts.meta.trackCount);
   // 总时长：档位化展示（分钟/小时），悬停给"总分钟:秒"
   const totalDur = sumTrackDur(opts.meta.tracks);
   if (totalDur > 0) {
     const r = meta.createDiv({ cls: "mw-panel__row" });
-    r.createSpan({ cls: "mw-panel__k", text: "总时长" });
+    r.createSpan({ cls: "mw-panel__k", text: t("panel.totalDur") });
     r.createSpan({
       cls: "mw-panel__v mw-panel__v--dur",
       text: fmtTotalDur(totalDur),
       title: fmtTotalDurTip(totalDur),
     });
   }
-  row("唱片公司", opts.meta.company);
+  row(t("panel.company"), opts.meta.company);
 
   if (opts.meta.description) {
     const desc = right.createDiv({ cls: "mw-panel__desc" });
-    desc.createDiv({ cls: "mw-panel__desc-title", text: "简介" });
+    desc.createDiv({ cls: "mw-panel__desc-title", text: t("panel.desc") });
     desc.createDiv({ cls: "mw-panel__desc-body", text: opts.meta.description });
   }
 
   if (opts.meta.tracks?.length) {
     const trackWrap = right.createDiv({ cls: "mw-panel__tracks" });
-    trackWrap.createDiv({ cls: "mw-panel__tracks-title", text: "曲目" });
+    trackWrap.createDiv({
+      cls: "mw-panel__tracks-title",
+      text: t("panel.tracks"),
+    });
     const list = trackWrap.createEl("ol");
     list.addClass("mw-panel__track-list");
     for (const t of opts.meta.tracks) {
@@ -163,7 +169,7 @@ export class AlbumPanelModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("mw-album-modal");
     contentEl.createEl("h2", {
-      text: this.mode === "play" ? "播放确认" : "添加到音乐墙",
+      text: this.mode === "play" ? t("panel.playTitle") : t("panel.addTitle"),
       cls: "mw-album-modal__heading",
     });
 
@@ -185,20 +191,20 @@ export class AlbumPanelModal extends Modal {
     });
 
     const btns = contentEl.createDiv({ cls: "mw-album-modal__buttons" });
-    const cancel = btns.createEl("button", { text: "取消" });
+    const cancel = btns.createEl("button", { text: t("common.cancel") });
     cancel.addEventListener("click", () => this.close());
 
     // 试听：未添加也能播（add 模式下点即播，不关闭弹窗、不触发添加）
     if (this.mode === "add") {
-      const preview = btns.createEl("button", { text: "▶ 试听" });
-      preview.setAttr("title", "未添加也可试听，原理与播放一致");
+      const preview = btns.createEl("button", { text: t("panel.preview") });
+      preview.setAttr("title", t("panel.previewTip"));
       preview.addEventListener("click", () => {
         void playAlbum(this.meta, this.deps);
       });
     }
 
     const primary = btns.createEl("button", {
-      text: this.mode === "play" ? "▶ 播放" : "确认添加",
+      text: this.mode === "play" ? t("panel.play") : t("panel.confirmAdd"),
       cls: "mod-cta",
     });
     primary.addEventListener("click", async () => {

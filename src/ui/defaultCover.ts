@@ -9,7 +9,12 @@
 // 视觉：黑胶纹理底（同心纹 + 中央标签）+ 白色音符（lucide "music" 轮廓），
 // 与唱片的既成语言一致，不用额外配色 influenced 主题。
 
-export const DEFAULT_COVER_NAME = "未匹配专辑";
+import { t } from "../i18n";
+
+/** 默认封面唱片名（运行时取当前语言） */
+export function defaultCoverName(): string {
+  return t("defaultCover.name");
+}
 
 const SVG = [
   "<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'>",
