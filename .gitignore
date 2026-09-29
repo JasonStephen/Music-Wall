@@ -33,3 +33,6 @@ tools/shots/
 Thumbs.db
 .vscode/
 .idea/
+
+# docs/：现场决策/计划/验收档案（个人工作笔记，不对外）
+docs/
