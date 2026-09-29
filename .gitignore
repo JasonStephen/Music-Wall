@@ -20,6 +20,9 @@ tools/_e2e_*.txt
 # 截图布景输出（tools/shot.ps1 可再生）
 tools/shots/
 
+# 本机部署目标（个人路径，勿入库）
+.deploy.local.json
+
 # 临时/缓存
 .obsidian-git-cache/
 .mw-git-tmp/
