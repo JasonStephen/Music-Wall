@@ -3,7 +3,7 @@
   "name": "Music Wall",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "网易云音乐专辑唱片墙。黑胶/CD/磁带/封面四样式，搜索导入、筛选排序、唤起客户端播放，数据以 .mw 文件存于本地库、可 Git 共享。",
+  "description": "网易云专辑唱片墙：黑胶/CD/磁带/封面四样式，收藏整理、评分筛选、展示架与播放器页，唤起网易云播放。 NetEase album wall for Obsidian — collect albums as vinyl/CD/cassette/cover records, rate & sort, shelf & player views, play via the NetEase app. Files stay local (.mw).",
   "author": "Jason",
   "authorUrl": "",
   "isDesktopOnly": false
