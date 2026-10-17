@@ -4,7 +4,7 @@ const path = require('node:path');
 const { buildSync } = require('esbuild');
 const built = buildSync({
   stdin: { contents: `export * from './src/core/internalPlayer'; export * from './src/core/audioSource';
-    export * from './src/core/playback'; export * from './src/core/match';`, resolveDir: path.resolve(__dirname, '..'), loader: 'ts' },
+    export * from './src/core/playback'; export * from './src/core/match'; export * from './src/core/quality';`, resolveDir: path.resolve(__dirname, '..'), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['obsidian'],
 });
 const loaded = { exports: {} };
@@ -158,11 +158,57 @@ async function main() {
     const paths = [];
     const source = await api.fetchSongSource(async (req) => {
       paths.push(req.url);
-      return response({ code: 200, data: [{ id: 11, url: paths.length === 1 ? null : 'http://m1.music.126.net/test.mp3', freeTrialInfo: { start: 0, end: 30 } }] });
+      return response({ code: 200, data: [{ id: 11, url: paths.length <= 5 ? null : 'http://m1.music.126.net/test.mp3', freeTrialInfo: { start: 0, end: 30 } }] });
     },11,'MUSIC_U=test');
-    assert.equal(paths.length,2); assert.ok(paths.every((url) => url.includes('/song/enhance/player/url')));
+    assert.equal(paths.length,6); assert.ok(paths.every((url) => url.includes('/song/enhance/player/url')));
     assert.match(source.url,/^https:/); assert.equal(source.trial,true);
     await assert.rejects(api.fetchSongSource(async () => response({code:200,data:[]}),11,''),api.TrackUnavailableError);
+  });
+  await test('Quality menus deduplicate actual server levels and Hi-Res falls back to lossless', async () => {
+    let calls = 0;
+    const result = await api.fetchSongSource(async () => {
+      const level = ['standard','higher','exhigh','lossless','lossless'][calls++];
+      return response({code:200,data:[{id:11,url:'https://example.test/'+level,level,type:level === 'lossless'?'flac':'mp3'}]});
+    },11,'test','hires');
+    assert.equal(result.quality,'lossless'); assert.equal(result.mime,'audio/flac');
+    assert.deepEqual(result.availableQualities,['standard','higher','exhigh','lossless']);
+  });
+  await test('An account limited to MP3 exposes no lossless or Hi-Res and never exceeds the preference', async () => {
+    const source = await api.fetchSongSource(async()=>response({code:200,data:[{id:11,url:'https://example.test/a',level:'exhigh',type:'mp3'}]}),11,'','hires');
+    assert.equal(source.quality,'exhigh'); assert.deepEqual(source.availableQualities,['exhigh']);
+    let calls=0;
+    const lower = await api.fetchSongSource(async()=>{
+      const level=['standard','higher','exhigh','lossless','hires'][calls++];
+      return response({code:200,data:[{id:11,url:'https://example.test/a',level,type:'mp3'}]});
+    },11,'','higher');
+    assert.equal(lower.quality,'higher');
+  });
+  await test('Cached quality discovery is credential scoped, supports switching, and clears on logout', async () => {
+    let calls=0;
+    const resolver=new api.SongSourceResolver(async()=>{
+      const level=['standard','higher','exhigh','lossless','hires'][calls++ % 5];
+      return response({code:200,data:[{id:11,url:'https://example.test/a',level}]});
+    });
+    await resolver.resolve(11,'account1','standard'); await resolver.resolve(11,'account1','hires');
+    assert.equal(calls,5);
+    await resolver.resolve(11,'account2','hires'); assert.equal(calls,10);
+    resolver.clear(); await resolver.resolve(11,'account2','standard'); assert.equal(calls,15);
+  });
+  await test('Switching quality keeps pause, position, volume and queue; next track uses session preference', async () => {
+    const requested=[];
+    const {instance,audios}=player({ defaultQuality:()=> 'hires', resolve:async(id,quality)=>{
+      requested.push([id,quality]);
+      return {url:'https://example.test/a',trial:false,quality:quality==='hires'?'exhigh':quality,availableQualities:['standard','higher','exhigh']};
+    }});
+    await instance.playAlbum(album()); assert.deepEqual(requested[0],[11,'hires']);
+    await instance.seek(45000); await instance.pause(); instance.setVolume(.3);
+    assert.equal(await instance.setQuality('hires'),false);
+    assert.equal(await instance.setQuality('higher'),true);
+    audios[1].dispatchEvent(new Event('loadedmetadata'));
+    assert.equal(instance.state.status,'paused'); assert.equal(instance.state.positionMs,45000);
+    assert.equal(instance.volume,.3); assert.equal(instance.index,0);
+    await instance.next(); assert.deepEqual(requested.at(-1),[12,'higher']);
+    instance.stop(); await instance.playAlbum(album()); assert.deepEqual(requested.at(-1),[11,'hires']); instance.stop();
   });
   console.log(`\n${passed} internal playback checks passed`);
 }

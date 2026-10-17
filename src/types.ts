@@ -1,5 +1,6 @@
 // 音乐墙插件的核心类型契约。
 // .mw 文件即为本模块 MusicWallData 的 JSON 序列化。
+import type { AudioQuality } from "./core/quality";
 
 /** 唱片视觉样式 */
 export type DiscStyle = "vinyl" | "cd" | "cassette" | "cover";
@@ -149,6 +150,7 @@ export interface MusicWallSettings {
   playbackPlaylistId: string;
   /** 插件内播放不使用账号歌单；client 保留原官方客户端播放路径。 */
   playbackMode: "internal" | "client";
+  defaultAudioQuality: AudioQuality;
   /** 是否已提示过移动端限制 */
   mobileNoticeShown: boolean;
   /** 展示架布局下文字显示档位 */
@@ -176,6 +178,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   neteaseNickname: "",
   playbackPlaylistId: "",
   playbackMode: "internal",
+  defaultAudioQuality: "standard",
   mobileNoticeShown: false,
   shelfCaption: "pull",
   smtcEnabled: true,

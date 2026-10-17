@@ -36,7 +36,7 @@ function wave(): Blob {
       // A JSON transport avoids OS download managers intercepting a test media URL.
       const data = await (await fetch("/probe-audio.json")).json();
       const bytes = Uint8Array.from(atob(data.audio), (letter) => letter.charCodeAt(0));
-      return new Blob([bytes], { type: "audio/mpeg" });
+      return new Blob([bytes], { type: data.mime ?? "audio/mpeg" });
     },
     notice: (message) => notices.push(message),
   });

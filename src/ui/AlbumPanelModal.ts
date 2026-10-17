@@ -2,7 +2,7 @@
 // 播放确认（mode=play）与搜索添加确认（mode=add）复用同一组件，
 // 底部按钮与回调按模式切换（计划书 §变更B.2）。
 
-import { App, Modal } from "obsidian";
+import { App, Modal, setIcon } from "obsidian";
 import type { AlbumMeta, DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
@@ -196,7 +196,9 @@ export class AlbumPanelModal extends Modal {
 
     // 试听：未添加也能播（add 模式下点即播，不关闭弹窗、不触发添加）
     if (this.mode === "add") {
-      const preview = btns.createEl("button", { text: t("panel.preview") });
+      const preview = btns.createEl("button", { cls: "mw-button-icon" });
+      setIcon(preview.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "play");
+      preview.createSpan({ text: t("panel.preview") });
       preview.setAttr("title", t("panel.previewTip"));
       preview.addEventListener("click", () => {
         void playAlbum(this.meta, this.deps);
@@ -204,9 +206,13 @@ export class AlbumPanelModal extends Modal {
     }
 
     const primary = btns.createEl("button", {
-      text: this.mode === "play" ? t("panel.play") : t("panel.confirmAdd"),
       cls: "mod-cta",
     });
+    if (this.mode === "play") {
+      primary.addClass("mw-button-icon");
+      setIcon(primary.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "play");
+    }
+    primary.createSpan({ text: this.mode === "play" ? t("panel.play") : t("panel.confirmAdd") });
     primary.addEventListener("click", async () => {
       if (this.mode === "play") {
         this.close();

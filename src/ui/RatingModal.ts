@@ -91,10 +91,6 @@ export class RatingModal extends Modal {
     });
     paintSaved();
 
-    contentEl.createDiv({
-      cls: "mw-rating-modal__hint",
-      text: t("rating.hint"),
-    });
 
     const btns = contentEl.createDiv({ cls: "mw-rating-modal__buttons" });
     const clear = btns.createEl("button", { text: t("rating.clear") });

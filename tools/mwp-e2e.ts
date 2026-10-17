@@ -604,7 +604,7 @@ const coverSvg = (label: string): string =>
       "曲目面板与抽屉互斥"
     );
 
-    // ---- 第七轮问题 1：曲目面板展开时点其他地方**不收起**（scrim 只做视觉） ----
+    // Clicking outside now closes the track list; the scrim remains visual only.
     {
       const scrim = view.contentEl.querySelector<HTMLElement>(".mw-player__scrim")!;
       check(
@@ -621,11 +621,11 @@ const coverSvg = (label: string): string =>
         "面板外区域可命中（不被遮罩截获）",
         String(hitTarget?.className ?? hitTarget?.tagName ?? "null")
       );
-      (hitTarget as HTMLElement)?.click();
+      (hitTarget as HTMLElement)?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       await wait(200);
       check(
-        !!view.contentEl.querySelector(".mw-player__playlist.is-open"),
-        "点其他地方不收起曲目面板",
+        !view.contentEl.querySelector(".mw-player__playlist.is-open"),
+        "点击空白区域收起曲目面板",
         !!view.contentEl.querySelector(".mw-player__playlist.is-open")
       );
     }

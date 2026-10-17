@@ -26,6 +26,9 @@ import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
 import { coverTone, peekTone, onAccentFor } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
+import { qualityLabel, type AudioQuality } from "../core/quality";
+import { decorateRange, paintRange } from "./range";
+import { watchHostInset } from "./hostInset";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -50,6 +53,7 @@ function fmtClock(ms: number): string {
 }
 
 export class MusicPlayerView extends FileView {
+  allowNoFile = true;
   private plugin: MusicWallPlugin;
   /** 最近一次拖入 / 加入的专辑（运行时，不落盘） */
   private current: { meta: AlbumMeta; srcPath: string } | null = null;
@@ -64,6 +68,10 @@ export class MusicPlayerView extends FileView {
   private bg: PlayerBackground = "dark";
   /** 上拉曲目面板是否展开 */
   private playlistOpen = false;
+  private popover: "volume" | "quality" | null = null;
+  private qualityKey = "";
+  private volumeIcon = "";
+  private stopHostInset: (() => void) | null = null;
 
   private shell: HTMLElement | null = null;
   private el: Record<string, HTMLElement> = {};
@@ -135,7 +143,17 @@ export class MusicPlayerView extends FileView {
       { passive: false, capture: true }
     );
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Escape" && this.popover) {
+        const button = this.el[this.popover === "volume" ? "btnVolume" : "btnQuality"];
+        this.togglePopover(null); button?.focus();
+      }
       if (e.key === "Escape" && this.playlistOpen) this.togglePlaylist(false);
+    });
+    this.registerDomEvent(this.contentEl, "pointerdown", (event: PointerEvent) => {
+      const target = event.target as Element;
+      if (!target.closest(".mw-np__popover-anchor")) this.togglePopover(null);
+      if (!target.closest(".mw-player__playlist, .mw-np__ctrl--list")) this.togglePlaylist(false);
+      if (!target.closest(".mw-drawer, .mw-toolbtn")) this.drawer?.close();
     });
     this.registerDomEvent(this.contentEl, "dragover", (e) => this.onDragOver(e));
     this.registerDomEvent(this.contentEl, "dragleave", (e) => {
@@ -145,9 +163,11 @@ export class MusicPlayerView extends FileView {
     await this.render();
     // 窗格尺寸跟随：window.resize 覆盖不到「拖分隔条 / 分屏 / 收展侧边栏」
     this.watchPaneSize();
+    this.stopHostInset = watchHostInset(this.contentEl);
   }
 
   async onClose(): Promise<void> {
+    this.stopHostInset?.(); this.stopHostInset = null;
     if (this.offNow) {
       this.offNow();
       this.offNow = null;
@@ -163,6 +183,7 @@ export class MusicPlayerView extends FileView {
     this.albumKey = "";
     this.iconPaused = null;
     this.playlistOpen = false;
+    this.popover = null;
     disposeZoomBox(this.contentEl);
   }
 
@@ -257,6 +278,7 @@ export class MusicPlayerView extends FileView {
     setModalTheme("default");
     this.el = {};
     this.trackRows = [];
+    this.popover = null; this.qualityKey = ""; this.volumeIcon = "";
     this.albumKey = "";
     this.iconPaused = null;
     await this.refreshMatch();
@@ -273,8 +295,7 @@ export class MusicPlayerView extends FileView {
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
 
     // 上拉曲目面板 + 遮罩：内置播放可选择曲目；客户端模式保留原只读列表。
-    // 第七轮起遮罩**只做视觉**（pointer-events:none，见 player.css）：
-    // 点其他地方不再收起面板——面板只能经 收起钮 / 曲目列表钮 / Esc 关闭。
+    // 遮罩只做视觉，不拦截点击；点击列表外区域、收起钮、列表钮或 Esc 均可关闭。
     this.el.scrim = box.createDiv({ cls: "mw-player__scrim" });
     this.el.panel = box.createDiv({ cls: "mw-player__playlist" });
     this.buildPlaylist(this.el.panel);
@@ -397,7 +418,7 @@ export class MusicPlayerView extends FileView {
       const open = !!this.drawer?.isOpen();
       this.styleBtn?.toggleClass("is-active", open);
       // 抽屉与上拉曲目面板互斥：都占右侧/底部，同时开会互相遮挡
-      if (open) this.togglePlaylist(false);
+      if (open) { this.togglePlaylist(false); this.togglePopover(null); }
     });
     drawer.register("settings", t("player.styleBg"), (panel) => {
       // 样式：与音乐墙上四种样式同一套缩略预览（无专辑时给默认封面，别再空砖）
@@ -423,12 +444,6 @@ export class MusicPlayerView extends FileView {
           })
         );
       }
-      panel.createDiv({
-        cls: "mw-panel__hint",
-        text: t("player.styleHint", {
-          text: t("player.styleTitle." + this.discStyle),
-        }),
-      });
 
       const secBg = panel.createDiv({ cls: "mw-panel__section" });
       secBg.createDiv({
@@ -475,23 +490,21 @@ export class MusicPlayerView extends FileView {
       text: t("player.jump"),
     });
     this.el.jump.addEventListener("click", () => void this.jumpToWall());
-    this.el.source = meta.createDiv({ cls: "mw-np__source" });
 
     const timeline = stack.createDiv({ cls: "mw-np__timeline is-hidden" });
     this.el.timeline = timeline;
     this.el.elapsed = timeline.createSpan({ text: "0:00" });
-    const seek = timeline.createEl("input", { attr: { type: "range", min: "0", max: "1", step: "0.1", "aria-label": t("internal.seek") } });
+    const seek = timeline.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.1", "aria-label": t("internal.seek") } });
     this.el.seek = seek;
-    seek.addEventListener("change", () => void this.plugin.nowPlaying.seek(Number(seek.value) * 1000));
+    decorateRange(seek);
+    seek.addEventListener("pointerdown", () => { seek.dataset.dragging = "true"; });
+    seek.addEventListener("input", () => { paintRange(seek); this.el.elapsed?.setText(fmtClock(Number(seek.value) * 1000)); });
+    seek.addEventListener("change", () => {
+      seek.dataset.dragging = "false";
+      void this.plugin.nowPlaying.seek(Number(seek.value) * 1000);
+    });
+    for (const event of ["pointerup", "pointercancel", "blur"]) seek.addEventListener(event, () => { seek.dataset.dragging = "false"; });
     this.el.duration = timeline.createSpan({ text: "0:00" });
-
-    const volumeRow = stack.createDiv({ cls: "mw-np__volume is-hidden" });
-    this.el.volumeRow = volumeRow;
-    volumeRow.createSpan({ text: t("internal.volume") });
-    const volume = volumeRow.createEl("input", { attr: { type: "range", min: "0", max: "1", step: "0.05", "aria-label": t("internal.volume") } });
-    volume.value = String(this.plugin.internalPlayer?.volume ?? 1);
-    this.el.volume = volume;
-    volume.addEventListener("input", () => this.plugin.internalPlayer?.setVolume(Number(volume.value)));
 
     const controls = stack.createDiv({ cls: "mw-np__controls" });
     this.el.btnPrev = controls.createEl("button", { cls: "mw-np__ctrl", text: "" });
@@ -521,15 +534,84 @@ export class MusicPlayerView extends FileView {
     this.el.btnPlaylist.addEventListener("click", () =>
       this.togglePlaylist(!this.playlistOpen)
     );
+    this.el.btnPlaylist.setAttr("aria-label", t("player.playlistTip"));
+    this.el.btnPlaylist.setAttr("aria-expanded", "false");
+
+    const volumeAnchor = controls.createDiv({ cls: "mw-np__popover-anchor is-hidden" });
+    this.el.volumeAnchor = volumeAnchor;
+    const volumeButton = volumeAnchor.createEl("button", { cls: "mw-np__ctrl", attr: {
+      "aria-label": t("internal.volume"), "aria-expanded": "false", title: t("internal.volume"),
+    } });
+    this.el.btnVolume = volumeButton;
+    setIcon(volumeButton, "volume-2");
+    volumeButton.addEventListener("click", () => this.togglePopover(this.popover === "volume" ? null : "volume"));
+    const volumePanel = volumeAnchor.createDiv({ cls: "mw-np__popover mw-np__volume-panel is-hidden", attr: { role: "group", "aria-label": t("internal.volume") } });
+    this.el.volumePanel = volumePanel;
+    const volume = volumePanel.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
+    this.el.volume = volume;
+    decorateRange(volume, true);
+    volume.addEventListener("input", () => this.plugin.internalPlayer?.setVolume(Number(volume.value)));
+
+    const qualityAnchor = stack.createDiv({ cls: "mw-np__popover-anchor mw-np__quality is-hidden" });
+    this.el.qualityAnchor = qualityAnchor;
+    const qualityButton = qualityAnchor.createEl("button", { cls: "mw-np__quality-button", attr: {
+      "aria-label": t("quality.choose"), "aria-expanded": "false", "aria-haspopup": "true",
+    } });
+    this.el.btnQuality = qualityButton;
+    this.el.qualityLabel = qualityButton.createSpan();
+    setIcon(qualityButton.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "chevron-down");
+    qualityButton.addEventListener("click", () => this.togglePopover(this.popover === "quality" ? null : "quality"));
+    this.el.qualityPanel = qualityAnchor.createDiv({ cls: "mw-np__popover mw-np__quality-panel is-hidden", attr: { role: "group", "aria-label": t("quality.choose") } });
+  }
+
+  private togglePopover(next: "volume" | "quality" | null): void {
+    this.popover = next;
+    if (next) { this.togglePlaylist(false); this.drawer?.close(); }
+    for (const name of ["volume", "quality"] as const) {
+      const open = next === name;
+      this.el[`${name}Panel`]?.toggleClass("is-hidden", !open);
+      const button = this.el[name === "volume" ? "btnVolume" : "btnQuality"];
+      button?.setAttr("aria-expanded", String(open)); button?.toggleClass("is-active", open);
+    }
+  }
+
+  private updateQuality(): void {
+    const player = this.plugin.internalPlayer;
+    if (!player || !this.el.qualityPanel) return;
+    this.el.qualityLabel?.setText(player.quality ? qualityLabel(player.quality) : "…");
+    this.el.btnQuality?.setAttr("title", player.quality ? t("quality.actual", { quality: qualityLabel(player.quality) }) : t("quality.loading"));
+    const key = `${player.availableQualities.join()}|${player.quality}|${player.preferredQuality}|${player.loading}`;
+    if (key === this.qualityKey) return;
+    this.qualityKey = key;
+    const panel = this.el.qualityPanel; panel.empty();
+    for (const quality of [...player.availableQualities].reverse()) {
+      const button = panel.createEl("button", { cls: "mw-np__quality-option", attr: { "aria-pressed": String(player.quality === quality) } });
+      button.createSpan({ text: qualityLabel(quality) });
+      if (player.quality === quality) setIcon(button.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "check");
+      button.dataset.quality = quality;
+      button.disabled = player.loading;
+      button.addEventListener("click", () => void this.changeQuality(quality));
+    }
+    if (!player.availableQualities.length) panel.createSpan({ text: "…", attr: { "aria-label": t("quality.loading") } });
+  }
+
+  private async changeQuality(quality: AudioQuality): Promise<void> {
+    const player = this.plugin.internalPlayer;
+    const songId = player.state.songId;
+    this.togglePopover(null);
+    if (!(await this.plugin.ensureNeteaseLogin())) return;
+    if (player.state.songId !== songId) return;
+    await player.setQuality(quality);
   }
 
   /** 上拉面板的开关（面板覆盖在 page 之上，点遮罩/Esc 收起） */
   private togglePlaylist(open: boolean): void {
     this.playlistOpen = open;
-    if (open) this.drawer?.close();
+    if (open) { this.drawer?.close(); this.togglePopover(null); }
     this.el.panel?.toggleClass("is-open", open);
     this.el.scrim?.toggleClass("is-open", open);
     this.el.btnPlaylist?.toggleClass("is-active", open);
+    this.el.btnPlaylist?.setAttr("aria-expanded", String(open));
   }
 
   private buildPlaylist(panel: HTMLElement): void {
@@ -537,10 +619,6 @@ export class MusicPlayerView extends FileView {
     this.el.tracksTitle = head.createSpan({
       cls: "mw-player__playlist-title",
       text: t("player.tracks"),
-    });
-    this.el.tracksNote = head.createSpan({
-      cls: "mw-player__playlist-note",
-      text: t("player.tracksNote"),
     });
     const close = head.createEl("button", { cls: "mw-player__playlist-close" });
     setIcon(close, "chevron-down");
@@ -559,7 +637,6 @@ export class MusicPlayerView extends FileView {
     const album = this.displayAlbum();
     const tracks = album?.tracks ?? [];
     const internal = this.plugin.settings.playbackMode === "internal";
-    this.el.tracksNote?.setText(t(internal ? "internal.tracksNote" : "player.tracksNote"));
     if (this.el.tracksTitle) {
       this.el.tracksTitle.textContent = album
         ? t("player.tracksWithName", { name: album.name })
@@ -620,14 +697,9 @@ export class MusicPlayerView extends FileView {
           : t("player.dragHint");
     }
     if (this.el.status) this.el.status.textContent = this.statusText();
-    if (this.el.source) {
-      this.el.source.textContent = this.current
-        ? t("player.sourceWall", { path: this.current.srcPath })
-        : "";
-    }
     if (this.el.jump) this.el.jump.toggleClass("is-hidden", !this.match);
 
-    const paused = this.now.status !== "playing";
+    const paused = this.now.status !== "playing" && !(this.now.source === "internal" && this.plugin.internalPlayer?.loading && this.plugin.internalPlayer.playingRequested);
     this.el.discWrap?.toggleClass("is-paused", paused);
 
     // 设备显示屏：当前曲目号（不显示时间）
@@ -646,17 +718,27 @@ export class MusicPlayerView extends FileView {
 
     const internal = this.now.source === "internal" && this.now.active;
     this.el.timeline?.toggleClass("is-hidden", !internal);
-    this.el.volumeRow?.toggleClass("is-hidden", !internal);
+    this.el.volumeAnchor?.toggleClass("is-hidden", !internal);
+    this.el.qualityAnchor?.toggleClass("is-hidden", !internal);
+    if (!internal) this.togglePopover(null);
     if (internal && this.el.seek) {
       const seek = this.el.seek as HTMLInputElement;
       seek.max = String(Math.max(1, this.now.durationMs / 1000));
-      if (document.activeElement !== seek) seek.value = String(this.now.positionMs / 1000);
+      if (seek.dataset.dragging !== "true") seek.value = String(this.now.positionMs / 1000);
+      paintRange(seek);
       seek.disabled = !this.now.seekable;
+      seek.setAttr("aria-valuetext", `${fmtClock(this.now.positionMs)} / ${fmtClock(this.now.durationMs)}`);
       this.el.elapsed?.setText(fmtClock(this.now.positionMs));
       this.el.duration?.setText(fmtClock(this.now.durationMs));
       if (this.el.volume && document.activeElement !== this.el.volume) {
         (this.el.volume as HTMLInputElement).value = String(this.plugin.internalPlayer?.volume ?? 1);
       }
+      paintRange(this.el.volume as HTMLInputElement);
+      this.el.volume?.setAttr("aria-valuetext", `${Math.round((this.plugin.internalPlayer?.volume ?? 1) * 100)}%`);
+      const volume = this.plugin.internalPlayer?.volume ?? 1;
+      const icon = volume === 0 ? "volume-x" : volume < .5 ? "volume-1" : "volume-2";
+      if (this.el.btnVolume && icon !== this.volumeIcon) { this.volumeIcon = icon; setIcon(this.el.btnVolume, icon); }
+      this.updateQuality();
     }
 
     this.updateHighlights();
@@ -668,7 +750,7 @@ export class MusicPlayerView extends FileView {
       if (player?.error) return player.error;
       if (player?.loading) return t("internal.loading");
       const status = t(this.now.status === "playing" ? "player.stPlaying" : this.now.status === "paused" ? "player.stPaused" : "player.stStopped");
-      return `${t("internal.label")} · ${status}${player?.trial ? ` · ${t("internal.trial")}` : ""}`;
+      return `${status}${player?.trial ? ` · ${t("internal.trial")}` : ""}`;
     }
     if (!this.now.supported) return t("player.smtcOff");
     if (!this.now.active) {
@@ -750,7 +832,7 @@ export class MusicPlayerView extends FileView {
   // ---- 控制 ----
 
   private async control(action: "play" | "pause" | "toggle" | "next" | "prev"): Promise<void> {
-    const pausing = action === "pause" || (action === "toggle" && this.now.status === "playing");
+    const pausing = action === "pause" || (action === "toggle" && (this.now.status === "playing" || this.now.source === "internal" && this.plugin.internalPlayer?.playingRequested));
     if (!pausing && !(await this.plugin.ensureNeteaseLogin())) return;
     const np = this.plugin.nowPlaying;
     if (!np.supported) {

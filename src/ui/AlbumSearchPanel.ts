@@ -42,10 +42,6 @@ export class AlbumSearchPanel {
   mount(container: HTMLElement): void {
     container.empty();
     container.addClass("mw-search-panel");
-    container.createEl("p", {
-      cls: "mw-search-panel__hint",
-      text: t("search.hint"),
-    });
 
     const bar = container.createDiv({ cls: "mw-search-panel__bar" });
     const field = bar.createDiv({ cls: "mw-panel__searchbar" });

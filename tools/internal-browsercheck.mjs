@@ -8,7 +8,7 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-let liveBytes;
+let liveBytes, liveMime="audio/mpeg", liveQuality="standard";
 const credentialArg = process.argv.indexOf("--data");
 if (credentialArg >= 0) {
   const settings = JSON.parse(fs.readFileSync(process.argv[credentialArg + 1], "utf8"));
@@ -18,18 +18,20 @@ if (credentialArg >= 0) {
     const res = await fetch(req.url,{method:req.method,headers:req.headers,body:req.body,signal:AbortSignal.timeout(15000)});
     return {status:res.status,text:await res.text()};
   };
-  const source = await fetchSongSource(request,347230,settings.neteaseCookie || "");
+  const qualityArg=process.argv.indexOf("--quality");
+  const source = await fetchSongSource(request,347230,settings.neteaseCookie || "",qualityArg>=0?process.argv[qualityArg+1]:"standard");
+  liveMime=source.mime; liveQuality=source.quality;
   const res = await fetch(source.url,{headers:{Referer:"https://music.163.com/"},signal:AbortSignal.timeout(30000)});
   if (!res.ok) throw Error("Live media response: " + res.status);
   liveBytes = Buffer.from(await res.arrayBuffer());
   if (!liveBytes.length) throw Error("Empty live media response");
-  console.log("Fetched live NetEase MP3 in memory; no playlist operations.");
+  console.log(`Fetched live NetEase ${liveQuality} (${liveMime}) in memory; available: ${source.availableQualities.join(', ')}; no playlist operations.`);
 }
 const allowed = new Map([["/tools/internal-e2e.html","text/html"],["/tools/internal-e2e.bundle.js","text/javascript"],["/styles.css","text/css"]]);
 const server = http.createServer((req,res) => {
   const pathname = new URL(req.url,"http://localhost").pathname;
   if (pathname === "/probe-audio.json" && liveBytes) {
-    res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({audio:liveBytes.toString("base64")}));return;
+    res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({audio:liveBytes.toString("base64"),mime:liveMime,quality:liveQuality}));return;
   }
   if (!allowed.has(pathname)) { res.writeHead(404);res.end();return; }
   res.writeHead(200,{"Content-Type":allowed.get(pathname)});res.end(fs.readFileSync(path.join(root,pathname.slice(1))));

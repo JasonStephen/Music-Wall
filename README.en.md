@@ -60,6 +60,16 @@ Albums play in track order inside Music Wall by default, without installing
 the NetEase client or creating/replacing account playlists. The player page
 supports pause, previous/next, track selection, seeking and volume. Commands
 also let you pause/resume or stop internal playback.
+The footer places previous, play/pause and next beside the song details, with playlist, quality, volume and expand controls on the right. Its top progress bar supports seeking.
+Playing keeps your current wall open. A footer on every open wall controls the
+same global player. Click its cover/title or expand button, or the player icon
+in the left ribbon, to open the full player. An existing tab is focused;
+the first player can open without creating a `.mwp` file.
+The volume button beside the track-list button opens a vertical slider. Click outside to close the track list or style panel.
+The quality menu shows verified qualities for the current track/account and
+labels the actual audio quality. Settings offer 128kbps, 192kbps, 320kbps, Lossless and Hi-Res, with
+automatic fallback to the best available lower quality. Player changes apply
+to the current session, preserving position and pause state where possible.
 
 **Your first preview or play opens a sign-in QR code.** Scan it with the
 NetEase mobile app and confirm. You can also sign in or out in plugin
@@ -153,8 +163,8 @@ over, and they use "Import .mw file" to recreate your wall exactly.
 
 ### 🎧 The player page: a wall just for listening
 
-Create a `.mwp` file (right-click a folder → "New player", same as a
-wall), drag a record into it from any wall, and it becomes a **record
+Open it from the left ribbon, or create a `.mwp` file (right-click a folder →
+"New player"). Drag a record into it from any wall, and it becomes a **record
 player**: turntable, CD deck, or big-cover device, with white / dark /
 cover-tinted / wooden-floor backgrounds. The play button even picks up
 the cover's color — a fresh look every day.
@@ -182,6 +192,7 @@ yourself in settings.
 | Interface language | Follows Obsidian by default, or set your own |
 | NetEase account | QR sign-in, check sign-in and sign out; preview and play require sign-in |
 | Playback mode | Internal playback by default, with the original NetEase client mode available |
+| Default audio quality | Standard through Hi-Res, matched to each track and account's available qualities |
 | Sign-in, APIs and privacy | Interface sources, credential storage, playback permissions and sign-out scope |
 | Playback playlist | Client mode only; attempts to create or reuse a dedicated private playlist |
 | Default style / shelf captions / column width / player background / zoom | Look-and-feel preferences, change anytime |
@@ -206,8 +217,8 @@ existing implementation. Sign-in credentials (cookies) are saved unencrypted
 in this vault's plugin settings and may be copied by vault sync or backups.
 They are not included in `.mw` files. Do not publicly share plugin settings.
 Signing out clears this plugin's credentials and playlist selection; it does
-not sign out the NetEase client or delete playlists. See settings for details
-and interface source links.
+not sign out the NetEase client or delete playlists. Settings include concise
+account and privacy information.
 
 **Does it work on my phone?**
 Yes for browsing, searching and internal playback; client mode can open

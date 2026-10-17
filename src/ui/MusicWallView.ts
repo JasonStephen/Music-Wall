@@ -67,6 +67,8 @@ import { openShelfMenu, type ShelfMenuItem } from "./ShelfMenu";
 import { setModalTheme } from "./modalTheme";
 import { buildRatingBadge, buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating";
 import { RatingModal } from "./RatingModal";
+import { MiniPlayer } from "./MiniPlayer";
+import { watchHostInset } from "./hostInset";
 
 /** "2015" → "2010s"；无效返回 "" */
 function decadeOf(y?: string): string {
@@ -240,6 +242,8 @@ export class MusicWallView extends FileView implements WallHost {
   private suppressSelf = false;
   /** SMTC 订阅取消函数 */
   private offNow: (() => void) | null = null;
+  private miniPlayer: MiniPlayer | null = null;
+  private stopHostInset: (() => void) | null = null;
 
   /** 侧边抽屉（样式与布局 / 筛选 / 排序） */
   private drawer: SideDrawer | null = null;
@@ -389,6 +393,8 @@ export class MusicWallView extends FileView implements WallHost {
     );
     // 无文件（新建/瞬态）时也要有可读的界面，onLoadFile 接管后续渲染
     await this.render();
+    this.stopHostInset?.();
+    this.stopHostInset = watchHostInset(this.contentEl);
   }
 
   /** SMTC 正在播放 → 墙上命中唱片加高亮环 + 角标；匹配不上则不高亮 */
@@ -415,6 +421,9 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onClose(): Promise<void> {
+    this.stopHostInset?.(); this.stopHostInset = null;
+    this.offNow?.(); this.offNow = null;
+    this.miniPlayer?.dispose(); this.miniPlayer = null;
     this.drawer?.dispose();
     this.drawer = null;
     this.toolbarObserver?.disconnect();
@@ -667,6 +676,7 @@ export class MusicWallView extends FileView implements WallHost {
 
   private async render(): Promise<void> {
     const root = this.contentEl;
+    this.miniPlayer?.dispose(); this.miniPlayer = null;
     // 场景动画句柄随 root 重建失效：先令牌失效 + cancel + 复位状态机
     this.resetDetailState();
     // 重建会丢滚动位置（迁移/删除/样式切换等），先记后还
@@ -727,6 +737,7 @@ export class MusicWallView extends FileView implements WallHost {
       });
     }
     this.renderGrid(grid);
+    this.miniPlayer = new MiniPlayer(box, this.plugin);
     grid.scrollTop = prevScroll;
     if (layout === "shelf") {
       // 开盒详情 overlay（懒填充）：点唱片推镜放大后绕书脊 3D 翻开。
@@ -1012,10 +1023,6 @@ export class MusicWallView extends FileView implements WallHost {
       );
     };
     syncCount();
-    body.createDiv({
-      cls: "mw-panel__hint",
-      text: t("wall.wallSearch.note"),
-    });
     window.setTimeout(() => input.focus(), 0);
   }
 
@@ -1058,17 +1065,9 @@ export class MusicWallView extends FileView implements WallHost {
           })
         );
       }
-      body.createDiv({
-        cls: "mw-panel__hint",
-        text: t("wall.stylePanel.hintGrid"),
-      });
       return;
     }
 
-    body.createDiv({
-      cls: "mw-panel__hint",
-      text: t("wall.stylePanel.hintNonGrid"),
-    });
   }
 
   /** 筛选面板：搜索 + 多选艺术家/年代/标签（同维度 OR，维度间 AND） */
@@ -1502,13 +1501,6 @@ export class MusicWallView extends FileView implements WallHost {
       else this.enterEditMode();
       api.refresh();
     });
-    body.createDiv({
-      cls: "mw-panel__hint",
-      text:
-        this.sortMode === "manual"
-          ? t("wall.sortPanel.hintManual")
-          : t("wall.sortPanel.hintAuto"),
-    });
   }
 
   /** 搜索面板：与搜索行等价的内联输入（供面板入口使用） */
@@ -1558,10 +1550,6 @@ export class MusicWallView extends FileView implements WallHost {
       }).setting;
       setting?.open();
       setting?.openTabById(this.plugin.manifest.id);
-    });
-    body.createDiv({
-      cls: "mw-panel__hint",
-      text: t("wall.settingsPanel.hint"),
     });
   }
 
@@ -1700,17 +1688,14 @@ export class MusicWallView extends FileView implements WallHost {
         cls: "mw-empty__title",
       });
       if (!data.items.length) {
-        empty.createDiv({
-          text: t("wall.empty.hintSub"),
-          cls: "mw-empty__sub",
-        });
         const actions = empty.createDiv({ cls: "mw-empty__actions" });
-        actions
-          .createEl("button", {
+        const add = actions.createEl("button", {
             cls: "mw-btn mw-btn--primary",
-            text: t("wall.empty.add"),
-          })
-          .addEventListener("click", () => this.openSearchModal());
+          });
+        add.addClass("mw-button-icon");
+        setIcon(add.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "plus");
+        add.createSpan({ text: t("wall.empty.add") });
+        add.addEventListener("click", () => this.openSearchModal());
       } else {
         empty
           .createEl("button", {
@@ -3922,7 +3907,8 @@ export class MusicWallView extends FileView implements WallHost {
       this.app,
       t("wall.pick.moveOne", { name: item.meta.name }),
       targets.map((gt) => ({
-        label: gt.id === current ? `${gt.label} ✓` : gt.label,
+        label: gt.label,
+        icon: gt.id === current ? "check" : undefined,
         detail:
           gt.id === current
             ? t("wall.pick.currentGroup")

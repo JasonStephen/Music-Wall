@@ -820,9 +820,7 @@
   z-index: 29;
 }
 
-/* ---- 上拉曲目面板（覆盖在 page 之上，纯查看） ----
-   第七轮起遮罩只做视觉：不吞点击、不承担关闭——点其他地方不收起面板，
-   页面其余交互照常；关闭途径 = 倒三角收起钮 / 曲目列表按钮开关 / Esc。 */
+/* 上拉曲目面板。遮罩只做视觉；外部点击由视图处理，以保留页面控制按钮的操作。 */
 .mw-player__scrim {
   position: absolute;
   inset: 0;
@@ -933,6 +931,7 @@
 
 .mw-statusbar {
   cursor: pointer;
+  gap: 4px;
 }
 .mw-statusbar.is-active {
   color: var(--text-accent);

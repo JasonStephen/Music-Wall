@@ -8,6 +8,7 @@ import {
   TFile,
   TFolder,
   requestUrl,
+  setIcon,
 } from "obsidian";
 import {
   DEFAULT_SETTINGS,
@@ -35,7 +36,8 @@ import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { checkGit, listWallFiles, syncRepo, type GitWallFile } from "./core/git";
 import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } from "./core/playlist";
 import type { PlaybackDeps } from "./core/playback";
-import { fetchSongSource } from "./core/audioSource";
+import { SongSourceResolver } from "./core/audioSource";
+import { isAudioQuality } from "./core/quality";
 import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
 import {
   createNowPlayingProvider,
@@ -53,7 +55,7 @@ import { applyLanguagePref, styleLabel, t } from "./i18n";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.1.1";
+const BUILD_TAG = "1.1.3";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -66,6 +68,8 @@ export default class MusicWallPlugin extends Plugin {
   internalPlayer: InternalPlayer;
   private combinedProvider: CombinedNowPlayingProvider;
   private requester: Requester;
+  private audioSources: SongSourceResolver;
+  private openingPlayer: Promise<void> | null = null;
   private statusEl: HTMLElement | null = null;
   /** 库内全部 .mw 条目缓存（播放器匹配用），vault 变动时失效 */
   private wallItemCache: WallItem[] | null = null;
@@ -95,21 +99,23 @@ export default class MusicWallPlugin extends Plugin {
       });
       return { status: res.status, text: res.text, headers: res.headers };
     };
+    this.audioSources = new SongSourceResolver(this.requester);
     this.internalPlayer = new InternalPlayer({
-      resolve: async (id) => {
-        try { return await fetchSongSource(this.requester, id, this.settings.neteaseCookie); }
+      defaultQuality: () => this.settings.defaultAudioQuality,
+      resolve: async (id, quality) => {
+        try { return await this.audioSources.resolve(id, this.settings.neteaseCookie, quality); }
         catch (error) {
           if (error instanceof LoginRequiredError) this.verifiedCookie = "";
           throw error;
         }
       },
-      load: async (url) => {
+      load: async (url, mime) => {
         // 宿主请求可携带 Referer，避免 WebView 的跨域/防盗链限制；只在内存中缓冲当前曲目。
         const response = await requestUrl({ url, headers: { Referer: "https://music.163.com/" }, throw: false });
         if (response.status < 200 || response.status >= 300 || !response.arrayBuffer.byteLength) {
           throw new Error(t("internal.networkError"));
         }
-        return new Blob([response.arrayBuffer], { type: "audio/mpeg" });
+        return new Blob([response.arrayBuffer], { type: mime ?? "audio/mpeg" });
       },
       notice: (message) => { new Notice(message); },
     });
@@ -128,6 +134,7 @@ export default class MusicWallPlugin extends Plugin {
     this.addRibbonIcon("library", t("cmd.createWall"), () => {
       void this.createNewWallCommand();
     });
+    this.addRibbonIcon("disc", t("cmd.openPlayer"), () => void this.openPlayerView());
 
     this.addCommand({
       id: "create-wall",
@@ -259,6 +266,7 @@ export default class MusicWallPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
     if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
+    if (!isAudioQuality(this.settings.defaultAudioQuality)) this.settings.defaultAudioQuality = "standard";
     applyLanguagePref(this.settings.language ?? "system");
   }
 
@@ -384,10 +392,10 @@ export default class MusicWallPlugin extends Plugin {
     if (!this.statusEl) return;
     const s = this.nowPlaying?.state;
     if (s && s.active) {
-      const icon = s.status === "playing" ? "▶" : s.status === "paused" ? "⏸" : "⏹";
-      this.statusEl.setText(
-        `${icon} ${s.title || t("main.unknownTrack")}`
-      );
+      const icon = s.status === "playing" ? "play" : s.status === "paused" ? "pause" : "square";
+      this.statusEl.empty();
+      setIcon(this.statusEl.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), icon);
+      this.statusEl.createSpan({ text: s.title || t("main.unknownTrack") });
       this.statusEl.setAttr("aria-label", `${s.title} · ${s.artist}`);
       this.statusEl.addClass("is-active");
     } else {
@@ -423,6 +431,12 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 打开（或聚焦）播放器页：优先已打开的，其次库内第一个 .mwp */
   async openPlayerView(): Promise<void> {
+    if (this.openingPlayer) return this.openingPlayer;
+    this.openingPlayer = this.revealPlayerView();
+    try { await this.openingPlayer; } finally { this.openingPlayer = null; }
+  }
+
+  private async revealPlayerView(): Promise<void> {
     const views = this.allPlayerViews();
     if (views.length) {
       this.app.workspace.revealLeaf(views[0].leaf);
@@ -430,7 +444,9 @@ export default class MusicWallPlugin extends Plugin {
     }
     const files = this.playerFiles();
     if (!files.length) {
-      new Notice(t("main.noPlayerFile"));
+      const leaf = this.app.workspace.getLeaf("tab");
+      await leaf.setViewState({ type: PLAYER_VIEW_TYPE, active: true });
+      this.app.workspace.revealLeaf(leaf);
       return;
     }
     await this.openWall(files[0]);
@@ -815,6 +831,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   private async clearNeteaseLogin(): Promise<void> {
+    this.audioSources?.clear();
     const generation = ++this.authGeneration;
     this.loginModal?.close();
     this.internalPlayer?.stop();

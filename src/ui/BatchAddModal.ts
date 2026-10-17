@@ -2,7 +2,7 @@
 // 入口在添加专辑浮层内的“批量添加”按钮（见 AlbumSearchPanel）。
 // 去重：输入内重复/墙内已存在在预览中标出，确认时跳过并汇总。
 
-import { App, Modal, Notice } from "obsidian";
+import { App, Modal, Notice, setIcon } from "obsidian";
 import type { AlbumMeta } from "../types";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
 import { renderAlbumPanel } from "./AlbumPanelModal";
@@ -533,9 +533,10 @@ class DetailPreviewModal extends Modal {
     const back = btns.createEl("button", { text: t("common.back") });
     back.addEventListener("click", () => this.close());
     const preview = btns.createEl("button", {
-      text: t("panel.preview"),
-      cls: "mod-cta",
+      cls: "mod-cta mw-button-icon",
     });
+    setIcon(preview.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "play");
+    preview.createSpan({ text: t("panel.preview") });
     preview.setAttr("title", t("panel.previewTip"));
     preview.addEventListener("click", () => {
       void playAlbum(this.meta, this.deps);

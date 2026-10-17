@@ -2,6 +2,7 @@
 
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
+import { AUDIO_QUALITIES, isAudioQuality, qualityLabel } from "./core/quality";
 import {
   ZOOM_MAX,
   ZOOM_MIN,
@@ -128,22 +129,23 @@ export class MusicWallSettingTab extends PluginSettingTab {
           }
         }));
     }
+    new Setting(containerEl)
+      .setName(t("quality.name"))
+      .setDesc(t("quality.desc"))
+      .addDropdown((dropdown) => {
+        for (const quality of AUDIO_QUALITIES) dropdown.addOption(quality, qualityLabel(quality));
+        dropdown.setValue(this.plugin.settings.defaultAudioQuality ?? "standard").onChange(async (value) => {
+          if (!isAudioQuality(value)) return;
+          this.plugin.settings.defaultAudioQuality = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
     const explanation = containerEl.createEl("details", { cls: "mw-auth-info" });
     explanation.createEl("summary", { text: t("auth.aboutTitle") });
-    explanation.createEl("p", { text: t("auth.aboutService") });
     explanation.createEl("p", { text: t("auth.aboutStorage") });
     explanation.createEl("p", { text: t("auth.aboutPlayback") });
     explanation.createEl("p", { text: t("auth.aboutLogout") });
-    const sources = explanation.createEl("p");
-    sources.createEl("a", {
-      text: "NeteaseCloudMusicApiEnhanced",
-      attr: { href: "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced", target: "_blank", rel: "noopener noreferrer" },
-    });
-    sources.appendText(" · ");
-    sources.createEl("a", {
-      text: "music-lib",
-      attr: { href: "https://github.com/guohuiyuan/music-lib", target: "_blank", rel: "noopener noreferrer" },
-    });
 
     new Setting(containerEl)
       .setName(t("internal.modeName"))

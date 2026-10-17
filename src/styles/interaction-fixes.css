@@ -1,0 +1,104 @@
+/* Captions are positioned below the plank, so the last row must reserve their height. */
+.mw-grid--shelf .mw-section__cards {
+  padding-bottom: calc(var(--mw-plank-h, 19px) + 16px + 2.6em);
+}
+.mw-grid--shelf .mw-section.is-collapsed > .mw-section__cards { padding-bottom: 0; }
+.mw-shelf-cap__name, .mw-shelf-cap__artist { line-height: 1.35; }
+
+/* Native inputs handle interactions; only our own spans draw the slider. */
+:is(.mw-player, .mw-mini) .mw-slider {
+  --mw-range-track: color-mix(in srgb, var(--text-normal) 22%, transparent);
+  --mw-range-fill: var(--mw-np-accent, #4c5bd4);
+  position: relative; flex: 1 1 auto; width: 100%; min-width: 0; height: 24px;
+}
+.mw-player.mw-bg--art .mw-slider,
+.mw-player.mw-bg--wood .mw-slider { --mw-range-fill: var(--text-normal); }
+:is(.mw-player, .mw-mini) .mw-slider input[type="range"].mw-range {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0 !important;
+  padding: 0 !important; border: 0 !important; opacity: 0 !important; z-index: 2;
+  transform: none; cursor: pointer; outline: none; box-sizing: border-box;
+}
+:is(.mw-player, .mw-mini) .mw-slider input[type="range"].mw-range::-webkit-slider-runnable-track {
+  box-sizing: border-box; height: 4px; padding: 0; margin: 0; border: 0; transform: none;
+}
+:is(.mw-player, .mw-mini) .mw-slider input[type="range"].mw-range::-webkit-slider-thumb {
+  box-sizing: border-box !important; width: 12px !important; height: 12px !important;
+  border: 0 !important; padding: 0 !important; margin: -4px 0 0 !important; transform: none !important;
+}
+.mw-slider__track, .mw-slider__thumb { position: absolute; display: block; pointer-events: none; box-sizing: border-box; }
+.mw-slider__track {
+  left: 6px; right: 6px; top: 50%; height: 4px; transform: translateY(-50%); border-radius: 999px;
+  background: linear-gradient(to right, var(--mw-range-fill) var(--mw-range-percent, 0%), var(--mw-range-track) var(--mw-range-percent, 0%));
+}
+.mw-slider__thumb {
+  width: 12px; height: 12px; top: 50%; left: calc(6px + (100% - 12px) * var(--mw-range-ratio, 0));
+  transform: translate(-50%, -50%); border: 0; border-radius: 50%; background: var(--mw-range-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mw-range-fill) 12%, transparent);
+}
+.mw-slider:focus-within .mw-slider__thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--mw-range-fill) 30%, transparent); }
+.mw-slider:has(input:disabled) { opacity: 0.5; }
+:is(.mw-player, .mw-mini) .mw-slider--vertical { flex: 0 0 auto; width: 24px; height: 120px; }
+:is(.mw-player, .mw-mini) .mw-slider--vertical input[type="range"].mw-range {
+  inset: auto; left: 50%; top: 50%; width: 120px; height: 24px;
+  writing-mode: horizontal-tb; direction: ltr; transform: translate(-50%, -50%) rotate(-90deg);
+}
+.mw-slider--vertical .mw-slider__track {
+  left: 50%; right: auto; top: 6px; bottom: 6px; width: 4px; height: auto; transform: translateX(-50%);
+  background: linear-gradient(to top, var(--mw-range-fill) var(--mw-range-percent, 0%), var(--mw-range-track) var(--mw-range-percent, 0%));
+}
+.mw-slider--vertical .mw-slider__thumb {
+  left: 50%; top: calc(6px + (100% - 12px) * (1 - var(--mw-range-ratio, 0)));
+}
+.mw-player .mw-np__volume-panel {
+  width: 42px; padding: 8px; border-radius: 10px; display: flex; justify-content: center;
+  left: 50%; right: auto; transform: translateX(-50%);
+}
+.mw-player .mw-np__quality-panel { width: 112px; padding: 4px; border-radius: 9px; }
+.mw-player .mw-np__quality-option { min-height: 28px; margin: 0; padding: 4px 8px; border-radius: 5px; font-size: 12px; }
+.mw-player .mw-np__popover.is-hidden { display: none; }
+
+/* Scope hover/focus to the surface palette rather than the host accent. */
+.mw-player .mw-np__track.is-playable:hover {
+  background: var(--mw-panel-hover); color: var(--mw-panel-fg); outline: none; box-shadow: none;
+}
+.mw-player .mw-np__track.is-playable:hover .mw-np__trackNo,
+.mw-player .mw-np__track.is-playable:hover .mw-np__trackDur,
+.mw-player .mw-np__track.is-playable:focus-visible .mw-np__trackNo,
+.mw-player .mw-np__track.is-playable:focus-visible .mw-np__trackDur { color: var(--mw-panel-fg); }
+.mw-player .mw-np__track.is-playable:focus-visible {
+  outline: 1px solid var(--mw-panel-fg-dim); outline-offset: -1px; box-shadow: none;
+}
+.mw-player .mw-player__playlist { bottom: var(--mw-host-bottom, 0px); }
+.mw-player__body { padding-bottom: calc(20px + var(--mw-host-bottom, 0px)); }
+@container mw-pane (max-width: 420px) {
+  .mw-player .mw-np__popover { bottom: calc(16px + var(--mw-host-bottom, 0px)); }
+}
+@container mw-pane (max-height: 620px) {
+  .mw-player .mw-np__popover { bottom: calc(12px + var(--mw-host-bottom, 0px)); }
+}
+
+/* Scroll surfaces use their own palette, including the shelf, player and modals. */
+.mw-view, .mw-view *, .mw-modal-zoom, .mw-modal-zoom * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mw-panel-fg-dim, var(--text-muted)) 60%, transparent) transparent;
+}
+@supports selector(::-webkit-scrollbar) {
+  .mw-view, .mw-view *, .mw-modal-zoom, .mw-modal-zoom * { scrollbar-width: auto; scrollbar-color: auto; }
+}
+.mw-view::-webkit-scrollbar, .mw-view ::-webkit-scrollbar,
+.mw-modal-zoom::-webkit-scrollbar, .mw-modal-zoom ::-webkit-scrollbar { width: 8px; height: 8px; }
+.mw-view::-webkit-scrollbar-track, .mw-view ::-webkit-scrollbar-track,
+.mw-modal-zoom::-webkit-scrollbar-track, .mw-modal-zoom ::-webkit-scrollbar-track { background: transparent; }
+.mw-view::-webkit-scrollbar-thumb, .mw-view ::-webkit-scrollbar-thumb,
+.mw-modal-zoom::-webkit-scrollbar-thumb, .mw-modal-zoom ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--mw-panel-fg-dim, var(--text-muted)) 60%, transparent);
+  border: 2px solid transparent; border-radius: 999px; background-clip: padding-box;
+}
+.mw-view::-webkit-scrollbar-thumb:hover, .mw-view ::-webkit-scrollbar-thumb:hover,
+.mw-modal-zoom::-webkit-scrollbar-thumb:hover, .mw-modal-zoom ::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--mw-panel-fg-dim, var(--text-muted)) 85%, transparent);
+}
+.mw-view::-webkit-scrollbar-button, .mw-view ::-webkit-scrollbar-button,
+.mw-modal-zoom::-webkit-scrollbar-button, .mw-modal-zoom ::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
+.mw-view::-webkit-scrollbar-corner, .mw-view ::-webkit-scrollbar-corner,
+.mw-modal-zoom::-webkit-scrollbar-corner, .mw-modal-zoom ::-webkit-scrollbar-corner { background: transparent; }

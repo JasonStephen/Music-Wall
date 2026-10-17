@@ -9,10 +9,11 @@ function el() {
   const target = {
     style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
     dataset: {},
-    classList: { add() {}, remove() {}, toggle() {} },
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    get ownerDocument() { return global.document; },
     children: [],
     addEventListener() {},
-    appendChild() {},
+    appendChild(child) { child.parentElement = this; return child; },
     append() {},
     remove() {},
     setAttribute() {},
@@ -22,9 +23,9 @@ function el() {
     addClass() {},
     removeClass() {},
     empty() {},
-    createEl() { return el(); },
-    createDiv() { return el(); },
-    createSpan() { return el(); },
+    createEl() { const child = el(); child.parentElement = this; return child; },
+    createDiv() { return this.createEl(); },
+    createSpan() { return this.createEl(); },
     querySelector() { return el(); },
     querySelectorAll() { return []; },
     set textContent(v) {},
@@ -250,6 +251,21 @@ const origLoad = Module._load;
   const Plugin = mod.default || mod;
   const plugin = new Plugin(fakeApp, { id: "music-wall" });
   await plugin.onload();
+  // 首次打开不要求文件；并发入口只创建一个标签页，已打开时只聚焦。
+  const originalGetLeaf = fakeWorkspace.getLeaf;
+  const originalGetLeaves = fakeWorkspace.getLeavesOfType;
+  const originalReveal = fakeWorkspace.revealLeaf;
+  let playerLeaves = 0, playerReveals = 0, openedType = "";
+  const openedLeaf = { async setViewState(state) { openedType = state.type; await Promise.resolve(); } };
+  fakeWorkspace.getLeaf = () => { playerLeaves++; return openedLeaf; };
+  fakeWorkspace.revealLeaf = () => { playerReveals++; };
+  await Promise.all([plugin.openPlayerView(), plugin.openPlayerView()]);
+  if (playerLeaves !== 1 || openedType !== "music-wall-player") throw new Error("播放器首次打开或并发去重失败");
+  fakeWorkspace.getLeavesOfType = (type) => type === "music-wall-player" ? [{ view: { leaf: openedLeaf } }] : [];
+  await plugin.openPlayerView();
+  if (playerLeaves !== 1 || playerReveals !== 2) throw new Error("播放器重复打开未聚焦原标签页");
+  fakeWorkspace.getLeaf = originalGetLeaf; fakeWorkspace.getLeavesOfType = originalGetLeaves; fakeWorkspace.revealLeaf = originalReveal;
+  console.log("播放器无文件打开、并发去重与已有标签页聚焦：通过");
   const cmds = FakePlugin.commands.map((c) => c.id);
   console.log("注册命令:", cmds.join(", "));
   if (cmds.length < 6) throw new Error("命令注册数量不足");

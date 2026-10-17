@@ -2,7 +2,7 @@
 // - ChoiceModal：若干动作按钮的选择框（导入时「合并 / 新建 / 取消」）。
 // - PickerModal：可滚动的列表选择框（Git 导入时选择 .mw 文件）。
 
-import { App, Modal } from "obsidian";
+import { App, Modal, setIcon } from "obsidian";
 
 import { applyModalTheme } from "./modalTheme";
 import { t } from "../i18n";
@@ -59,6 +59,7 @@ export class ChoiceModal extends Modal {
 export interface PickItem {
   label: string;
   detail?: string;
+  icon?: string;
 }
 
 export class PickerModal extends Modal {
@@ -88,7 +89,9 @@ export class PickerModal extends Modal {
     const list = contentEl.createDiv({ cls: "mw-picker__list" });
     this.items.forEach((item, i) => {
       const row = list.createDiv({ cls: "mw-picker__row" });
-      row.createDiv({ cls: "mw-picker__label", text: item.label });
+      const label = row.createDiv({ cls: "mw-picker__label mw-button-icon" });
+      label.createSpan({ text: item.label });
+      if (item.icon) setIcon(label.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), item.icon);
       if (item.detail)
         row.createDiv({ cls: "mw-picker__detail", text: item.detail });
       row.addEventListener("click", () => {

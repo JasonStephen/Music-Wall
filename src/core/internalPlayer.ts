@@ -2,10 +2,12 @@ import type { AlbumMeta } from "../types";
 import { EMPTY_NOW_PLAYING, type NowPlayingListener, type NowPlayingProvider, type NowPlayingState } from "./nowPlaying";
 import { TrackUnavailableError, type SongSource } from "./audioSource";
 import { t } from "../i18n";
+import type { AudioQuality } from "./quality";
 
 interface InternalPlayerDeps {
-  resolve: (id: number) => Promise<SongSource>;
-  load: (url: string) => Promise<Blob>;
+  resolve: (id: number, quality: AudioQuality) => Promise<SongSource>;
+  load: (url: string, mime?: string) => Promise<Blob>;
+  defaultQuality?: () => AudioQuality;
   notice: (message: string) => void;
   audio?: () => HTMLAudioElement;
 }
@@ -28,6 +30,9 @@ export class InternalPlayer implements NowPlayingProvider {
   trial = false;
   error = "";
   volume = 1;
+  quality: AudioQuality | null = null;
+  availableQualities: AudioQuality[] = [];
+  preferredQuality: AudioQuality | null = null;
   private media: HTMLAudioElement | null = null;
   private objectUrl = "";
   private generation = 0;
@@ -36,6 +41,7 @@ export class InternalPlayer implements NowPlayingProvider {
   private listeners = new Set<NowPlayingListener>();
 
   constructor(private deps: InternalPlayerDeps) {}
+  get playingRequested(): boolean { return this.wanted; }
 
   get state(): NowPlayingState {
     const track = this.album?.tracks?.[this.index];
@@ -67,6 +73,7 @@ export class InternalPlayer implements NowPlayingProvider {
     this.release();
     this.album = null; this.index = -1; this.loading = false;
     this.trial = false; this.error = ""; this.phase = "none";
+    this.quality = null; this.availableQualities = []; this.preferredQuality = null;
     this.emit();
   }
 
@@ -85,19 +92,24 @@ export class InternalPlayer implements NowPlayingProvider {
     return this.select(index);
   }
 
-  async select(index: number): Promise<boolean> {
+  async select(index: number, restore?: { positionMs: number; playing: boolean }): Promise<boolean> {
     const tracks = this.album?.tracks;
     if (!tracks || !Number.isInteger(index) || index < 0 || index >= tracks.length) return false;
     const generation = ++this.generation;
-    this.wanted = true;
+    this.wanted = restore?.playing ?? true;
+    if (!this.preferredQuality) this.preferredQuality = this.deps.defaultQuality?.() ?? "standard";
     this.release();
     for (let next = index; next < tracks.length; next++) {
       this.index = next; this.loading = true; this.error = ""; this.trial = false; this.phase = "paused";
+      this.quality = null; this.availableQualities = [];
       this.emit();
       try {
-        const source = await bounded(this.deps.resolve(tracks[next].id));
+        const source = await bounded(this.deps.resolve(tracks[next].id, this.preferredQuality));
         if (generation !== this.generation) return false;
-        const blob = await bounded(this.deps.load(source.url));
+        this.quality = source.quality ?? "standard";
+        this.availableQualities = source.availableQualities ?? [this.quality];
+        this.emit();
+        const blob = await bounded(this.deps.load(source.url, source.mime));
         if (generation !== this.generation) return false;
         const media = this.deps.audio?.() ?? new Audio();
         this.media = media;
@@ -106,6 +118,13 @@ export class InternalPlayer implements NowPlayingProvider {
         media.volume = this.volume;
         media.preload = "auto";
         const alive = () => generation === this.generation && this.media === media;
+        let restorePosition = next === index ? restore?.positionMs ?? 0 : 0;
+        const seekRestored = () => {
+          if (!alive() || !restorePosition || !Number.isFinite(media.duration)) return;
+          media.currentTime = Math.min(restorePosition / 1000, Math.max(0, media.duration - 0.05));
+          restorePosition = 0;
+        };
+        media.addEventListener("loadedmetadata", seekRestored);
         for (const event of ["timeupdate", "durationchange", "loadedmetadata"]) {
           media.addEventListener(event, () => { if (alive()) this.emit(); });
         }
@@ -135,6 +154,7 @@ export class InternalPlayer implements NowPlayingProvider {
           }
         }
         if (!alive()) return false;
+        seekRestored();
         this.loading = false;
         this.phase = this.wanted && !media.paused ? "playing" : "paused";
         if (this.trial) this.deps.notice(t("internal.trialNotice", { name: tracks[next].name }));
@@ -181,6 +201,12 @@ export class InternalPlayer implements NowPlayingProvider {
     this.phase = "paused"; this.emit(); return true;
   }
   async toggle(): Promise<boolean> { return this.wanted ? this.pause() : this.play(); }
+  async setQuality(quality: AudioQuality): Promise<boolean> {
+    if (this.loading || !this.album || !this.availableQualities.includes(quality)) return false;
+    this.preferredQuality = quality;
+    if (this.quality === quality) { this.emit(); return true; }
+    return this.select(this.index, { positionMs: this.state.positionMs, playing: this.wanted });
+  }
   async next(): Promise<boolean> { return this.select(this.index + 1); }
   async prev(): Promise<boolean> { return this.select(this.index - 1); }
   async seek(positionMs: number): Promise<boolean> {
