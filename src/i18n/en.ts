@@ -50,6 +50,28 @@ export const en: typeof zhCN = {
     closeEsc: "Close (Esc)",
   },
 
+  internal: {
+    label: "Play inside Music Wall",
+    client: "Play in NetEase client",
+    modeName: "Playback mode",
+    modeDesc: "Play albums in order inside Music Wall by default, without creating or replacing NetEase playlists. You can switch back to client playback; switching stops internal playback.",
+    loading: "Loading audio…",
+    noTracks: "This album has no tracks. Fetch its details again and retry.",
+    unavailable: "This track is unavailable, possibly due to account permissions, music rights or region.",
+    networkError: "Cannot fetch audio. Check your connection or sign-in.",
+    playFailed: "Playback failed. Check your connection or verify sign-in in settings.",
+    decodeError: "Could not decode audio. Retry or switch to client playback.",
+    trial: "Preview clip",
+    trialNotice: "Only a preview clip of “{name}” is available",
+    skipped: "No audio available for “{name}”; skipped",
+    tracksNote: "Temporary queue · Click a track to play; no NetEase playlist changes",
+    playTrack: "Play “{name}”",
+    seek: "Playback position",
+    volume: "Volume",
+    toggleCommand: "Pause/resume internal playback",
+    stopCommand: "Stop internal playback and clear temporary queue",
+  },
+
   auth: {
     account: "NetEase account",
     signIn: "Sign in with QR code",
@@ -80,8 +102,8 @@ export const en: typeof zhCN = {
     aboutTitle: "Sign-in, APIs and privacy",
     aboutService: "Music Wall is an unofficial plugin. QR sign-in follows NeteaseCloudMusicApiEnhanced; search, albums and playlists retain the existing NetEase interface implementation, with encryption based on music-lib. Requests go directly to NetEase, without a separate API server or third-party API service. Interface changes or NetEase security checks may temporarily interrupt access.",
     aboutStorage: "QR authorization returns a sign-in credential (cookie), stored unencrypted in this vault's plugin settings. Vault sync or backups may copy it. It is never included in .mw wall files; do not publicly share plugin settings. The plugin does not read browser or NetEase client sessions or collect account passwords.",
-    aboutPlayback: "Browsing, searching and organizing do not require sign-in; preview and play do. Playback still uses the NetEase client or website. QR sign-in does not sign in the official client or change membership or copyright restrictions. Whole-album playback replaces tracks in the selected playlist, or attempts to create/reuse the private playlist “Music Wall 临时播放” when none is selected.",
-    aboutLogout: "Signing out clears this plugin's saved credential and playback playlist selection. It does not sign out the NetEase client or delete NetEase playlists. Disabling the plugin does not sign you out.",
+    aboutPlayback: "Browsing, searching and organizing do not require sign-in; preview and play do. Internal playback is the default: the queue stays in memory, no NetEase playlist is created or replaced, and only the current track is buffered. Full playback depends on account permissions and music rights; preview clips are labeled. Client playback retains the playlist replacement method, creating/reusing the private playlist “Music Wall 临时播放” if none is selected. QR sign-in does not sign in the official client.",
+    aboutLogout: "Signing out stops internal playback and clears this plugin's credential and playback playlist selection. It does not sign out the NetEase client or delete playlists. Disabling the plugin stops internal playback but does not sign you out.",
   },
 
   settings: {

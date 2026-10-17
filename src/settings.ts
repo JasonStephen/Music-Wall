@@ -146,6 +146,18 @@ export class MusicWallSettingTab extends PluginSettingTab {
     });
 
     new Setting(containerEl)
+      .setName(t("internal.modeName"))
+      .setDesc(t("internal.modeDesc"))
+      .addDropdown((dropdown) => dropdown
+        .addOption("internal", t("internal.label"))
+        .addOption("client", t("internal.client"))
+        .setValue(this.plugin.settings.playbackMode ?? "internal")
+        .onChange(async (value) => {
+          await this.plugin.setPlaybackMode(value === "client" ? "client" : "internal");
+          this.display();
+        }));
+
+    if (this.plugin.settings.playbackMode === "client") new Setting(containerEl)
       .setName(t("settings.playlist.name"))
       .setDesc(t("settings.playlist.desc"))
       .addText((te) =>

@@ -35,6 +35,8 @@ import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { checkGit, listWallFiles, syncRepo, type GitWallFile } from "./core/git";
 import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } from "./core/playlist";
 import type { PlaybackDeps } from "./core/playback";
+import { fetchSongSource } from "./core/audioSource";
+import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
 import {
   createNowPlayingProvider,
   type NowPlayingProvider,
@@ -51,7 +53,7 @@ import { applyLanguagePref, styleLabel, t } from "./i18n";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.1.0";
+const BUILD_TAG = "1.1.1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -59,8 +61,10 @@ function normalizePathJoin(p: string): string {
 
 export default class MusicWallPlugin extends Plugin {
   settings: MusicWallSettings = DEFAULT_SETTINGS;
-  /** SMTC 正在播放服务（非 Windows/非桌面端为空实现） */
+  /** 插件内音频优先；无内部队列时保留原 SMTC 正在播放服务。 */
   nowPlaying: NowPlayingProvider;
+  internalPlayer: InternalPlayer;
+  private combinedProvider: CombinedNowPlayingProvider;
   private requester: Requester;
   private statusEl: HTMLElement | null = null;
   /** 库内全部 .mw 条目缓存（播放器匹配用），vault 变动时失效 */
@@ -81,9 +85,6 @@ export default class MusicWallPlugin extends Plugin {
     console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
     await this.loadSettings();
 
-    this.nowPlaying = createNowPlayingProvider();
-    this.nowPlaying.on(() => this.updateStatusBar());
-
     this.requester = async (req) => {
       const res = await requestUrl({
         url: req.url,
@@ -94,6 +95,27 @@ export default class MusicWallPlugin extends Plugin {
       });
       return { status: res.status, text: res.text, headers: res.headers };
     };
+    this.internalPlayer = new InternalPlayer({
+      resolve: async (id) => {
+        try { return await fetchSongSource(this.requester, id, this.settings.neteaseCookie); }
+        catch (error) {
+          if (error instanceof LoginRequiredError) this.verifiedCookie = "";
+          throw error;
+        }
+      },
+      load: async (url) => {
+        // 宿主请求可携带 Referer，避免 WebView 的跨域/防盗链限制；只在内存中缓冲当前曲目。
+        const response = await requestUrl({ url, headers: { Referer: "https://music.163.com/" }, throw: false });
+        if (response.status < 200 || response.status >= 300 || !response.arrayBuffer.byteLength) {
+          throw new Error(t("internal.networkError"));
+        }
+        return new Blob([response.arrayBuffer], { type: "audio/mpeg" });
+      },
+      notice: (message) => { new Notice(message); },
+    });
+    this.combinedProvider = new CombinedNowPlayingProvider(createNowPlayingProvider(), this.internalPlayer);
+    this.nowPlaying = this.combinedProvider;
+    this.nowPlaying.on(() => this.updateStatusBar());
 
     // 第二个参数必须是 registerView 注册的视图类型，Obsidian 据此关联 .mw → 音乐墙视图
     this.registerExtensions([WALL_EXT], WALL_VIEW_TYPE);
@@ -164,6 +186,28 @@ export default class MusicWallPlugin extends Plugin {
       name: t("cmd.pickPlaylist"),
       callback: () => void this.pickPlaybackPlaylist(),
     });
+    this.addCommand({
+      id: "toggle-internal-playback",
+      name: t("internal.toggleCommand"),
+      checkCallback: (checking) => {
+        if (!this.internalPlayer.album) return false;
+        if (!checking) void (async () => {
+          if (this.internalPlayer.state.status === "playing" || await this.ensureNeteaseLogin()) {
+            await this.internalPlayer.toggle();
+          }
+        })();
+        return true;
+      },
+    });
+    this.addCommand({
+      id: "stop-internal-playback",
+      name: t("internal.stopCommand"),
+      checkCallback: (checking) => {
+        if (!this.internalPlayer.album) return false;
+        if (!checking) this.internalPlayer.stop();
+        return true;
+      },
+    });
 
     this.addSettingTab(new MusicWallSettingTab(this.app, this));
 
@@ -207,12 +251,14 @@ export default class MusicWallPlugin extends Plugin {
     ++this.authGeneration;
     ++this.playbackRequest;
     this.loginModal?.close();
+    this.combinedProvider?.dispose();
     this.nowPlaying?.stop();
   }
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
+    if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
     applyLanguagePref(this.settings.language ?? "system");
   }
 
@@ -639,6 +685,12 @@ export default class MusicWallPlugin extends Plugin {
         };
       },
       isCurrent,
+      playInside: this.settings.playbackMode !== "client" && this.internalPlayer
+        ? async (meta, startIndex) => {
+          if (!isCurrent()) return false;
+          return this.internalPlayer.playAlbum(meta, startIndex);
+        }
+        : undefined,
       onPlaylistResolved: (id) => {
         if (!isCurrent()) return;
         this.settings.playbackPlaylistId = String(id);
@@ -646,6 +698,13 @@ export default class MusicWallPlugin extends Plugin {
         new Notice(t("main.playlistResolved", { id }));
       },
     };
+  }
+
+  async setPlaybackMode(mode: "internal" | "client"): Promise<void> {
+    ++this.playbackRequest;
+    this.internalPlayer?.stop();
+    this.settings.playbackMode = mode;
+    await this.saveSettings();
   }
 
   /** 所有播放入口共用；保留有效旧 Cookie，明确失效时才重新扫码。 */
@@ -758,6 +817,7 @@ export default class MusicWallPlugin extends Plugin {
   private async clearNeteaseLogin(): Promise<void> {
     const generation = ++this.authGeneration;
     this.loginModal?.close();
+    this.internalPlayer?.stop();
     this.loginCheck = null;
     this.verifiedCookie = "";
     this.verifiedAt = 0;

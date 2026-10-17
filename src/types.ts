@@ -147,6 +147,8 @@ export interface MusicWallSettings {
   neteaseNickname: string;
   /** 播放用歌单 ID（配合 Cookie 实现整张专辑连播） */
   playbackPlaylistId: string;
+  /** 插件内播放不使用账号歌单；client 保留原官方客户端播放路径。 */
+  playbackMode: "internal" | "client";
   /** 是否已提示过移动端限制 */
   mobileNoticeShown: boolean;
   /** 展示架布局下文字显示档位 */
@@ -173,6 +175,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   neteaseUserId: "",
   neteaseNickname: "",
   playbackPlaylistId: "",
+  playbackMode: "internal",
   mobileNoticeShown: false,
   shelfCaption: "pull",
   smtcEnabled: true,

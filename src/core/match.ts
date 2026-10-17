@@ -39,6 +39,11 @@ export function matchNowPlaying(
   items: WallItem[]
 ): NowPlayingMatch | null {
   if (!state.active) return null;
+  if (state.source === "internal" && state.albumId !== undefined) {
+    const item = items.find((item) => item.albumId === state.albumId);
+    if (!item) return null;
+    return { albumId: item.albumId, trackIndex: item.meta.tracks?.findIndex((track) => track.id === state.songId) ?? -1, score: 200 };
+  }
   const title = normalizeText(state.title);
   const artist = normalizeText(state.artist);
 

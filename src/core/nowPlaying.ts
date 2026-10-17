@@ -11,7 +11,10 @@ import { SMTC_SCRIPT } from "./smtcScript";
 export type PlaybackStatus = "playing" | "paused" | "stopped" | "none";
 
 export interface NowPlayingState {
-  /** 平台/环境是否支持 SMTC */
+  source?: "internal" | "client";
+  albumId?: number;
+  songId?: number;
+  /** 当前播放后端是否支持显示与控制 */
   supported: boolean;
   /** 是否检测到媒体会话 */
   active: boolean;

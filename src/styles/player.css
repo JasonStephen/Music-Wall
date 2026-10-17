@@ -907,6 +907,30 @@
 }
 
 /* 状态栏迷你条 */
+.mw-np__timeline,
+.mw-np__volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mw-np__timeline input,
+.mw-np__volume input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--mw-accent, var(--interactive-accent));
+}
+.mw-np__volume { max-width: 220px; }
+.mw-np__track.is-playable { cursor: pointer; }
+.mw-np__track.is-playable:hover,
+.mw-np__track.is-playable:focus-visible {
+  background: var(--background-modifier-hover);
+  outline: 1px solid var(--interactive-accent);
+}
+
 .mw-statusbar {
   cursor: pointer;
 }

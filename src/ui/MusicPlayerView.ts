@@ -233,13 +233,14 @@ export class MusicPlayerView extends FileView {
     return this.current?.meta.albumId === albumId ? this.current.meta : null;
   }
 
-  /** 当前展示的专辑：SMTC 命中优先，其次最近一次拖入的 */
+  /** 内置队列优先，其次 SMTC 命中和最近一次拖入的专辑。 */
   private displayAlbum(): AlbumMeta | null {
-    return this.matchedAlbum() ?? this.current?.meta ?? null;
+    return this.plugin.internalPlayer?.album ?? this.matchedAlbum() ?? this.current?.meta ?? null;
   }
 
-  /** 当前播放曲目在曲目列表中的下标（来自 SMTC 匹配） */
+  /** 当前曲目下标来自内置队列或 SMTC 匹配。 */
   private activeTrackIndex(): number {
+    if (this.now.source === "internal") return this.plugin.internalPlayer?.index ?? -1;
     return this.match ? this.match.trackIndex : -1;
   }
 
@@ -271,7 +272,7 @@ export class MusicPlayerView extends FileView {
     this.shell = body;
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
 
-    // 上拉曲目面板 + 遮罩：覆盖在 page 之上，纯查看不可切歌。
+    // 上拉曲目面板 + 遮罩：内置播放可选择曲目；客户端模式保留原只读列表。
     // 第七轮起遮罩**只做视觉**（pointer-events:none，见 player.css）：
     // 点其他地方不再收起面板——面板只能经 收起钮 / 曲目列表钮 / Esc 关闭。
     this.el.scrim = box.createDiv({ cls: "mw-player__scrim" });
@@ -476,6 +477,22 @@ export class MusicPlayerView extends FileView {
     this.el.jump.addEventListener("click", () => void this.jumpToWall());
     this.el.source = meta.createDiv({ cls: "mw-np__source" });
 
+    const timeline = stack.createDiv({ cls: "mw-np__timeline is-hidden" });
+    this.el.timeline = timeline;
+    this.el.elapsed = timeline.createSpan({ text: "0:00" });
+    const seek = timeline.createEl("input", { attr: { type: "range", min: "0", max: "1", step: "0.1", "aria-label": t("internal.seek") } });
+    this.el.seek = seek;
+    seek.addEventListener("change", () => void this.plugin.nowPlaying.seek(Number(seek.value) * 1000));
+    this.el.duration = timeline.createSpan({ text: "0:00" });
+
+    const volumeRow = stack.createDiv({ cls: "mw-np__volume is-hidden" });
+    this.el.volumeRow = volumeRow;
+    volumeRow.createSpan({ text: t("internal.volume") });
+    const volume = volumeRow.createEl("input", { attr: { type: "range", min: "0", max: "1", step: "0.05", "aria-label": t("internal.volume") } });
+    volume.value = String(this.plugin.internalPlayer?.volume ?? 1);
+    this.el.volume = volume;
+    volume.addEventListener("input", () => this.plugin.internalPlayer?.setVolume(Number(volume.value)));
+
     const controls = stack.createDiv({ cls: "mw-np__controls" });
     this.el.btnPrev = controls.createEl("button", { cls: "mw-np__ctrl", text: "" });
     setIcon(this.el.btnPrev, "skip-back");
@@ -533,7 +550,7 @@ export class MusicPlayerView extends FileView {
     this.updateTrackList();
   }
 
-  /** 曲目列表重建（当前专辑变化时）；纯展示，点击不切歌以免打乱歌单顺序 */
+  /** 曲目列表重建；仅内置播放支持点击切歌，客户端歌单顺序不受影响。 */
   private updateTrackList(): void {
     const host = this.el.tracks;
     if (!host) return;
@@ -541,6 +558,8 @@ export class MusicPlayerView extends FileView {
     this.trackRows = [];
     const album = this.displayAlbum();
     const tracks = album?.tracks ?? [];
+    const internal = this.plugin.settings.playbackMode === "internal";
+    this.el.tracksNote?.setText(t(internal ? "internal.tracksNote" : "player.tracksNote"));
     if (this.el.tracksTitle) {
       this.el.tracksTitle.textContent = album
         ? t("player.tracksWithName", { name: album.name })
@@ -553,12 +572,22 @@ export class MusicPlayerView extends FileView {
       });
       return;
     }
-    tracks.forEach((t, i) => {
+    tracks.forEach((track, i) => {
       const row = host.createDiv({ cls: "mw-np__track" });
+      if (internal && album) {
+        row.addClass("is-playable");
+        row.setAttr("role", "button"); row.setAttr("tabindex", "0");
+        row.setAttr("aria-label", t("internal.playTrack", { name: track.name }));
+        const play = () => void playAlbum(album, this.plugin.getPlaybackDeps(), i);
+        row.addEventListener("click", play);
+        row.addEventListener("keydown", (event: KeyboardEvent) => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); play(); }
+        });
+      }
       row.createSpan({ cls: "mw-np__trackNo", text: String(i + 1).padStart(2, "0") });
-      const name = row.createSpan({ cls: "mw-np__trackName", text: t.name });
-      name.title = t.name;
-      row.createSpan({ cls: "mw-np__trackDur", text: fmtClock(t.duration) });
+      const name = row.createSpan({ cls: "mw-np__trackName", text: track.name });
+      name.title = track.name;
+      row.createSpan({ cls: "mw-np__trackDur", text: fmtClock(track.duration) });
       this.trackRows.push(row);
     });
   }
@@ -615,10 +644,32 @@ export class MusicPlayerView extends FileView {
     if (this.el.btnNext) this.el.btnNext.toggleClass("is-disabled", !this.now.canNext);
     if (this.el.btnPrev) this.el.btnPrev.toggleClass("is-disabled", !this.now.canPrev);
 
+    const internal = this.now.source === "internal" && this.now.active;
+    this.el.timeline?.toggleClass("is-hidden", !internal);
+    this.el.volumeRow?.toggleClass("is-hidden", !internal);
+    if (internal && this.el.seek) {
+      const seek = this.el.seek as HTMLInputElement;
+      seek.max = String(Math.max(1, this.now.durationMs / 1000));
+      if (document.activeElement !== seek) seek.value = String(this.now.positionMs / 1000);
+      seek.disabled = !this.now.seekable;
+      this.el.elapsed?.setText(fmtClock(this.now.positionMs));
+      this.el.duration?.setText(fmtClock(this.now.durationMs));
+      if (this.el.volume && document.activeElement !== this.el.volume) {
+        (this.el.volume as HTMLInputElement).value = String(this.plugin.internalPlayer?.volume ?? 1);
+      }
+    }
+
     this.updateHighlights();
   }
 
   private statusText(): string {
+    if (this.now.source === "internal") {
+      const player = this.plugin.internalPlayer;
+      if (player?.error) return player.error;
+      if (player?.loading) return t("internal.loading");
+      const status = t(this.now.status === "playing" ? "player.stPlaying" : this.now.status === "paused" ? "player.stPaused" : "player.stStopped");
+      return `${t("internal.label")} · ${status}${player?.trial ? ` · ${t("internal.trial")}` : ""}`;
+    }
     if (!this.now.supported) return t("player.smtcOff");
     if (!this.now.active) {
       return this.current ? t("player.smtcSent") : t("player.smtcNone");

@@ -21,6 +21,7 @@ export interface PlaybackDeps {
   /** 登录后重新获取依赖，避免已打开面板继续使用旧账号的 Cookie。 */
   authorize?: () => Promise<PlaybackDeps | null>;
   isCurrent?: () => boolean;
+  playInside?: (meta: AlbumMeta, startIndex: number) => Promise<boolean>;
 }
 
 function toBase64(json: string): string {
@@ -92,13 +93,17 @@ async function openWeb(url: string, deps: PlaybackDeps): Promise<void> {
  * 配置不全 → type=song 播第一首（明确提示缺什么）；
  * 仅当 scheme 打开失败才降级 H5，装有客户端时不会连带打开网页。
  */
-export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<void> {
+export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps, startIndex = 0): Promise<void> {
   if (deps.authorize) {
     const authorized = await deps.authorize();
     if (!authorized) return;
     deps = authorized;
   }
   if (deps.isCurrent && !deps.isCurrent()) return;
+  if (deps.playInside) {
+    await deps.playInside(meta, startIndex);
+    return;
+  }
   if (!meta.tracks?.length) {
     new Notice(t("playback.noTracks"));
     await openWeb(h5FallbackUrl(meta), deps);

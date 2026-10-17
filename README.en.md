@@ -4,7 +4,7 @@ Turn your NetEase Cloud Music albums into a wall of real-looking records
 inside Obsidian.
 
 Every album can look like a vinyl, a CD, a cassette, or a plain cover,
-lined up neatly on your wall. Click a record and NetEase opens and plays
+lined up neatly on your wall. Click a record and Music Wall plays
 it. Everything you collect is one glance away.
 
 Your collection lives in a `.mw` file inside your own vault — just a plain
@@ -56,13 +56,18 @@ A new tab opens at once — that's your first (empty for now) music wall.
 ### Step 4: Listen
 
 Click a record → hit play in the detail window.
-If the NetEase desktop app is installed, it opens and starts playing;
-if not, the web player opens instead — either way it just works.
+Albums play in track order inside Music Wall by default, without installing
+the NetEase client or creating/replacing account playlists. The player page
+supports pause, previous/next, track selection, seeking and volume. Commands
+also let you pause/resume or stop internal playback.
 
 **Your first preview or play opens a sign-in QR code.** Scan it with the
 NetEase mobile app and confirm. You can also sign in or out in plugin
 settings. Browsing, searching and organizing do not require sign-in.
-Whole-album playback attempts to create or reuse a dedicated private playlist.
+The temporary queue stays in memory. Closing the player tab keeps audio
+running; stopping, signing out or disabling the plugin clears the queue.
+Settings let you switch back to NetEase client playback, which retains the
+dedicated-playlist method for whole albums.
 
 That's all you need to know. Everything below is optional fun.
 
@@ -176,8 +181,9 @@ yourself in settings.
 | --- | --- |
 | Interface language | Follows Obsidian by default, or set your own |
 | NetEase account | QR sign-in, check sign-in and sign out; preview and play require sign-in |
+| Playback mode | Internal playback by default, with the original NetEase client mode available |
 | Sign-in, APIs and privacy | Interface sources, credential storage, playback permissions and sign-out scope |
-| Playback playlist | A dedicated playlist is created for you — nothing to manage |
+| Playback playlist | Client mode only; attempts to create or reuse a dedicated private playlist |
 | Default style / shelf captions / column width / player background / zoom | Look-and-feel preferences, change anytime |
 | SMTC now-playing | Toggle the "what's playing" sync (Windows only) |
 | Git URL / branch / subdirectory | Advanced: import wall files from a Git repo |
@@ -187,10 +193,10 @@ yourself in settings.
 ## Frequently asked
 
 **Clicked play and nothing happened, or only a snippet played?**
-Make sure the NetEase desktop app is installed and you're logged in.
-Without the app it opens the web player, which only plays previews.
-Sign in to the plugin with a QR code; the official client needs its own
-sign-in. Full playback still depends on account permissions and music rights.
+Sign in to the plugin and check your connection. Internal playback labels
+preview clips and skips tracks without available audio. Full playback still
+depends on account permissions and music rights. Client playback additionally
+requires the NetEase app and its own sign-in.
 
 **Which sign-in API is used, and where are credentials saved?**
 QR sign-in follows [NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced),
@@ -204,13 +210,13 @@ not sign out the NetEase client or delete playlists. See settings for details
 and interface source links.
 
 **Does it work on my phone?**
-Yes for browsing, searching, and tapping a record to open the NetEase
-app. Git import and the now-playing sync are desktop-only.
+Yes for browsing, searching and internal playback; client mode can open
+the NetEase app. Git import and client now-playing sync are desktop-only.
 
 **Where is my data? Is anything uploaded?**
 Everything is in plain `.mw` text files inside your own vault. The
 plugin never sends your data anywhere third-party — it only talks to
-NetEase's servers, purely to fetch album info and start playback.
+NetEase's servers to fetch album info, sign in and retrieve playback audio.
 
 **Deleted something by mistake?**
 Deleting records or groups always asks first (a group with records
