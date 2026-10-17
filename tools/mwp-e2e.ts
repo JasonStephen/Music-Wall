@@ -82,6 +82,7 @@ function makePlugin() {
       },
     },
     ensureNowPlayingStarted() {},
+    async ensureNeteaseLogin() { return true; },
     getPlaybackDeps: () => ({
       isDesktop: false,
       request: async () => ({ status: 200, text: "{}" }),

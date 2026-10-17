@@ -33,7 +33,7 @@ import {
 } from "./core/metadata";
 import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { checkGit, listWallFiles, syncRepo, type GitWallFile } from "./core/git";
-import { listUserPlaylists, verifyCookie } from "./core/playlist";
+import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } from "./core/playlist";
 import type { PlaybackDeps } from "./core/playback";
 import {
   createNowPlayingProvider,
@@ -43,6 +43,7 @@ import { MusicWallView } from "./ui/MusicWallView";
 import { MusicPlayerView } from "./ui/MusicPlayerView";
 import { InputModal } from "./ui/InputModal";
 import { ConfirmModal } from "./ui/ConfirmModal";
+import { NeteaseLoginModal } from "./ui/NeteaseLoginModal";
 import { ChoiceModal, PickerModal, type ChoiceOption } from "./ui/smallModals";
 import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
@@ -50,7 +51,7 @@ import { applyLanguagePref, styleLabel, t } from "./i18n";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "20260916-07";
+const BUILD_TAG = "1.1.0";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -66,6 +67,15 @@ export default class MusicWallPlugin extends Plugin {
   private wallItemCache: WallItem[] | null = null;
   private wallItemScan: Promise<WallItem[]> | null = null;
   private wallCacheTimer = 0;
+  private loginModal: NeteaseLoginModal | null = null;
+  private loginPromise: Promise<boolean> | null = null;
+  private ensureLoginPromise: Promise<boolean> | null = null;
+  private authGeneration = 0;
+  private playbackRequest = 0;
+  private verifiedCookie = "";
+  private verifiedAt = 0;
+  private loginCheck: { cookie: string; promise: Promise<boolean> } | null = null;
+  private unloading = false;
 
   async onload(): Promise<void> {
     console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
@@ -82,7 +92,7 @@ export default class MusicWallPlugin extends Plugin {
         body: req.body,
         throw: false,
       });
-      return { status: res.status, text: res.text };
+      return { status: res.status, text: res.text, headers: res.headers };
     };
 
     // 第二个参数必须是 registerView 注册的视图类型，Obsidian 据此关联 .mw → 音乐墙视图
@@ -193,6 +203,10 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.unloading = true;
+    ++this.authGeneration;
+    ++this.playbackRequest;
+    this.loginModal?.close();
     this.nowPlaying?.stop();
   }
 
@@ -606,12 +620,27 @@ export default class MusicWallPlugin extends Plugin {
   /** 供播放/详情面板使用的播放依赖 */
   getPlaybackDeps(): PlaybackDeps {
     const pid = parseInt(this.settings.playbackPlaylistId, 10);
+    const generation = this.authGeneration;
+    const cookie = this.settings.neteaseCookie;
+    const isCurrent = () => !this.unloading && generation === this.authGeneration && cookie === this.settings.neteaseCookie;
     return {
       isDesktop: Platform.isDesktopApp,
       request: this.requester,
       cookie: this.settings.neteaseCookie || undefined,
       playlistId: Number.isFinite(pid) && pid > 0 ? pid : undefined,
+      authorize: async () => {
+        const token = ++this.playbackRequest;
+        if (!(await this.ensureNeteaseLogin()) || token !== this.playbackRequest) return null;
+        const authorized = this.getPlaybackDeps();
+        return {
+          ...authorized,
+          authorize: undefined,
+          isCurrent: () => token === this.playbackRequest && !!authorized.isCurrent?.(),
+        };
+      },
+      isCurrent,
       onPlaylistResolved: (id) => {
+        if (!isCurrent()) return;
         this.settings.playbackPlaylistId = String(id);
         void this.saveSettings();
         new Notice(t("main.playlistResolved", { id }));
@@ -619,35 +648,163 @@ export default class MusicWallPlugin extends Plugin {
     };
   }
 
+  /** 所有播放入口共用；保留有效旧 Cookie，明确失效时才重新扫码。 */
+  ensureNeteaseLogin(forceCheck = false): Promise<boolean> {
+    if (this.ensureLoginPromise) return this.ensureLoginPromise;
+    const promise = this.ensureNeteaseLoginImpl(forceCheck).finally(() => {
+      if (this.ensureLoginPromise === promise) this.ensureLoginPromise = null;
+    });
+    this.ensureLoginPromise = promise;
+    return promise;
+  }
+
+  private async ensureNeteaseLoginImpl(forceCheck: boolean): Promise<boolean> {
+    if (this.unloading) return false;
+    const generation = this.authGeneration;
+    const cookie = this.settings.neteaseCookie;
+    if (hasLoginCookie(this.settings.neteaseCookie)) {
+      try {
+        return await this.verifySavedLogin(forceCheck);
+      } catch (error) {
+        if (this.unloading || generation !== this.authGeneration || cookie !== this.settings.neteaseCookie) return false;
+        if (error instanceof LoginRequiredError) {
+          try {
+            await this.clearNeteaseLogin();
+          } catch {
+            new Notice(t("auth.saveFailed"));
+            return false;
+          }
+          if (this.unloading || this.authGeneration !== generation + 1) return false;
+        } else {
+          new Notice(t("auth.verifyFailed"));
+          return false;
+        }
+      }
+    }
+    return this.loginNetease();
+  }
+
+  private async verifySavedLogin(forceCheck: boolean): Promise<boolean> {
+    const cookie = this.settings.neteaseCookie;
+    const generation = this.authGeneration;
+    if (!forceCheck && cookie === this.verifiedCookie && Date.now() - this.verifiedAt < 60_000) return true;
+    if (this.loginCheck?.cookie === cookie) return this.loginCheck.promise;
+    const promise = (async () => {
+      const account = await verifyCookie(this.requester, cookie);
+      if (this.unloading || generation !== this.authGeneration || cookie !== this.settings.neteaseCookie) return false;
+      const uid = String(account.uid);
+      const nickname = account.nickname || t("main.cookieLoggedIn");
+      const previousUid = this.settings.neteaseUserId;
+      if (previousUid !== uid || this.settings.neteaseNickname !== nickname) {
+        this.settings.neteaseUserId = uid;
+        this.settings.neteaseNickname = nickname;
+        if (previousUid && previousUid !== uid) this.settings.playbackPlaylistId = "";
+        await this.saveSettings();
+      }
+      if (this.unloading || generation !== this.authGeneration || cookie !== this.settings.neteaseCookie) return false;
+      this.verifiedCookie = cookie;
+      this.verifiedAt = Date.now();
+      return true;
+    })();
+    this.loginCheck = { cookie, promise };
+    try {
+      return await promise;
+    } finally {
+      if (this.loginCheck?.promise === promise) this.loginCheck = null;
+    }
+  }
+
+  /** 同时点击多个入口只打开一个弹窗，关闭后不会继续播放。 */
+  loginNetease(): Promise<boolean> {
+    if (this.unloading) return Promise.resolve(false);
+    if (this.loginPromise) return this.loginPromise;
+    const generation = this.authGeneration;
+    const modal = new NeteaseLoginModal(this.app, this.requester, async (cookie, valid) => {
+      const account = await verifyCookie(this.requester, cookie);
+      if (!valid() || this.unloading || generation !== this.authGeneration) return false;
+      const previous = {
+        neteaseCookie: this.settings.neteaseCookie,
+        neteaseUserId: this.settings.neteaseUserId,
+        neteaseNickname: this.settings.neteaseNickname,
+        playbackPlaylistId: this.settings.playbackPlaylistId,
+      };
+      const uid = String(account.uid);
+      if (previous.neteaseUserId && previous.neteaseUserId !== uid) this.settings.playbackPlaylistId = "";
+      this.settings.neteaseCookie = cookie;
+      this.settings.neteaseUserId = uid;
+      this.settings.neteaseNickname = account.nickname || t("main.cookieLoggedIn");
+      try {
+        await this.saveSettings();
+      } catch {
+        if (generation === this.authGeneration) Object.assign(this.settings, previous);
+        throw new Error(t("auth.saveFailed"));
+      }
+      if (!valid() || this.unloading || generation !== this.authGeneration) return false;
+      this.verifiedCookie = cookie;
+      this.verifiedAt = Date.now();
+      new Notice(t("auth.signedIn", { name: this.settings.neteaseNickname }));
+      return true;
+    });
+    this.loginModal = modal;
+    const promise = modal.result.finally(() => {
+      if (this.loginModal === modal) this.loginModal = null;
+      if (this.loginPromise === promise) this.loginPromise = null;
+    });
+    this.loginPromise = promise;
+    modal.open();
+    return promise;
+  }
+
+  private async clearNeteaseLogin(): Promise<void> {
+    const generation = ++this.authGeneration;
+    this.loginModal?.close();
+    this.loginCheck = null;
+    this.verifiedCookie = "";
+    this.verifiedAt = 0;
+    const previous = {
+      neteaseCookie: this.settings.neteaseCookie,
+      neteaseUserId: this.settings.neteaseUserId,
+      neteaseNickname: this.settings.neteaseNickname,
+      playbackPlaylistId: this.settings.playbackPlaylistId,
+    };
+    this.settings.neteaseCookie = "";
+    this.settings.neteaseUserId = "";
+    this.settings.neteaseNickname = "";
+    // 避免换账号后写入原账号的播放歌单；不会删除远端歌单。
+    this.settings.playbackPlaylistId = "";
+    try {
+      await this.saveSettings();
+    } catch (error) {
+      if (generation === this.authGeneration) Object.assign(this.settings, previous);
+      throw error;
+    }
+  }
+
+  async logoutNetease(): Promise<void> {
+    ++this.playbackRequest;
+    this.ensureLoginPromise = null;
+    await this.clearNeteaseLogin();
+    new Notice(t("auth.signedOut"));
+  }
+
   /** 验证当前 Cookie 登录态；成功返回昵称 */
   async verifyCookieNow(): Promise<string> {
-    if (!this.settings.neteaseCookie) {
-      new Notice(t("main.cookieEmpty"));
-      return "";
-    }
-    const { nickname } = await verifyCookie(
-      this.requester,
-      this.settings.neteaseCookie
-    );
-    new Notice(
-      t("main.cookieValid", {
-        nickname: nickname || t("main.cookieLoggedIn"),
-      })
-    );
+    if (!(await this.ensureNeteaseLogin(true))) return "";
+    const nickname = this.settings.neteaseNickname;
+    new Notice(t("auth.signedIn", { name: nickname }));
     return nickname;
   }
 
   async pickPlaybackPlaylist(): Promise<void> {
-    if (!this.settings.neteaseCookie) {
-      new Notice(t("main.cookieRequired"));
-      return;
-    }
+    if (!(await this.ensureNeteaseLogin())) return;
+    const generation = this.authGeneration;
     try {
       new Notice(t("main.readingPlaylists"));
       const list = await listUserPlaylists(
         this.requester,
         this.settings.neteaseCookie
       );
+      if (generation !== this.authGeneration) return;
       if (!list.length) {
         new Notice(t("main.noPlaylists"));
         return;
@@ -663,6 +820,7 @@ export default class MusicWallPlugin extends Plugin {
           }),
         })),
         (i) => {
+          if (generation !== this.authGeneration) return;
           this.settings.playbackPlaylistId = String(list[i].id);
           void this.saveSettings();
           new Notice(t("main.playlistSet", { name: list[i].name }));

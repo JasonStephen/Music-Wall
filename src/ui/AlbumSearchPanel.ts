@@ -236,7 +236,7 @@ export class AlbumSearchPanel {
   }
 
   private async onPreviewClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
-    const deps = this.host.getPlaybackDeps?.();
+    let deps = this.host.getPlaybackDeps?.();
     if (!deps) {
       new Notice(t("search.noPreview"));
       return;
@@ -245,6 +245,11 @@ export class AlbumSearchPanel {
     const old = btn.textContent;
     btn.textContent = t("search.pulling");
     try {
+      if (deps.authorize) {
+        const authorized = await deps.authorize();
+        if (!authorized) return;
+        deps = authorized;
+      }
       const meta = await this.host.fetchAlbumDetail(summary.albumId);
       await playAlbum(meta, deps);
     } catch (e: any) {

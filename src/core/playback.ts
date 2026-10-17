@@ -18,6 +18,9 @@ export interface PlaybackDeps {
   playlistId?: number;
   /** 自动创建中转歌单成功后回传 ID，宿主应持久化到设置 */
   onPlaylistResolved?: (id: number) => void;
+  /** 登录后重新获取依赖，避免已打开面板继续使用旧账号的 Cookie。 */
+  authorize?: () => Promise<PlaybackDeps | null>;
+  isCurrent?: () => boolean;
 }
 
 function toBase64(json: string): string {
@@ -90,6 +93,12 @@ async function openWeb(url: string, deps: PlaybackDeps): Promise<void> {
  * 仅当 scheme 打开失败才降级 H5，装有客户端时不会连带打开网页。
  */
 export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<void> {
+  if (deps.authorize) {
+    const authorized = await deps.authorize();
+    if (!authorized) return;
+    deps = authorized;
+  }
+  if (deps.isCurrent && !deps.isCurrent()) return;
   if (!meta.tracks?.length) {
     new Notice(t("playback.noTracks"));
     await openWeb(h5FallbackUrl(meta), deps);
@@ -104,6 +113,7 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
     new Notice(t("playback.creatingPlaylist"));
     try {
       playlistId = await ensureTempPlaylist(deps.request, deps.cookie);
+      if (deps.isCurrent && !deps.isCurrent()) return;
       deps.onPlaylistResolved?.(playlistId);
     } catch (e: any) {
       new Notice(
@@ -113,6 +123,7 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
   }
 
   const playlistMode = cookieOk && !!playlistId;
+  if (deps.isCurrent && !deps.isCurrent()) return;
 
   if (playlistMode) {
     try {
@@ -124,6 +135,7 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
         ids,
         deps.cookie!
       );
+      if (deps.isCurrent && !deps.isCurrent()) return;
       if (await openScheme(orpheusPlaylistUrl(playlistId!), deps)) {
         new Notice(
           t("playback.playlistWritten", { name: meta.name, count: ids.length })
@@ -149,9 +161,11 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps): Promise<vo
   }
 
   // 单曲通道：只播第一首（不追加、不打开网页）
+  if (deps.isCurrent && !deps.isCurrent()) return;
   if (await openScheme(orpheusSongUrl(meta.tracks[0].id), deps)) return;
 
   // 最后手段：scheme 完全打不开（未安装客户端）才走 H5
+  if (deps.isCurrent && !deps.isCurrent()) return;
   new Notice(t("playback.noClient"));
   await openWeb(h5FallbackUrl(meta), deps);
 }

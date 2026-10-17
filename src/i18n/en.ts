@@ -50,6 +50,40 @@ export const en: typeof zhCN = {
     closeEsc: "Close (Esc)",
   },
 
+  auth: {
+    account: "NetEase account",
+    signIn: "Sign in with QR code",
+    signOut: "Sign out",
+    verify: "Check sign-in",
+    savedAccount: "Saved sign-in: {name}. The session is checked when you play.",
+    savedCredential: "A sign-in credential is saved. Check it here; manually copying cookies is no longer needed.",
+    signedOutDesc: "Not signed in. Browse and search freely; preview or play opens QR sign-in.",
+    signedIn: "Signed in: {name}",
+    signedOut: "Signed out of Music Wall",
+    title: "Sign in to NetEase Cloud Music",
+    scanHint: "Scan with the NetEase Cloud Music mobile app and confirm on your phone.",
+    qrAlt: "NetEase Cloud Music sign-in QR code",
+    modalNote: "Confirming saves your sign-in credential. Cancel stops this sign-in. See plugin settings for sign-in and API details.",
+    refresh: "Refresh QR code",
+    preparing: "Creating QR code…",
+    waiting: "Waiting for scan…",
+    confirm: "Scanned. Please confirm on your phone.",
+    verifying: "Verifying account and saving sign-in…",
+    expired: "QR code expired. Please refresh it.",
+    retrying: "Unable to check sign-in for now. Retrying…",
+    networkError: "Cannot connect to NetEase. Check your connection and refresh the QR code.",
+    createFailed: "Could not create a QR code. Please try again later.",
+    checkFailed: "NetEase could not complete sign-in. Please refresh the QR code.",
+    missingCredential: "NetEase did not return a valid credential. Please refresh the QR code.",
+    verifyFailed: "Cannot verify NetEase sign-in for now. Check your connection and retry. Existing credentials are kept.",
+    saveFailed: "Could not save sign-in settings. Check that your vault is writable and retry.",
+    aboutTitle: "Sign-in, APIs and privacy",
+    aboutService: "Music Wall is an unofficial plugin. QR sign-in follows NeteaseCloudMusicApiEnhanced; search, albums and playlists retain the existing NetEase interface implementation, with encryption based on music-lib. Requests go directly to NetEase, without a separate API server or third-party API service. Interface changes or NetEase security checks may temporarily interrupt access.",
+    aboutStorage: "QR authorization returns a sign-in credential (cookie), stored unencrypted in this vault's plugin settings. Vault sync or backups may copy it. It is never included in .mw wall files; do not publicly share plugin settings. The plugin does not read browser or NetEase client sessions or collect account passwords.",
+    aboutPlayback: "Browsing, searching and organizing do not require sign-in; preview and play do. Playback still uses the NetEase client or website. QR sign-in does not sign in the official client or change membership or copyright restrictions. Whole-album playback replaces tracks in the selected playlist, or attempts to create/reuse the private playlist “Music Wall 临时播放” when none is selected.",
+    aboutLogout: "Signing out clears this plugin's saved credential and playback playlist selection. It does not sign out the NetEase client or delete NetEase playlists. Disabling the plugin does not sign you out.",
+  },
+
   settings: {
     lang: {
       name: "Interface language",
@@ -68,19 +102,12 @@ export const en: typeof zhCN = {
       name: "Git subdirectory",
       desc: "Only scan this subdirectory for .mw files; leave empty to scan the whole repository",
     },
-    cookie: {
-      name: "NetEase Cookie (optional)",
-      desc: "A full login Cookie (must include MUSIC_U) is required for whole-album playback; browsing/search works without it. Note: stored locally only",
-      verify: "Verify",
-      verifyTip: "Check the Cookie login state and show the account nickname",
-      invalid: "Cookie invalid: {error}",
-    },
     playlist: {
       name: "Playback playlist ID",
-      desc: "With the Cookie above, whole-album playback writes the album tracks into this playlist and tells the client to play it. If empty and the Cookie is valid, a private relay playlist “Music Wall 临时播放” is created/reused automatically. Use the button on the right to pick one of your account playlists",
+      desc: "After sign-in, whole-album playback replaces the tracks in this playlist; use a dedicated playback playlist. If empty, a private relay playlist “Music Wall 临时播放” is created/reused automatically. Use the button on the right to pick an account playlist",
       ph: "e.g. 123456789",
       pick: "Pick from account",
-      pickTip: "Requires a configured Cookie",
+      pickTip: "Requires NetEase sign-in; opens a QR code if signed out",
     },
     defaultStyle: {
       name: "Default style for new walls",
@@ -116,7 +143,7 @@ export const en: typeof zhCN = {
     exportWall: "Export current wall (share copy)",
     importWall: "Import .mw wall file",
     gitImport: "Import wall from Git repository",
-    pickPlaylist: "Pick playback playlist (whole-album playback, Cookie required)",
+    pickPlaylist: "Pick playback playlist (whole-album playback, sign-in required)",
     newPlayer: "New music player",
   },
 
@@ -293,7 +320,7 @@ export const en: typeof zhCN = {
     },
     settingsPanel: {
       open: "Open plugin settings",
-      hint: "Global options like column width, shelf captions, Cookie, playback playlist and SMTC live in plugin settings.",
+      hint: "Global options like column width, shelf captions, NetEase sign-in, playback playlist and SMTC live in plugin settings.",
     },
     group: {
       newItem: "New group…",
@@ -477,7 +504,7 @@ export const en: typeof zhCN = {
     playlistWritten: "{count} tracks of “{name}” replaced into the playlist and playing",
     schemeFallback: "The client did not receive the playlist command; falling back to single-track playback",
     playlistModeFail:
-      "Playlist mode failed: {error} (reconfigure the Cookie or re-pick the playlist); falling back to single-track playback this time",
+      "Playlist mode failed: {error} (check sign-in in settings or re-pick the playlist); falling back to single-track playback this time",
     missingCookie: "NetEase Cookie",
     missingValidCookie: "a valid login Cookie (current Cookie lacks MUSIC_U, not logged in)",
     missingPlaylist: "playback playlist ID",
@@ -623,14 +650,14 @@ export const en: typeof zhCN = {
   },
 
   metaErr: {
-    notJson: "NetEase returned non-JSON data (possibly risk control); retry later or configure a Cookie",
+    notJson: "NetEase returned non-JSON data (possibly risk control); retry later or sign in with a QR code in settings",
     searchFail: "Search failed (code={code})",
     detailFail: "Failed to fetch album details (code={code})",
   },
 
   playlistErr: {
-    noMusicU: "The Cookie lacks MUSIC_U (login credential); make sure you copied the full Cookie after logging in on the web",
-    cookieInvalid: "Cookie invalid or expired; log in again on the NetEase web and update it",
+    noMusicU: "The Cookie lacks MUSIC_U (login credential); please sign in with a new QR code",
+    cookieInvalid: "Sign-in credential invalid or expired; scan a new QR code to sign in",
     addFail: "Failed to add tracks to playlist (code={code})",
     delFail: "Failed to remove tracks from playlist (code={code})",
     createFail: "Failed to create the relay playlist (code={code}{detail})",

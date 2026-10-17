@@ -15,6 +15,8 @@ export interface HttpRequest {
 export interface HttpResponse {
   status: number;
   text: string;
+  /** 登录接口通过 Set-Cookie 返回凭据；兼容现有不读取响应头的调用方。 */
+  headers?: Record<string, string | string[]>;
 }
 
 /** 由宿主注入的网络实现 */
@@ -198,7 +200,8 @@ export async function weapiPost(
   cookie?: string
 ): Promise<any> {
   const url = `https://music.163.com/weapi${path.replace(/^\/api/, "")}`;
-  const payload = { csrf_token: "", ...data };
+  const csrf = /(?:^|;\s*)__csrf=([^;]*)/.exec(cookie ?? "")?.[1] ?? "";
+  const payload = { csrf_token: csrf, ...data };
   const { params, encSecKey } = encryptWeApi(JSON.stringify(payload));
   const res = await request({
     url,

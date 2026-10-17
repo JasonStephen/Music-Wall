@@ -7,6 +7,7 @@
 @import "./groups.css";
 @import "./player.css";
 @import "./modals.css";
+@import "./auth.css";
 @import "./rating.css";
 /* 面板控件压制必须在面板基础样式之后：靠导入顺序 + !important 一起收口 */
 @import "./panel-controls.css";

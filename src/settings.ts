@@ -1,4 +1,4 @@
-// 插件设置页：Git 仓库、网易云 Cookie、默认样式、列宽。
+// 插件设置页：Git 仓库、网易云扫码登录、默认样式、列宽。
 
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
@@ -19,6 +19,7 @@ import {
   type LanguagePref,
 } from "./i18n";
 import { ALL_STYLES } from "./ui/disc";
+import { hasLoginCookie } from "./core/playlist";
 
 export class MusicWallSettingTab extends PluginSettingTab {
   private plugin: MusicWallPlugin;
@@ -92,35 +93,57 @@ export class MusicWallSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("settings.cookie.name"))
-      .setDesc(t("settings.cookie.desc"))
-      .addTextArea((te) => {
-        te.setPlaceholder("__remember_uid=...; MUSIC_U=...;")
-          .setValue(this.plugin.settings.neteaseCookie)
-          .onChange(async (v) => {
-            this.plugin.settings.neteaseCookie = v.trim();
-            await this.plugin.saveSettings();
-          });
-        te.inputEl.rows = 3;
-      })
-      .addButton((b) =>
-        b
-          .setButtonText(t("settings.cookie.verify"))
-          .setTooltip(t("settings.cookie.verifyTip"))
-          .onClick(async () => {
-            b.setDisabled(true);
-            try {
-              await this.plugin.verifyCookieNow();
-            } catch (e: any) {
-              new Notice(
-                t("settings.cookie.invalid", { error: e?.message ?? e })
-              );
-            } finally {
-              b.setDisabled(false);
-            }
-          })
-      );
+    const hasLogin = hasLoginCookie(this.plugin.settings.neteaseCookie);
+    const account = new Setting(containerEl)
+      .setName(t("auth.account"))
+      .setDesc(hasLogin
+        ? this.plugin.settings.neteaseNickname
+          ? t("auth.savedAccount", { name: this.plugin.settings.neteaseNickname })
+          : t("auth.savedCredential")
+        : t("auth.signedOutDesc"));
+    account.addButton((b) => b
+      .setButtonText(t(hasLogin ? "auth.verify" : "auth.signIn"))
+      .onClick(async () => {
+        b.setDisabled(true);
+        try {
+          if (hasLogin) await this.plugin.verifyCookieNow();
+          else await this.plugin.loginNetease();
+        } catch {
+          new Notice(t("auth.verifyFailed"));
+        } finally {
+          this.display();
+        }
+      }));
+    if (this.plugin.settings.neteaseCookie) {
+      account.addButton((b) => b
+        .setButtonText(t("auth.signOut"))
+        .onClick(async () => {
+          b.setDisabled(true);
+          try {
+            await this.plugin.logoutNetease();
+          } catch {
+            new Notice(t("auth.saveFailed"));
+          } finally {
+            this.display();
+          }
+        }));
+    }
+    const explanation = containerEl.createEl("details", { cls: "mw-auth-info" });
+    explanation.createEl("summary", { text: t("auth.aboutTitle") });
+    explanation.createEl("p", { text: t("auth.aboutService") });
+    explanation.createEl("p", { text: t("auth.aboutStorage") });
+    explanation.createEl("p", { text: t("auth.aboutPlayback") });
+    explanation.createEl("p", { text: t("auth.aboutLogout") });
+    const sources = explanation.createEl("p");
+    sources.createEl("a", {
+      text: "NeteaseCloudMusicApiEnhanced",
+      attr: { href: "https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced", target: "_blank", rel: "noopener noreferrer" },
+    });
+    sources.appendText(" · ");
+    sources.createEl("a", {
+      text: "music-lib",
+      attr: { href: "https://github.com/guohuiyuan/music-lib", target: "_blank", rel: "noopener noreferrer" },
+    });
 
     new Setting(containerEl)
       .setName(t("settings.playlist.name"))
@@ -138,8 +161,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
         b
           .setButtonText(t("settings.playlist.pick"))
           .setTooltip(t("settings.playlist.pickTip"))
-          .onClick(() => {
-            void this.plugin.pickPlaybackPlaylist();
+          .onClick(async () => {
+            await this.plugin.pickPlaybackPlaylist();
             this.display();
           })
       );

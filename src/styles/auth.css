@@ -1,0 +1,49 @@
+.modal.mw-login-modal {
+  width: min(440px, 92vw);
+}
+.mw-login {
+  text-align: center;
+}
+.mw-login__frame {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 236px;
+  margin: 16px 0;
+}
+.mw-login__frame img {
+  display: block;
+  width: 232px;
+  height: 232px;
+  max-width: 100%;
+  object-fit: contain;
+  background: #fff;
+  image-rendering: pixelated;
+}
+.mw-login__frame img[hidden] {
+  display: none;
+}
+.mw-login__status {
+  min-height: 2.8em;
+  line-height: 1.4;
+}
+.mw-login__note,
+.mw-auth-info {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
+}
+.mw-login__buttons {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.mw-auth-info {
+  margin: 0 0 20px;
+}
+.mw-auth-info summary {
+  cursor: pointer;
+  color: var(--text-normal);
+}

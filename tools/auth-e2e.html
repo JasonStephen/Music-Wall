@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>auth-e2e</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+:root { --background-primary:#fff; --text-normal:#242424; --text-muted:#666; --font-ui-small:13px; }
+* { box-sizing:border-box; }
+body { margin:0; background:#e8e5e1; font:15px/1.5 system-ui,sans-serif; }
+body.theme-dark { --background-primary:#252525; --text-normal:#ededed; --text-muted:#aaa; background:#111; }
+.modal-container { position:fixed; inset:0; display:flex; justify-content:center; align-items:center; background:#0005; }
+.modal { padding:24px; max-width:92vw; max-height:94vh; overflow:auto; border-radius:12px; background:var(--background-primary); color:var(--text-normal); box-shadow:0 16px 48px #0004; }
+h2 { margin:0 0 16px; font-size:22px; }
+p { margin:12px 0; }
+button { padding:7px 12px; border:1px solid #8886; border-radius:6px; background:var(--background-primary); color:var(--text-normal); font:inherit; cursor:pointer; }
+button:disabled { opacity:.5; }
+#result { position:fixed; top:0; left:0; z-index:200; background:white; font:12px monospace; }
+.ok { color:green; } .bad { color:red; }
+</style></head><body><div id="result"></div><script src="auth-e2e.bundle.js"></script></body></html>

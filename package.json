@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "music-wall",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "Obsidian 音乐墙插件（网易云专辑 · 唱片墙可视化）",
   "main": "main.js",
   "type": "module",
@@ -26,6 +26,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "@noble/ciphers": "^2.4.0"
+    "@noble/ciphers": "^2.4.0",
+    "qrcode-generator": "2.0.4"
   }
 }

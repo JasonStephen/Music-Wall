@@ -50,6 +50,40 @@ export const zhTW: typeof zhCN = {
     closeEsc: "關閉 (Esc)",
   },
 
+  auth: {
+    account: "網易雲帳號",
+    signIn: "掃碼登入",
+    signOut: "登出",
+    verify: "檢查登入",
+    savedAccount: "已儲存登入：{name}。播放時會檢查登入是否有效。",
+    savedCredential: "已有登入憑證，可檢查登入狀態；無需再手動複製 Cookie。",
+    signedOutDesc: "尚未登入。瀏覽和搜尋無需登入；點擊試聽或播放時會彈出掃碼登入。",
+    signedIn: "已登入：{name}",
+    signedOut: "已從 Music Wall 登出",
+    title: "登入網易雲音樂",
+    scanHint: "請用網易雲音樂手機 App 掃描 QR Code，並在手機上確認登入。",
+    qrAlt: "網易雲音樂登入 QR Code",
+    modalNote: "確認後會儲存登入憑證。取消將停止本次登入；登入與介面說明可在外掛設定中查看。",
+    refresh: "重新產生 QR Code",
+    preparing: "正在產生 QR Code…",
+    waiting: "等待掃碼…",
+    confirm: "已掃描，請在手機上確認登入",
+    verifying: "正在驗證帳號並儲存登入…",
+    expired: "QR Code 已過期，請重新產生",
+    retrying: "暫時無法檢查登入，正在重試…",
+    networkError: "無法連線至網易雲，請檢查網路後重新產生 QR Code。",
+    createFailed: "QR Code 產生失敗，請稍後重試。",
+    checkFailed: "網易雲暫時無法完成掃碼登入，請重新產生 QR Code。",
+    missingCredential: "網易雲未傳回有效登入憑證，請重新產生 QR Code。",
+    verifyFailed: "暫時無法驗證網易雲登入，請檢查網路後重試。已有憑證會保留。",
+    saveFailed: "登入設定儲存失敗，請檢查儲存庫是否可寫入後重試。",
+    aboutTitle: "登入、介面與隱私說明",
+    aboutService: "Music Wall 是非官方外掛。掃碼流程參考 NeteaseCloudMusicApiEnhanced；搜尋、專輯與歌單操作沿用現有網易雲介面實作，加密層參考 music-lib。請求直接傳送至網易雲，無需自建 API 伺服器，也不經過第三方 API 服務。介面變化或網易雲風控可能導致暫時無法使用。",
+    aboutStorage: "掃碼授權後取得登入憑證（Cookie），儲存在目前儲存庫的外掛設定中，未加密，可能隨儲存庫同步或備份。憑證不會寫入 .mw 音樂牆檔案；請勿公開分享外掛設定檔。外掛不讀取瀏覽器或網易雲用戶端的登入資訊，也不收集帳號密碼。",
+    aboutPlayback: "瀏覽、搜尋與整理收藏無需登入；試聽和播放需要登入。播放仍由網易雲用戶端或網頁接管，掃碼不會同時登入官方用戶端，也不會改變會員或版權限制。整專連播會替換所選播放歌單的曲目；未指定時會嘗試建立或重用私密歌單「Music Wall 临时播放」。",
+    aboutLogout: "登出會清除本外掛儲存的登入憑證及播放歌單選擇，不會登出網易雲用戶端或刪除網易雲歌單。關閉外掛不等於登出。",
+  },
+
   settings: {
     lang: {
       name: "介面語言",
@@ -68,19 +102,12 @@ export const zhTW: typeof zhCN = {
       name: "Git 子目錄",
       desc: "僅掃描該子目錄下的 .mw 檔案；留空掃描整個倉庫",
     },
-    cookie: {
-      name: "網易雲 Cookie（可選）",
-      desc: "登入後的完整 Cookie（必須包含 MUSIC_U）才能整專連播；留空亦可瀏覽/搜尋。注意：僅存於本機",
-      verify: "驗證",
-      verifyTip: "檢查 Cookie 登入狀態並顯示帳號暱稱",
-      invalid: "Cookie 無效：{error}",
-    },
     playlist: {
       name: "播放歌單 ID",
-      desc: "配合上方 Cookie 實現整張專輯連播：播放時把專輯曲目寫入該歌單並讓用戶端切到該歌單播放。留空且 Cookie 有效時會自動建立/複用私密中轉歌單「Music Wall 臨時播放」。可點右側按鈕從帳號歌單中選擇",
+      desc: "登入後可整張專輯連播：播放時會替換此歌單的曲目，請使用專用播放歌單。留空時會自動建立/重用私密中轉歌單「Music Wall 临时播放」。可點右側按鈕從帳號歌單中選擇",
       ph: "如 123456789",
       pick: "從帳號選擇",
-      pickTip: "需已配置 Cookie",
+      pickTip: "需登入網易雲，未登入時會彈出 QR Code",
     },
     defaultStyle: {
       name: "新建牆的預設樣式",
@@ -116,7 +143,7 @@ export const zhTW: typeof zhCN = {
     exportWall: "匯出目前音樂牆（分享副本）",
     importWall: "匯入 .mw 音樂牆檔案",
     gitImport: "從 Git 倉庫匯入音樂牆",
-    pickPlaylist: "選擇播放歌單（整專連播，需 Cookie）",
+    pickPlaylist: "選擇播放歌單（整專連播，需登入）",
     newPlayer: "新建音樂播放器",
   },
 
@@ -293,7 +320,7 @@ export const zhTW: typeof zhCN = {
     },
     settingsPanel: {
       open: "開啟外掛設定",
-      hint: "欄寬、展示架文字檔位、Cookie、播放歌單、SMTC 等全域項在外掛設定裡。",
+      hint: "欄寬、展示架文字檔位、網易雲登入、播放歌單、SMTC 等全域項在外掛設定裡。",
     },
     group: {
       newItem: "新建分組…",
@@ -477,7 +504,7 @@ export const zhTW: typeof zhCN = {
     playlistWritten: "《{name}》{count} 首已替換進播放歌單並開始播放",
     schemeFallback: "歌單播放指令未被用戶端接收，改用單曲播放",
     playlistModeFail:
-      "歌單模式失敗：{error}（請重新配置 Cookie 或重選播放歌單）；本次改用單曲播放",
+      "歌單模式失敗：{error}（請在設定中檢查登入或重選播放歌單）；本次改用單曲播放",
     missingCookie: "網易雲 Cookie",
     missingValidCookie: "有效登入 Cookie（目前 Cookie 缺少 MUSIC_U，未登入）",
     missingPlaylist: "播放歌單 ID",
@@ -623,14 +650,14 @@ export const zhTW: typeof zhCN = {
   },
 
   metaErr: {
-    notJson: "網易雲回傳了非 JSON 資料（可能觸發風控），請稍後重試或配置 Cookie",
+    notJson: "網易雲回傳了非 JSON 資料（可能觸發風控），請稍後重試或在設定中掃碼登入",
     searchFail: "搜尋失敗（code={code}）",
     detailFail: "獲取專輯詳情失敗（code={code}）",
   },
 
   playlistErr: {
-    noMusicU: "Cookie 中未包含 MUSIC_U（登入憑證），請確認已在網頁登入後複製完整 Cookie",
-    cookieInvalid: "Cookie 無效或已過期，請在網易雲網頁端重新登入並更新",
+    noMusicU: "Cookie 中未包含 MUSIC_U（登入憑證），請重新掃碼登入",
+    cookieInvalid: "登入憑證無效或已過期，請重新掃碼登入",
     addFail: "歌單加歌失敗（code={code}）",
     delFail: "歌單刪歌失敗（code={code}）",
     createFail: "建立中轉歌單失敗（code={code}{detail}）",

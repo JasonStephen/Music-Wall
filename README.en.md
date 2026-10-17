@@ -59,10 +59,10 @@ Click a record → hit play in the detail window.
 If the NetEase desktop app is installed, it opens and starts playing;
 if not, the web player opens instead — either way it just works.
 
-**Want whole-album continuous playback?** Paste your NetEase cookie once
-in the plugin settings (the settings page explains what it is and where
-to find it; everything works without it, playback just falls back to the
-first track).
+**Your first preview or play opens a sign-in QR code.** Scan it with the
+NetEase mobile app and confirm. You can also sign in or out in plugin
+settings. Browsing, searching and organizing do not require sign-in.
+Whole-album playback attempts to create or reuse a dedicated private playlist.
 
 That's all you need to know. Everything below is optional fun.
 
@@ -175,7 +175,8 @@ yourself in settings.
 | Setting | In one line |
 | --- | --- |
 | Interface language | Follows Obsidian by default, or set your own |
-| NetEase cookie | Enables whole-album playback; everything else works without it |
+| NetEase account | QR sign-in, check sign-in and sign out; preview and play require sign-in |
+| Sign-in, APIs and privacy | Interface sources, credential storage, playback permissions and sign-out scope |
 | Playback playlist | A dedicated playlist is created for you — nothing to manage |
 | Default style / shelf captions / column width / player background / zoom | Look-and-feel preferences, change anytime |
 | SMTC now-playing | Toggle the "what's playing" sync (Windows only) |
@@ -188,7 +189,19 @@ yourself in settings.
 **Clicked play and nothing happened, or only a snippet played?**
 Make sure the NetEase desktop app is installed and you're logged in.
 Without the app it opens the web player, which only plays previews.
-For whole-album playback, add your cookie in settings.
+Sign in to the plugin with a QR code; the official client needs its own
+sign-in. Full playback still depends on account permissions and music rights.
+
+**Which sign-in API is used, and where are credentials saved?**
+QR sign-in follows [NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced),
+using the existing encryption layer to contact NetEase directly. No separate
+API server is required. Search, album and playlist interfaces retain their
+existing implementation. Sign-in credentials (cookies) are saved unencrypted
+in this vault's plugin settings and may be copied by vault sync or backups.
+They are not included in `.mw` files. Do not publicly share plugin settings.
+Signing out clears this plugin's credentials and playlist selection; it does
+not sign out the NetEase client or delete playlists. See settings for details
+and interface source links.
 
 **Does it work on my phone?**
 Yes for browsing, searching, and tapping a record to open the NetEase

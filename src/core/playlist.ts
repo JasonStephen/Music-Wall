@@ -12,8 +12,11 @@ export interface UserPlaylistBrief {
 
 /** 粗检 Cookie 是否包含登录凭证 MUSIC_U（缺失则歌单操作必失败） */
 export function hasLoginCookie(cookie?: string): boolean {
-  return !!cookie && /MUSIC_U=/.test(cookie);
+  return !!cookie && /(?:^|;\s*)MUSIC_U=[^;\s]+/.test(cookie);
 }
+
+/** 仅明确失效的登录触发重新扫码，网络故障不应清除已有凭据。 */
+export class LoginRequiredError extends Error {}
 
 /** 验证 Cookie：返回账号 uid 与昵称 */
 export async function verifyCookie(
@@ -21,11 +24,15 @@ export async function verifyCookie(
   cookie: string
 ): Promise<{ uid: number; nickname: string }> {
   if (!hasLoginCookie(cookie)) {
-    throw new Error(t("playlistErr.noMusicU"));
+    throw new LoginRequiredError(t("playlistErr.noMusicU"));
   }
   const r = await weapiPost(request, "/api/w/nuser/account/get", {}, cookie);
+  if (r?.code === 301 || r?.code === 401) {
+    throw new LoginRequiredError(t("playlistErr.cookieInvalid"));
+  }
+  if (r?.code !== 200) throw new Error(t("auth.verifyFailed"));
   const uid = r?.account?.id ?? r?.profile?.userId;
-  if (!uid) throw new Error(t("playlistErr.cookieInvalid"));
+  if (!uid) throw new LoginRequiredError(t("playlistErr.cookieInvalid"));
   return { uid, nickname: r?.account?.nickname ?? r?.profile?.nickname ?? "" };
 }
 

@@ -141,8 +141,10 @@ export interface MusicWallSettings {
   minColumnWidth: number;
   /** 新建墙时的默认样式 */
   defaultStyle: DiscStyle;
-  /** 网易云 Cookie（可选，提升结果完整度；配置后可写入歌单整专连播） */
+  /** 扫码取得的网易云登录凭据；兼容旧版手动填写的 Cookie。 */
   neteaseCookie: string;
+  neteaseUserId: string;
+  neteaseNickname: string;
   /** 播放用歌单 ID（配合 Cookie 实现整张专辑连播） */
   playbackPlaylistId: string;
   /** 是否已提示过移动端限制 */
@@ -168,6 +170,8 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   minColumnWidth: 180,
   defaultStyle: "vinyl",
   neteaseCookie: "",
+  neteaseUserId: "",
+  neteaseNickname: "",
   playbackPlaylistId: "",
   mobileNoticeShown: false,
   shelfCaption: "pull",

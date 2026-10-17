@@ -87,7 +87,7 @@ class FakeComponent {
   registerDomEvent() {}
 }
 class FakeModal extends FakeComponent {
-  constructor(app) { super(); this.app = app; this.contentEl = el(); }
+  constructor(app) { super(); this.app = app; this.contentEl = el(); this.modalEl = el(); }
   open() { this.onOpen(); }
   close() { this.onClose(); }
 }
@@ -359,6 +359,9 @@ const origLoad = Module._load;
     "walls/a.mw"
   );
   await new Promise((r) => setTimeout(r, 0));
+  if (!plugin.loginModal) throw new Error("未登录拖入播放没有打开扫码登录");
+  plugin.loginModal.close();
+  console.log("未登录拖入播放打开扫码登录，取消后停止：通过");
   // 播放器设备外观：三种样式轮换渲染（磁带机因无法达到交付要求已移除）
   for (const s of ["vinyl", "cd", "cover"]) {
     player.discStyle = s;

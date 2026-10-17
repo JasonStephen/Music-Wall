@@ -48,6 +48,40 @@ export const zhCN = {
     closeEsc: "关闭 (Esc)",
   },
 
+  auth: {
+    account: "网易云账号",
+    signIn: "扫码登录",
+    signOut: "登出",
+    verify: "检查登录",
+    savedAccount: "已保存登录：{name}。播放时会检查登录是否有效。",
+    savedCredential: "已有登录凭据，可检查登录状态；无需再手动复制 Cookie。",
+    signedOutDesc: "尚未登录。浏览和搜索无需登录；点击试听或播放时会弹出扫码登录。",
+    signedIn: "已登录：{name}",
+    signedOut: "已从 Music Wall 登出",
+    title: "登录网易云音乐",
+    scanHint: "请用网易云音乐手机 App 扫描二维码，并在手机上确认登录。",
+    qrAlt: "网易云音乐登录二维码",
+    modalNote: "确认后会保存登录凭据。取消将停止本次登录；登录与接口说明可在插件设置中查看。",
+    refresh: "刷新二维码",
+    preparing: "正在生成二维码…",
+    waiting: "等待扫码…",
+    confirm: "已扫描，请在手机上确认登录",
+    verifying: "正在验证账号并保存登录…",
+    expired: "二维码已过期，请刷新二维码",
+    retrying: "暂时无法检查登录，正在重试…",
+    networkError: "无法连接网易云，请检查网络后刷新二维码重试。",
+    createFailed: "二维码生成失败，请稍后刷新重试。",
+    checkFailed: "网易云暂时无法完成扫码登录，请刷新二维码重试。",
+    missingCredential: "网易云未返回有效登录凭据，请刷新二维码重试。",
+    verifyFailed: "暂时无法验证网易云登录，请检查网络后重试。已有凭据会保留。",
+    saveFailed: "登录设置保存失败，请检查库是否可写后重试。",
+    aboutTitle: "登录、接口与隐私说明",
+    aboutService: "Music Wall 是非官方插件。扫码流程参考 NeteaseCloudMusicApiEnhanced；搜索、专辑与歌单操作沿用现有网易云接口实现，加密层参考 music-lib。请求直接发送至网易云，无需自建 API 服务器，也不经过第三方 API 服务。接口变化或网易云风控可能导致暂时不可用。",
+    aboutStorage: "扫码授权后取得登录凭据（Cookie），保存在当前库的插件设置中，未加密，可能随库同步或备份。凭据不会写入 .mw 音乐墙文件；请勿公开分享插件设置文件。插件不读取浏览器或网易云客户端的登录信息，也不收集账号密码。",
+    aboutPlayback: "浏览、搜索与整理收藏无需登录；试听和播放需要登录。播放仍由网易云客户端或网页接管，扫码不会同时登录官方客户端，也不会改变会员或版权限制。整专连播会替换所选播放歌单的曲目；未指定时会尝试创建或复用私密歌单「Music Wall 临时播放」。",
+    aboutLogout: "登出会清除本插件保存的登录凭据及播放歌单选择，不会登出网易云客户端或删除网易云歌单。关闭插件不等于登出。",
+  },
+
   settings: {
     lang: {
       name: "界面语言",
@@ -66,19 +100,12 @@ export const zhCN = {
       name: "Git 子目录",
       desc: "仅扫描该子目录下的 .mw 文件；留空扫描整个仓库",
     },
-    cookie: {
-      name: "网易云 Cookie（可选）",
-      desc: "登录后的完整 Cookie（必须包含 MUSIC_U）才能整专连播；留空亦可浏览/搜索。注意：仅存于本机",
-      verify: "验证",
-      verifyTip: "检查 Cookie 登录态并显示账号昵称",
-      invalid: "Cookie 无效：{error}",
-    },
     playlist: {
       name: "播放歌单 ID",
-      desc: "配合上方 Cookie 实现整张专辑连播：播放时把专辑曲目写入该歌单并让客户端切到该歌单播放。留空且 Cookie 有效时会自动创建/复用私密中转歌单「Music Wall 临时播放」。可点右侧按钮从账号歌单中选择",
+      desc: "登录后可整张专辑连播：播放时会替换此歌单的曲目，请使用专用播放歌单。留空时会自动创建/复用私密中转歌单「Music Wall 临时播放」。可点右侧按钮从账号歌单中选择",
       ph: "如 123456789",
       pick: "从账号选择",
-      pickTip: "需已配置 Cookie",
+      pickTip: "需登录网易云，未登录时会弹出二维码",
     },
     defaultStyle: {
       name: "新建墙的默认样式",
@@ -114,7 +141,7 @@ export const zhCN = {
     exportWall: "导出当前音乐墙（分享副本）",
     importWall: "导入 .mw 音乐墙文件",
     gitImport: "从 Git 仓库导入音乐墙",
-    pickPlaylist: "选择播放歌单（整专连播，需 Cookie）",
+    pickPlaylist: "选择播放歌单（整专连播，需登录）",
     newPlayer: "新建音乐播放器",
   },
 
@@ -291,7 +318,7 @@ export const zhCN = {
     },
     settingsPanel: {
       open: "打开插件设置",
-      hint: "列宽、展示架文字档位、Cookie、播放歌单、SMTC 等全局项在插件设置里。",
+      hint: "列宽、展示架文字档位、网易云登录、播放歌单、SMTC 等全局项在插件设置里。",
     },
     group: {
       newItem: "新建分组…",
@@ -475,7 +502,7 @@ export const zhCN = {
     playlistWritten: "《{name}》{count} 首已替换进播放歌单并开始播放",
     schemeFallback: "歌单播放指令未被客户端接收，改用单曲播放",
     playlistModeFail:
-      "歌单模式失败：{error}（请重新配置 Cookie 或重选播放歌单）；本次改用单曲播放",
+      "歌单模式失败：{error}（请在设置中检查登录或重选播放歌单）；本次改用单曲播放",
     missingCookie: "网易云 Cookie",
     missingValidCookie: "有效登录 Cookie（当前 Cookie 缺少 MUSIC_U，未登录）",
     missingPlaylist: "播放歌单 ID",
@@ -621,14 +648,14 @@ export const zhCN = {
   },
 
   metaErr: {
-    notJson: "网易云返回了非 JSON 数据（可能触发风控），请稍后重试或配置 Cookie",
+    notJson: "网易云返回了非 JSON 数据（可能触发风控），请稍后重试或在设置中扫码登录",
     searchFail: "搜索失败（code={code}）",
     detailFail: "获取专辑详情失败（code={code}）",
   },
 
   playlistErr: {
-    noMusicU: "Cookie 中未包含 MUSIC_U（登录凭证），请确认已在网页登录后复制完整 Cookie",
-    cookieInvalid: "Cookie 无效或已过期，请在网易云网页端重新登录并更新",
+    noMusicU: "Cookie 中未包含 MUSIC_U（登录凭证），请重新扫码登录",
+    cookieInvalid: "登录凭据无效或已过期，请重新扫码登录",
     addFail: "歌单加歌失败（code={code}）",
     delFail: "歌单删歌失败（code={code}）",
     createFail: "创建中转歌单失败（code={code}{detail}）",

@@ -699,6 +699,8 @@ export class MusicPlayerView extends FileView {
   // ---- 控制 ----
 
   private async control(action: "play" | "pause" | "toggle" | "next" | "prev"): Promise<void> {
+    const pausing = action === "pause" || (action === "toggle" && this.now.status === "playing");
+    if (!pausing && !(await this.plugin.ensureNeteaseLogin())) return;
     const np = this.plugin.nowPlaying;
     if (!np.supported) {
       new Notice(t("player.ctrlUnsupported"));
