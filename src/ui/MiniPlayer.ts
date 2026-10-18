@@ -6,6 +6,7 @@ import { qualityLabel, type AudioQuality } from "../core/quality";
 import { DEFAULT_COVER } from "./defaultCover";
 import { decorateRange, paintRange } from "./range";
 import { QueueControls } from "./QueueControls";
+import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 
 const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -24,6 +25,7 @@ export class MiniPlayer {
   private toggle: HTMLButtonElement;
   private previous: HTMLButtonElement;
   private next: HTMLButtonElement;
+  private orderButton: HTMLButtonElement;
   private qualityText: HTMLElement;
   private volumeButton: HTMLButtonElement;
   private seek: HTMLInputElement;
@@ -62,6 +64,7 @@ export class MiniPlayer {
     this.toggle = this.button(controls, "toggle", "play", t("player.toggleTip"), () => void this.control("toggle"));
     this.next = this.button(controls, "next", "skip-forward", t("player.nextTip"), () => void this.control("next"));
     const tools = this.root.createDiv({ cls: "mw-mini__tools" });
+    this.orderButton = this.button(tools, "play-order", "", "", () => cyclePlayOrder(plugin.internalPlayer));
     this.buttons.playlist = this.button(tools, "playlist", "list-music", t("player.playlistTip"), () => this.showPanel("playlist"));
     this.buttons.quality = this.button(tools, "quality", "", t("quality.choose"), () => this.showPanel("quality"));
     this.qualityText = this.buttons.quality.createSpan();
@@ -137,6 +140,7 @@ export class MiniPlayer {
   }
   private update(): void {
     const player = this.plugin.internalPlayer;
+    updatePlayOrderButton(this.orderButton, player);
     this.visible = !!player?.album;
     this.root.toggleClass("is-hidden", !this.visible);
     this.reserveSpace();

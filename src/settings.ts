@@ -24,6 +24,9 @@ import { hasLoginCookie } from "./core/playlist";
 
 export class MusicWallSettingTab extends PluginSettingTab {
   private plugin: MusicWallPlugin;
+  private usageTimer: ReturnType<typeof setInterval> | null = null;
+  private displayGeneration = 0;
+  hide(): void { ++this.displayGeneration; if (this.usageTimer) clearInterval(this.usageTimer); this.usageTimer = null; }
 
   constructor(app: App, plugin: MusicWallPlugin) {
     super(app, plugin);
@@ -31,6 +34,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.hide(); const generation = this.displayGeneration;
     const { containerEl } = this;
     containerEl.empty();
 
@@ -141,6 +145,35 @@ export class MusicWallSettingTab extends PluginSettingTab {
         });
       });
 
+    for (const [field, name] of [["pauseFadeSeconds", "buffering.pauseFade"], ["crossFadeSeconds", "buffering.crossFade"]] as const) {
+      const fade = new Setting(containerEl).setName(t(name)).addSlider(slider => slider
+        .setLimits(0, 6, 0.1).setValue(this.plugin.settings[field]).setDynamicTooltip()
+        .onChange(async value => { this.plugin.settings[field] = value; await this.plugin.saveData(this.plugin.settings); }));
+      fade.settingEl?.addClass("mw-audio-setting");
+    }
+    if (this.plugin.audioTransport?.supported) {
+      let updateUsage = async () => {};
+      const capacity = new Setting(containerEl).setName(t("buffering.cacheLimit")).addText(input => {
+        input.inputEl.type = "number"; input.inputEl.min = "0"; input.inputEl.max = "65536"; input.inputEl.step = "128";
+        input.setValue(String(this.plugin.settings.audioCacheMB)).onChange(async value => {
+          const size = Number(value); if (!value.trim() || !Number.isFinite(size) || size < 0 || size > 65536) return;
+          this.plugin.settings.audioCacheMB = Math.round(size); await this.plugin.saveData(this.plugin.settings); await this.plugin.audioTransport?.trim(); await updateUsage();
+        });
+      });
+      capacity.settingEl?.addClass("mw-audio-setting");
+      const cache = new Setting(containerEl).setName(t("buffering.cacheUsed"));
+      cache.settingEl?.addClass("mw-audio-setting");
+      const update = async () => { const size = await this.plugin.audioTransport?.usage() || 0; if (generation === this.displayGeneration) cache.setDesc(`${(size / 1024 / 1024).toFixed(1)} MB`); };
+      updateUsage = update;
+      void update().catch(() => cache.setDesc("—"));
+      this.usageTimer = setInterval(() => { void update().catch(() => {}); }, 2000);
+      cache.addButton(button => button.setButtonText(t("buffering.clearCache")).onClick(async () => {
+        button.setDisabled(true);
+        try { await this.plugin.audioTransport?.clear(); await update(); }
+        catch { new Notice(t("buffering.cacheError")); }
+        finally { button.setDisabled(false); }
+      }));
+    }
     const explanation = containerEl.createEl("details", { cls: "mw-auth-info" });
     explanation.createEl("summary", { text: t("auth.aboutTitle") });
     explanation.createEl("p", { text: t("auth.aboutStorage") });

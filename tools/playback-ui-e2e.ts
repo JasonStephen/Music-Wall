@@ -54,7 +54,8 @@ let close = async()=>{};
     getPlaybackDeps:()=>({isDesktop:false,request:async()=>{throw Error("No external calls");},playInside:(m:any,i:number)=>engine.playAlbum(m,i)}),
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},wallFiles:()=>[],firstPlayerView:()=>null,
   };
-  const app={vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{on:()=>({}),getLeavesOfType:()=>[]}};
+  let activePlayer:MusicPlayerView|null=null;
+  const app={vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{on:()=>({}),getLeavesOfType:()=>[],getActiveViewOfType:()=>activePlayer}};
   const views:(MusicWallView|MusicPlayerView)[]=[];
   const createWall=async()=>{
     const view=new MusicWallView(new WorkspaceLeaf(app),plugin as never);
@@ -91,7 +92,8 @@ let close = async()=>{};
       const r=button.getBoundingClientRect();check(r.left>=-1&&r.right<=innerWidth+1,"Every footer control remains inside its pane");
     }
     check([...mini.querySelectorAll('.mw-mini__controls button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='prev,toggle,next',"Transport order is previous, play/pause, next");
-    check([...mini.querySelectorAll('.mw-mini__tools button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='playlist,quality,volume,expand',"Right tools order matches the sketch without a stop button");
+    check([...mini.querySelectorAll('.mw-mini__tools button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='play-order,playlist,quality,volume,expand',"Playback order immediately precedes playlist in footer tools");
+    check(!!mini.querySelector('.mw-mini__tools [data-action="play-order"] svg'),"Footer playback order uses an SVG icon");
     check(mini.querySelector('.mw-mini__progress')!.getBoundingClientRect().top<=rect.top+1,"Progress runs along the top of the bar");
     for(const name of ['playlist','quality','volume']) {
       mini.querySelector<HTMLButtonElement>(`[data-action="${name}"]`)!.click();await wait(15);
@@ -153,10 +155,46 @@ let close = async()=>{};
     check(!("file" in view) && !("onLoadFile" in view),"Player is an independent ItemView without file binding");
     check(!view.contentEl.querySelector(".mw-mini"),"Full player has no duplicate footer");
     const root=view.contentEl;
+    activePlayer=view;
+    (window as any).verifyKeyboardPlayback=async()=>{
+      const failures:string[]=[];let assertions=0;
+      const expect=(ok:boolean,label:string)=>{assertions++;if(!ok)failures.push(label);};
+      const space=async(target:EventTarget=document,options:KeyboardEventInit={})=>{
+        const event=new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true,...options});
+        target.dispatchEvent(event);await wait(20);return event;
+      };
+      await engine.pause();(document.activeElement as HTMLElement)?.blur();
+      expect((await space()).defaultPrevented&&engine.state.status==='playing','Space resumes without scrolling');
+      expect((await space(root)).defaultPrevented&&engine.state.status==='paused','Space in the player pauses');
+      expect((await space(document,{repeat:true})).defaultPrevented&&engine.state.status==='paused','Held Space neither toggles repeatedly nor scrolls');
+      for(const options of [{ctrlKey:true},{altKey:true},{metaKey:true},{shiftKey:true},{isComposing:true}]){
+        expect(!(await space(document,options)).defaultPrevented&&engine.state.status==='paused','Modified or composing Space is ignored');
+      }
+      for(const tag of ['input','textarea','select','button','a','div']){
+        const control=document.createElement(tag);
+        if(tag==='a')control.setAttribute('href','#');
+        if(tag==='div')control.contentEditable='true';
+        root.appendChild(control);
+        expect(!(await space(control)).defaultPrevented&&engine.state.status==='paused',`Space in ${tag} keeps its native action`);
+        control.remove();
+      }
+      const modal=document.createElement('div');modal.className='modal-container';document.body.appendChild(modal);
+      expect(!(await space(modal)).defaultPrevented&&engine.state.status==='paused','A modal does not trigger playback');modal.remove();
+      activePlayer=null;
+      expect(!(await space()).defaultPrevented&&engine.state.status==='paused','Space outside the active player is ignored');
+      const second=new MusicPlayerView(new WorkspaceLeaf(app),plugin as never);
+      mount.appendChild(second.contentEl);await second.onOpen();activePlayer=second;
+      expect((await space()).defaultPrevented&&engine.state.status==='playing','Multiple player tabs toggle shared playback only once');
+      await second.onClose();second.contentEl.remove();activePlayer=view;
+      await engine.pause();
+      return {checks:assertions,fail:failures};
+    };
     check(!!root.querySelector('.mw-np__quality-button .mw-control-icon svg'),"Quality dropdown uses an SVG chevron");
     checkScrollbar(root.querySelector<HTMLElement>('.mw-np__tracks')!);
     const volume=root.querySelector<HTMLButtonElement>(".mw-np__popover-anchor > .mw-np__ctrl")!;
     const list=root.querySelector<HTMLButtonElement>(".mw-np__ctrl--list")!;
+    check(list.previousElementSibling?.getAttribute('data-action')==='play-order',"Playback order immediately precedes playlist in the full player");
+    check(!!list.previousElementSibling?.querySelector('svg'),"Full player playback order uses an SVG icon");
     check(volume.getBoundingClientRect().left>=list.getBoundingClientRect().right-1 || (config.zoom??1)>1,"Volume follows playlist");
     const seek=root.querySelector<HTMLInputElement>(".mw-range")!;
     check(seek.style.getPropertyValue("--mw-range-percent").length>0,"Seek track has progress fill");
@@ -303,6 +341,37 @@ let close = async()=>{};
     };
   }
   (window as any).playbackEngine=engine;
+  (window as any).verifyPlayOrderControls=async()=>{
+    const failures:string[]=[];let assertions=0;
+    const expect=(ok:unknown,label:string)=>{assertions++;if(!ok)failures.push(label);};
+    const wall=await createWall();
+    const full=new MusicPlayerView(new WorkspaceLeaf(app),plugin as never);
+    mount.appendChild(full.contentEl);await full.onOpen();
+    const mini=wall.contentEl.querySelector<HTMLButtonElement>('.mw-mini__tools [data-action="play-order"]')!;
+    const main=full.contentEl.querySelector<HTMLButtonElement>('.mw-np__controls [data-action="play-order"]')!;
+    const queue=()=>full.contentEl.querySelector<HTMLButtonElement>('.mw-queue [data-action="play-order"]')!;
+    const synchronized=async(mode:string,icon:string)=>{
+      await wait(0); // The full view refreshes its metadata before updating controls.
+      expect(engine.order===mode&&[mini,main,queue()].every(button=>button.querySelector('svg')?.getAttribute('data-icon')===icon),'All order icons follow '+mode);
+      expect([mini,main,queue()].every(button=>button.title===main.title&&button.getAttribute('aria-label')===main.title)&&!!main.title,'Order tooltips and accessible labels stay synchronized');
+    };
+    await engine.playAlbum(meta);await engine.seek(38000);await engine.pause();engine.setOrder('order');
+    const song=engine.state.songId;
+    mini.click();await synchronized('repeat','repeat');
+    const albumRepeat=main.title;
+    queue().click();await synchronized('one','repeat-1');
+    main.click();await synchronized('order','list-ordered');
+    expect(engine.state.songId===song&&engine.state.status==='paused'&&engine.state.positionMs===38000,'Changing order preserves the song, progress and paused state');
+    await engine.playPlaylist({...meta,albumId:0,playlistId:42});
+    mini.click();await synchronized('repeat','repeat');
+    expect(main.title!==albumRepeat,'Repeat tooltip distinguishes a song list from an album queue');
+    main.click();await synchronized('one','repeat-1');
+    queue().click();await synchronized('shuffle','shuffle');
+    mini.click();await synchronized('order','list-ordered');
+    engine.setOrder('shuffle');await engine.playAlbum(meta);await synchronized('order','list-ordered');
+    await full.onClose();full.contentEl.remove();await wall.onClose();wall.contentEl.remove();
+    return {checks:assertions,fail:failures};
+  };
   (window as any).verifyHostResize=async()=>{
     const root=views[0].contentEl;
     hostBar.style.height='44px';await wait(100);

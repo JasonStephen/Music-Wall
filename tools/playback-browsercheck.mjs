@@ -52,7 +52,7 @@ try {
   }
   if(process.argv.includes('--compact'))cases.splice(0,cases.length,...cases.filter(item=>item.zoom===2&&item.width===360&&item.playing));
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
-  let checks=0,failed=0;let savedFailures=0;
+  let checks=0,failed=0;let savedFailures=0,keyboardChecked=false,playOrderChecked=false;
   for(let i=0;i<cases.length;i++) {
     const item=cases[i];
     await page('Emulation.setDeviceMetricsOverride',{width:item.width,height:item.height,deviceScaleFactor:1,mobile:false});
@@ -60,6 +60,10 @@ try {
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.kind==='player'&&!keyboardChecked){
+      const keyboard=await value('window.verifyKeyboardPlayback()');checks+=keyboard.checks;keyboardChecked=true;
+      if(keyboard.fail.length){failed++;console.log('FAIL keyboard playback '+JSON.stringify(keyboard.fail));}
+    }
     if(item.panel==='case'&&item.theme==='light'&&item.bg==='white'&&item.width===1280){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`finish-${item.deviceCase}-${item.style}.png`),Buffer.from(shot.data,'base64'));}
     if(item.panel==='case'&&item.theme==='light'&&item.bg==='art'&&item.width===1280){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`finish-cover-${item.cover}.png`),Buffer.from(shot.data,'base64'));}
     if(item.panel==='case'&&item.theme==='light'&&item.bg==='white'&&item.width===1280&&item.deviceCase==='black'&&item.style==='vinyl'){const details=await value('window.verifyCaseControls()');checks+=6;if(details.length){failed++;console.log('FAIL case controls '+JSON.stringify(details));}}
@@ -104,6 +108,10 @@ try {
       if(Math.abs(await value('window.playbackEngine.state.positionMs')-65000)>2000){failed++;console.log('FAIL native seek pointer mapping');}
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
+    }
+    if(!playOrderChecked){
+      const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
+      if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }
     if((i+1)%50===0)console.log(`Checked ${i+1}/${cases.length} UI configurations`);
   }

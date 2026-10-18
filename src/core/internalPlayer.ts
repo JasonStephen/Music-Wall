@@ -3,6 +3,8 @@ import { EMPTY_NOW_PLAYING, type NowPlayingListener, type NowPlayingProvider, ty
 import { TrackUnavailableError, type SongSource } from "./audioSource";
 import { t } from "../i18n";
 import type { AudioQuality } from "./quality";
+import type { AudioLease } from "./audioTransport";
+import { AudioFader } from "./audioFade";
 
 export type PlaybackOrder = "order" | "repeat" | "one" | "shuffle";
 export interface AlbumQueueEntry { id: string; album: AlbumMeta; }
@@ -13,6 +15,10 @@ interface InternalPlayerDeps {
   defaultQuality?: () => AudioQuality;
   notice: (message: string) => void;
   audio?: () => HTMLAudioElement;
+  open?: (source: SongSource, id: number, durationMs: number, signal: AbortSignal) => Promise<AudioLease>;
+  pauseFade?: () => number;
+  crossFade?: () => number;
+  webAudio?: boolean;
 }
 
 async function bounded<T>(work: Promise<T>): Promise<T> {
@@ -24,7 +30,7 @@ async function bounded<T>(work: Promise<T>): Promise<T> {
   } finally { clearTimeout(timer!); }
 }
 
-/** 一份全局临时队列；只缓冲当前曲目，换曲、登出、卸载均释放音频。 */
+/** Global queues with an active stream, a bounded next-track warmup and two fade voices. */
 export class InternalPlayer implements NowPlayingProvider {
   readonly supported = true;
   album: AlbumMeta | null = null;
@@ -55,8 +61,14 @@ export class InternalPlayer implements NowPlayingProvider {
   private wanted = false;
   private phase: NowPlayingState["status"] = "none";
   private listeners = new Set<NowPlayingListener>();
+  private lease: AudioLease | null = null;
+  private loadingAbort: AbortController | null = null;
+  private previous: { media: HTMLAudioElement; url: string; lease: AudioLease | null } | null = null;
+  private fader: AudioFader;
+  private stallTimer: ReturnType<typeof setTimeout> | null = null;
+  private prefetch: { key: string; controller: AbortController; adopted: boolean; resource: Promise<{ source: SongSource; lease: AudioLease }> } | null = null;
 
-  constructor(private deps: InternalPlayerDeps) {}
+  constructor(private deps: InternalPlayerDeps) { this.fader = new AudioFader(deps.webAudio !== false); }
   get playingRequested(): boolean { return this.wanted; }
 
   get currentCover(): string { return this.contentKind === "playlist" ? this.album?.tracks?.[this.index]?.cover || this.album?.cover || "" : this.album?.cover || ""; }
@@ -153,6 +165,7 @@ export class InternalPlayer implements NowPlayingProvider {
     return false;
   }
   private async ended(): Promise<void> {
+    if (!this.wanted) return;
     const generation = this.generation;
     if (await this.advance(true)) return;
     if (!this.wanted || generation !== this.generation) return;
@@ -179,12 +192,13 @@ export class InternalPlayer implements NowPlayingProvider {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  private emit(): void { for (const listener of this.listeners) listener(this.state); }
+  private emit(): void { for (const listener of this.listeners) listener(this.state); this.schedulePrefetch(); }
   start(): void {}
 
   stop(clearQueues = true): void {
     ++this.generation;
     this.wanted = false;
+    this.loadingAbort?.abort(); this.cancelPrefetch();
     this.release();
     if (clearQueues) { this.queuedPlaylist = null; this.savedPlaylist = null; }
     this.albumQueue = []; this.currentEntryId = ""; this.savedAlbum = null; this.contentKind = "album";
@@ -195,12 +209,62 @@ export class InternalPlayer implements NowPlayingProvider {
     this.emit();
   }
 
-  private release(): void {
+  private releaseCurrent(): void {
+    if (this.stallTimer) clearTimeout(this.stallTimer); this.stallTimer = null;
     const media = this.media;
     this.media = null;
-    if (media) { media.pause(); media.removeAttribute("src"); media.load(); }
+    if (media) { this.fader.release(media); media.pause(); media.removeAttribute("src"); media.load(); }
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = "";
+    this.lease?.release(); this.lease = null;
+  }
+  private releasePrevious(): void {
+    const previous = this.previous; this.previous = null;
+    if (!previous) return;
+    this.fader.release(previous.media); previous.media.pause(); previous.media.removeAttribute("src"); previous.media.load();
+    if (previous.url) URL.revokeObjectURL(previous.url); previous.lease?.release();
+  }
+  private release(): void { this.releaseCurrent(); this.releasePrevious(); }
+  dispose(): void { this.stop(); this.fader.close(); }
+  private nextTrack(): { id: number; duration: number } | null {
+    const tracks = this.album?.tracks; if (!tracks?.length) return null;
+    if (this.order === "one") return tracks[this.index];
+    if (this.order === "shuffle" && this.contentKind === "playlist") {
+      if (this.historyIndex + 1 < this.history.length) return tracks[this.history[this.historyIndex + 1]];
+      if (!this.randomBag.length) {
+        this.randomBag = tracks.map((_, index) => index).filter(index => index !== this.index && !this.skipped.has(index));
+        for (let i = this.randomBag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [this.randomBag[i], this.randomBag[j]] = [this.randomBag[j], this.randomBag[i]]; }
+      }
+      return tracks[this.randomBag[0] ?? this.index];
+    }
+    if (tracks[this.index + 1]) return tracks[this.index + 1];
+    if (this.contentKind === "album" && this.albumQueue[this.queueIndex + 1]) return this.albumQueue[this.queueIndex + 1].album.tracks?.[0] || null;
+    if (this.order === "repeat") return this.contentKind === "album" ? this.albumQueue[0]?.album.tracks?.[0] || null : tracks[0];
+    return null;
+  }
+  private prefetchKey(id: number): string { return `${id}|${this.preferredQuality || this.deps.defaultQuality?.() || "standard"}`; }
+  private cancelPrefetch(): void {
+    const pending = this.prefetch; this.prefetch = null;
+    if (pending) { pending.controller.abort(); void pending.resource.then(resource => { if (!pending.adopted) resource.lease.release(); }, () => {}); }
+  }
+  private schedulePrefetch(): void {
+    if (!this.deps.open || !this.media || this.loading || !this.wanted) return;
+    const next = this.nextTrack(), key = next && this.prefetchKey(next.id);
+    if (this.prefetch?.key === key) return;
+    this.cancelPrefetch(); if (!next || !key) return;
+    const controller = new AbortController();
+    const pending = { key, controller, adopted: false, resource: null! as Promise<{ source: SongSource; lease: AudioLease }> };
+    this.prefetch = pending;
+    pending.resource = (async () => {
+      const source = await bounded(this.deps.resolve(next.id, this.preferredQuality || this.deps.defaultQuality?.() || "standard"));
+      if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      const lease = await this.deps.open!(source, next.id, next.duration, controller.signal);
+      return { source, lease };
+    })();
+    void pending.resource.then(async resource => {
+      if (controller.signal.aborted && !pending.adopted) { resource.lease.release(); return; }
+      if (!pending.adopted) try { await resource.lease.warm(Math.max(6, (this.deps.crossFade?.() || 0) + 3), controller.signal); } catch {}
+    }, () => {});
   }
 
   async playAlbum(album: AlbumMeta, index = 0): Promise<boolean> {
@@ -213,47 +277,93 @@ export class InternalPlayer implements NowPlayingProvider {
     return this.select(index);
   }
 
-  private async loadTrack(index: number, restore?: { positionMs: number; playing: boolean }): Promise<boolean> {
+  private async loadTrack(index: number, restore?: { positionMs: number; playing: boolean }, forceBlob = false, replacing = false): Promise<boolean> {
     const tracks = this.album?.tracks;
     if (!tracks || !Number.isInteger(index) || index < 0 || index >= tracks.length) return false;
     const generation = ++this.generation;
+    this.loadingAbort?.abort(); const controller = this.loadingAbort = new AbortController();
     this.wanted = restore?.playing ?? true;
     if (!this.preferredQuality) this.preferredQuality = this.deps.defaultQuality?.() ?? "standard";
-    this.release();
+    if (this.media) {
+      if (this.stallTimer) clearTimeout(this.stallTimer); this.stallTimer = null;
+      this.releasePrevious(); this.previous = { media: this.media, url: this.objectUrl, lease: this.lease };
+      this.media = null; this.objectUrl = ""; this.lease = null;
+    }
     for (let next = index; next < tracks.length; next++) {
+      let usedStream = false;
       this.index = next; this.loading = true; this.error = ""; this.trial = false; this.phase = "paused";
       this.quality = null; this.availableQualities = [];
       this.emit();
       try {
-        const source = await bounded(this.deps.resolve(tracks[next].id, this.preferredQuality));
-        if (generation !== this.generation) return false;
+        let source: SongSource, prepared: AudioLease | null = null;
+        const pending = this.prefetch;
+        if (!forceBlob && pending?.key === this.prefetchKey(tracks[next].id)) {
+          this.prefetch = null; pending.adopted = true;
+          try { const resource = await bounded(pending.resource); source = resource.source; prepared = resource.lease; }
+          catch { pending.adopted = false; void pending.resource.then(resource => resource.lease.release(), () => {}); source = await bounded(this.deps.resolve(tracks[next].id, this.preferredQuality)); }
+          finally { pending.controller.abort(); }
+        } else { this.cancelPrefetch(); source = await bounded(this.deps.resolve(tracks[next].id, this.preferredQuality)); }
+        if (generation !== this.generation) { prepared?.release(); return false; }
         this.skipped.delete(next);
         this.quality = source.quality ?? "standard";
         this.availableQualities = source.availableQualities ?? [this.quality];
         this.emit();
-        const blob = await bounded(this.deps.load(source.url, source.mime));
-        if (generation !== this.generation) return false;
+        let blob: Blob | null = null;
+        if (!forceBlob && !prepared && this.deps.open) {
+          const streamController = new AbortController(), cancel = () => streamController.abort();
+          controller.signal.addEventListener("abort", cancel, { once: true }); if (controller.signal.aborted) cancel();
+          try {
+            prepared = await bounded(this.deps.open(source, tracks[next].id, tracks[next].duration, streamController.signal).then(lease => {
+              if (generation !== this.generation || streamController.signal.aborted) { lease.release(); throw new DOMException("Cancelled", "AbortError"); }
+              return lease;
+            }));
+          } catch { streamController.abort(); if (controller.signal.aborted) return false; }
+          finally { controller.signal.removeEventListener("abort", cancel); }
+        }
+        if (!prepared) blob = await bounded(this.deps.load(source.url, source.mime));
+        if (generation !== this.generation) { prepared?.release(); return false; }
         const media = this.deps.audio?.() ?? new Audio();
         this.media = media;
-        this.objectUrl = URL.createObjectURL(blob);
+        this.lease = prepared;
+        usedStream = !!prepared;
+        this.objectUrl = blob ? URL.createObjectURL(blob) : "";
         this.trial = source.trial;
-        media.volume = this.volume;
+        const fade = Math.min(replacing ? .08 : 6, Math.max(0, this.deps.crossFade?.() || 0), tracks[next].duration / 2000);
+        this.fader.setVolume(this.volume); this.fader.attach(media, this.previous && !this.previous.media.paused && this.wanted && fade > 0 ? 0 : 1);
         media.preload = "auto";
         const alive = () => generation === this.generation && this.media === media;
         let restorePosition = next === index ? restore?.positionMs ?? 0 : 0;
+        let restorePending = next === index && !!restore;
+        let starting = true;
         const seekRestored = () => {
-          if (!alive() || !restorePosition || !Number.isFinite(media.duration)) return;
+          if (!alive() || !restorePending || !Number.isFinite(media.duration)) return;
+          if (replacing && this.previous) restorePosition = this.previous.media.currentTime * 1000;
           media.currentTime = Math.min(restorePosition / 1000, Math.max(0, media.duration - 0.05));
-          restorePosition = 0;
+          restorePending = false;
         };
         media.addEventListener("loadedmetadata", seekRestored);
-        for (const event of ["timeupdate", "durationchange", "loadedmetadata"]) {
-          media.addEventListener(event, () => { if (alive()) this.emit(); });
+        let advancing = false;
+        for (const event of ["timeupdate", "durationchange", "loadedmetadata", "progress"]) {
+          media.addEventListener(event, () => {
+            if (!alive()) return; this.emit();
+            const remaining = media.duration - media.currentTime, cross = Math.min(6, this.deps.crossFade?.() || 0, media.duration / 2);
+            if (event === "timeupdate" && !advancing && !this.loading && this.wanted && cross > 0 && remaining > 0 && remaining <= cross && this.nextTrack()) { advancing = true; void this.advance(true); }
+          });
         }
         media.addEventListener("playing", () => {
           if (!alive()) return;
           if (!this.wanted) { media.pause(); return; }
+          if (this.stallTimer) clearTimeout(this.stallTimer); this.stallTimer = null;
           this.loading = false; this.phase = "playing"; this.emit();
+        });
+        media.addEventListener("waiting", () => {
+          if (!alive() || !this.wanted || starting) return;
+          this.loading = true; this.emit();
+          if (this.stallTimer) clearTimeout(this.stallTimer);
+          this.stallTimer = setTimeout(() => {
+            this.stallTimer = null;
+            if (alive() && this.wanted && media.readyState < 3) void this.loadTrack(this.index, { positionMs: this.state.positionMs, playing: true }, true, true);
+          }, 20000);
         });
         media.addEventListener("pause", () => { if (alive() && !media.ended) { this.phase = "paused"; this.emit(); } });
         media.addEventListener("ended", () => {
@@ -261,13 +371,15 @@ export class InternalPlayer implements NowPlayingProvider {
           void this.ended();
         });
         media.addEventListener("error", () => {
-          if (!alive() || this.loading) return;
+          if (!alive() || starting) return;
+          if (prepared) { void this.loadTrack(this.index, { positionMs: this.state.positionMs, playing: this.wanted }, true, true); return; }
           this.wanted = false; this.loading = false; this.phase = "paused";
           this.error = t("internal.decodeError"); this.deps.notice(this.error); this.emit();
         });
-        media.src = this.objectUrl;
+        if (prepared) media.crossOrigin = "anonymous";
+        media.src = prepared?.url || this.objectUrl;
         if (this.wanted) {
-          try { await bounded(media.play()); }
+          try { await this.fader.resume(); await bounded(media.play()); }
           catch (error) {
             if (!alive()) return false;
             if (this.wanted || this.error) throw error;
@@ -275,6 +387,16 @@ export class InternalPlayer implements NowPlayingProvider {
           }
         }
         if (!alive()) return false;
+        starting = false;
+        const previous = this.previous;
+        if (previous) {
+          if (this.wanted && !previous.media.paused && fade > 0) {
+            const remaining = previous.media.duration - previous.media.currentTime;
+            const overlap = Number.isFinite(remaining) ? Math.min(fade, Math.max(.05, remaining)) : fade;
+            void this.fader.fade(media, 1, overlap);
+            void this.fader.fade(previous.media, 0, overlap).then(done => { if (done && this.previous === previous) this.releasePrevious(); });
+          } else { if (this.wanted) void this.fader.fade(media, 1, Math.min(.3, fade)); this.releasePrevious(); }
+        }
         seekRestored();
         this.loading = false;
         this.phase = this.wanted && !media.paused ? "playing" : "paused";
@@ -283,7 +405,8 @@ export class InternalPlayer implements NowPlayingProvider {
         return true;
       } catch (error) {
         if (generation !== this.generation) return false;
-        this.release(); this.loading = false;
+        this.releaseCurrent(); this.loading = false;
+        if (usedStream && !forceBlob && !controller.signal.aborted) return this.loadTrack(next, restore, true, replacing);
         if (error instanceof TrackUnavailableError && this.wanted && this.order === "shuffle" && this.contentKind === "playlist") {
           this.skipped.add(next);
           this.randomBag = this.randomBag.filter(index => !this.skipped.has(index));
@@ -296,6 +419,7 @@ export class InternalPlayer implements NowPlayingProvider {
         }
         if (error instanceof TrackUnavailableError && this.wanted && this.contentKind === "album" && this.albumQueue[this.queueIndex + 1]) return this.playQueued(this.albumQueue[this.queueIndex + 1].id);
         this.wanted = false; this.phase = "stopped";
+        this.releasePrevious();
         this.error = error instanceof TrackUnavailableError ? t("internal.unavailable") : t("internal.playFailed");
         this.deps.notice(this.error); this.emit();
         return false;
@@ -307,14 +431,17 @@ export class InternalPlayer implements NowPlayingProvider {
   async play(): Promise<boolean> {
     if (!this.album) return false;
     this.wanted = true;
-    if (this.loading) return true;
+    if (this.loading && !this.media) { if (this.previous) void this.fader.fade(this.previous.media, 1, this.deps.pauseFade?.() || 0); return true; }
     if (!this.media || this.error) return this.select(Math.max(0, this.index));
     const media = this.media;
     const generation = this.generation;
     const alive = () => generation === this.generation && this.media === media;
     try {
       if (media.ended) media.currentTime = 0;
+      await this.fader.resume();
+      void this.fader.fade(media, 1, this.deps.pauseFade?.() || 0);
       await bounded(media.play());
+      if (alive()) { if (this.wanted && !media.paused) { this.phase = "playing"; this.loading = false; } this.emit(); }
       return alive();
     } catch {
       if (!alive()) return false;
@@ -324,16 +451,21 @@ export class InternalPlayer implements NowPlayingProvider {
     }
   }
   async pause(): Promise<boolean> {
-    this.wanted = false; this.media?.pause();
+    this.wanted = false; this.cancelPrefetch();
+    const generation = this.generation, media = this.media;
+    const previous = this.previous, seconds = this.deps.pauseFade?.() || 0;
     if (!this.album) return false;
-    this.phase = "paused"; this.emit(); return true;
+    this.phase = "paused"; this.emit();
+    if (previous) void this.fader.fade(previous.media, 0, seconds).then(done => { if (done && this.previous === previous) this.releasePrevious(); });
+    if (media) { const done = await this.fader.fade(media, 0, seconds); if (done && !this.wanted && this.media === media && generation === this.generation) media.pause(); }
+    return true;
   }
   async toggle(): Promise<boolean> { return this.wanted ? this.pause() : this.play(); }
   async setQuality(quality: AudioQuality): Promise<boolean> {
     if (this.loading || !this.album || !this.availableQualities.includes(quality)) return false;
     this.preferredQuality = quality;
     if (this.quality === quality) { this.emit(); return true; }
-    return this.select(this.index, { positionMs: this.state.positionMs, playing: this.wanted });
+    return this.loadTrack(this.index, { positionMs: this.state.positionMs, playing: this.wanted }, false, true);
   }
   async next(): Promise<boolean> { return this.advance(); }
   async prev(): Promise<boolean> {
@@ -350,7 +482,7 @@ export class InternalPlayer implements NowPlayingProvider {
   setVolume(volume: number): void {
     if (!Number.isFinite(volume)) return;
     this.volume = Math.min(1, Math.max(0, volume));
-    if (this.media) this.media.volume = this.volume;
+    this.fader.setVolume(this.volume);
     this.emit();
   }
 }
@@ -375,5 +507,5 @@ export class CombinedNowPlayingProvider implements NowPlayingProvider {
   next(): Promise<boolean> { return this.current.next(); }
   prev(): Promise<boolean> { return this.current.prev(); }
   seek(ms: number): Promise<boolean> { return this.current.seek(ms); }
-  dispose(): void { this.off.forEach((off) => off()); this.listeners.clear(); this.external.stop(); this.internal.stop(); }
+  dispose(): void { this.off.forEach((off) => off()); this.listeners.clear(); this.external.stop(); this.internal.dispose(); }
 }

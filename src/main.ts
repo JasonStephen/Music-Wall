@@ -36,6 +36,7 @@ import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } f
 import type { PlaybackDeps } from "./core/playback";
 import { SongSourceResolver } from "./core/audioSource";
 import { isAudioQuality } from "./core/quality";
+import { AudioTransport } from "./core/audioTransport";
 import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
 import {
   createNowPlayingProvider,
@@ -55,7 +56,7 @@ import { applyLanguagePref, styleLabel, t } from "./i18n";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.1.6";
+const BUILD_TAG = "1.1.7";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -69,6 +70,7 @@ export default class MusicWallPlugin extends Plugin {
   private combinedProvider: CombinedNowPlayingProvider;
   private requester: Requester;
   private audioSources: SongSourceResolver;
+  audioTransport: AudioTransport | null = null;
   libraryApi: MusicLibraryApi;
   private openingLibrary: Promise<void> | null = null;
   private openingPlayer: Promise<void> | null = null;
@@ -102,8 +104,16 @@ export default class MusicWallPlugin extends Plugin {
       return { status: res.status, text: res.text, headers: res.headers };
     };
     this.audioSources = new SongSourceResolver(this.requester);
+    if (Platform.isDesktopApp) {
+      const adapter = this.app.vault.adapter as { getBasePath?: () => string };
+      this.audioTransport = new AudioTransport(adapter.getBasePath?.() || this.app.vault.getName?.() || "default", () => this.settings.audioCacheMB, typeof location === "undefined" ? "app://obsidian.md" : location.origin);
+    }
     this.internalPlayer = new InternalPlayer({
       defaultQuality: () => this.settings.defaultAudioQuality,
+      pauseFade: () => this.settings.pauseFadeSeconds,
+      crossFade: () => this.settings.crossFadeSeconds,
+      webAudio: Platform.isDesktopApp,
+      ...(this.audioTransport?.supported ? { open: (source: import("./core/audioSource").SongSource, id: number, durationMs: number, signal: AbortSignal) => this.audioTransport!.open(source, { account: this.settings.neteaseUserId || this.settings.neteaseCookie, song: id, durationMs }, signal) } : {}),
       resolve: async (id, quality) => {
         try { return await this.audioSources.resolve(id, this.settings.neteaseCookie, quality); }
         catch (error) {
@@ -252,6 +262,7 @@ export default class MusicWallPlugin extends Plugin {
     ++this.playbackRequest;
     this.loginModal?.close();
     this.combinedProvider?.dispose();
+    this.audioTransport?.close(); this.audioTransport = null;
     this.nowPlaying?.stop();
   }
 
@@ -261,6 +272,8 @@ export default class MusicWallPlugin extends Plugin {
     if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
     if (!isAudioQuality(this.settings.defaultAudioQuality)) this.settings.defaultAudioQuality = "standard";
     if (!["white", "black", "wood", "art"].includes(this.settings.playerCase)) this.settings.playerCase = "black";
+    for (const field of ["pauseFadeSeconds", "crossFadeSeconds"] as const) this.settings[field] = Number.isFinite(this.settings[field]) ? Math.max(0, Math.min(6, this.settings[field])) : DEFAULT_SETTINGS[field];
+    this.settings.audioCacheMB = Number.isFinite(this.settings.audioCacheMB) ? Math.max(0, Math.min(65536, Math.round(this.settings.audioCacheMB))) : DEFAULT_SETTINGS.audioCacheMB;
     applyLanguagePref(this.settings.language ?? "system");
   }
 

@@ -24,13 +24,15 @@ import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
-import { coverTone, peekTone, onAccentFor } from "./accent";
+import { coverTone, onAccentFor } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
 import { decorateRange, paintRange } from "./range";
 import { watchHostInset } from "./hostInset";
 import { QueueControls } from "./QueueControls";
+import { CoverBackdrop } from "./CoverBackdrop";
+import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -75,6 +77,7 @@ export class MusicPlayerView extends ItemView {
   private volumeIcon = "";
   private stopHostInset: (() => void) | null = null;
   private caseToneKey = "";
+  private backdrop: CoverBackdrop | null = null;
 
   private shell: HTMLElement | null = null;
   private el: Record<string, HTMLElement> = {};
@@ -134,6 +137,17 @@ export class MusicPlayerView extends ItemView {
       { passive: false, capture: true }
     );
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
+      if ((e.code === "Space" || e.key === " ") && !e.defaultPrevented && !e.isComposing
+        && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
+        && this.app.workspace.getActiveViewOfType(MusicPlayerView) === this && this.now.canToggle) {
+        const target = e.target instanceof Element ? e.target : document.activeElement;
+        const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
+        if (target && !target.closest(controls)
+          && (this.contentEl.contains(target) || target === document.body || target === document.documentElement)) {
+          e.preventDefault();
+          if (!e.repeat) void this.control("toggle");
+        }
+      }
       if (e.key === "Escape" && this.popover) {
         const button = this.el[this.popover === "volume" ? "btnVolume" : "btnQuality"];
         this.togglePopover(null); button?.focus();
@@ -158,6 +172,7 @@ export class MusicPlayerView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.backdrop?.dispose(); this.backdrop = null;
     this.caseToneKey = "";
     this.stopHostInset?.(); this.stopHostInset = null;
     if (this.offNow) {
@@ -266,8 +281,9 @@ export class MusicPlayerView extends ItemView {
     const prevDrawer = this.drawer?.currentKey() ?? null;
     this.drawer?.dispose();
     this.drawer = null;
-    root.empty();
+    this.backdrop?.dispose(); root.empty();
     root.addClass("mw-view", "mw-player");
+    this.backdrop = new CoverBackdrop(root);
     // 播放器的弹窗一律用默认皮肤（展示架的木色只属于音乐墙）
     setModalTheme("default");
     this.el = {};
@@ -317,54 +333,17 @@ export class MusicPlayerView extends ItemView {
     // 不再剩下「没有封面 → 什么都没有」的空白（第七轮问题 2）。
     const art = cover || DEFAULT_COVER;
     // 取色 + 自适应字色：只有「封面」模式跟着封面走，其余模式用 CSS 里各模式的固定色
-    this.applyArtTone(this.bg === "art" ? art : "");
     if (this.bg !== "art") {
+      this.backdrop?.set("", () => {});
+      root.style.removeProperty("--mw-np-accent"); root.style.removeProperty("--mw-np-accent-fg"); this.setArtTone(null);
       root.style.removeProperty("--mw-player-art");
       return;
     }
-    root.style.setProperty("--mw-player-art", `url("${sizedCover(art, 800)}")`);
-    // 取色曾经失败的地址（缓存里是空结果）别铺底：模糊层照旧失控，白字必隐形；
-    // 同步守卫 + 异步失败兜底（applyArtTone 里移除）各一道（第七轮）。
-    const prev = peekTone(sizedCover(art, 300));
-    if (prev && prev.luma === null && !prev.accent) {
-      root.style.removeProperty("--mw-player-art");
-    }
-  }
-
-  /** 已解析过取色的封面地址（防止异步结果覆盖后来的专辑） */
-  private accentKey = "";
-
-  /**
-   * 「封面」背景下的两件事，一次采样同时拿到（见 accent.ts coverTone）：
-   *   1. 播放键配色 = 封面主色；2. 文字/图标黑白色 = 按封面整体亮度自适应。
-   * 取色是异步的：回来的晚于专辑切换就丢弃（比对 key）。
-   * 取不到（无封面 / 网络失败）时清掉内联变量回退 CSS，并把字色按深色封面处理。
-   */
-  private applyArtTone(cover: string): void {
-    const root = this.contentEl;
-    const key = cover.trim();
-    if (key === this.accentKey) return;
-    this.accentKey = key;
-    root.style.removeProperty("--mw-np-accent");
-    root.style.removeProperty("--mw-np-accent-fg");
-    if (!key) {
-      this.setArtTone(null);
-      return;
-    }
-    void coverTone(sizedCover(key, 300)).then((tone) => {
-      if (this.accentKey !== key) return;
-      if (tone.accent) {
-        root.style.setProperty("--mw-np-accent", tone.accent);
-        root.style.setProperty("--mw-np-accent-fg", onAccentFor(tone.accent));
-      }
+    this.backdrop?.set(art, tone => {
+      if (this.bg !== "art") return;
+      if (tone.accent) { root.style.setProperty("--mw-np-accent", tone.accent); root.style.setProperty("--mw-np-accent-fg", onAccentFor(tone.accent)); }
+      else { root.style.removeProperty("--mw-np-accent"); root.style.removeProperty("--mw-np-accent-fg"); }
       this.setArtTone(tone.luma);
-      // 亮度也取不到 = 这次连「背景是浅是深」都无从判断：
-      // 不再敢于把失控的模糊封面铺在底下（浅封面 + 白字 = 全部隐形），
-      // 移除 --mw-player-art 让 .mw-bg--art 落回深色基底，白字天然可读（第七轮）。
-      if (tone.luma === null && !tone.accent) {
-        root.style.removeProperty("--mw-player-art");
-        console.warn(t("player.accentFail"), key);
-      }
     });
   }
 
@@ -540,7 +519,15 @@ export class MusicPlayerView extends ItemView {
     this.el.btnNext.title = t("player.nextTip");
     this.el.btnNext.addEventListener("click", () => void this.control("next"));
 
-    this.el.btnPlaylist = controls.createEl("button", {
+    const listControls = controls.createDiv({ cls: "mw-np__list-controls" });
+    this.el.btnOrder = listControls.createEl("button", {
+      cls: "mw-np__ctrl is-hidden", attr: { type: "button", "data-action": "play-order" },
+    });
+    this.el.btnOrder.addEventListener("click", () => {
+      if (this.plugin.internalPlayer) cyclePlayOrder(this.plugin.internalPlayer);
+    });
+
+    this.el.btnPlaylist = listControls.createEl("button", {
       cls: "mw-np__ctrl mw-np__ctrl--list",
       text: "",
     });
@@ -552,7 +539,7 @@ export class MusicPlayerView extends ItemView {
     this.el.btnPlaylist.setAttr("aria-label", t("player.playlistTip"));
     this.el.btnPlaylist.setAttr("aria-expanded", "false");
 
-    const volumeAnchor = controls.createDiv({ cls: "mw-np__popover-anchor is-hidden" });
+    const volumeAnchor = listControls.createDiv({ cls: "mw-np__popover-anchor is-hidden" });
     this.el.volumeAnchor = volumeAnchor;
     const volumeButton = volumeAnchor.createEl("button", { cls: "mw-np__ctrl", attr: {
       "aria-label": t("internal.volume"), "aria-expanded": "false", title: t("internal.volume"),
@@ -737,6 +724,8 @@ export class MusicPlayerView extends ItemView {
     if (this.el.btnPrev) this.el.btnPrev.toggleClass("is-disabled", !this.now.canPrev);
 
     const internal = this.now.source === "internal" && this.now.active;
+    this.el.btnOrder?.toggleClass("is-hidden", !internal);
+    if (this.el.btnOrder && this.plugin.internalPlayer) updatePlayOrderButton(this.el.btnOrder, this.plugin.internalPlayer);
     this.el.timeline?.toggleClass("is-hidden", !internal);
     this.el.volumeAnchor?.toggleClass("is-hidden", !internal);
     this.el.qualityAnchor?.toggleClass("is-hidden", !internal);

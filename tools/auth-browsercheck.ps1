@@ -4,8 +4,9 @@ $chromePath = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 $caseRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.Replace('\', '/').Replace(' ', '%20')
 node (Join-Path $PSScriptRoot 'auth-browsercheck.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+node (Join-Path $PSScriptRoot 'auth-browsercheck.mjs') --player
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $cases = @(
-  @{ Name = 'player'; Page = 'player-ui'; Query = 'case=default'; Width = 1280; Height = 760 },
   @{ Name = 'previews'; Page = 'gf'; Query = 'case=previews'; Width = 1280; Height = 1000 },
   @{ Name = 'shelf-play'; Page = 'gf'; Query = 'case=play'; Width = 1280; Height = 1000 }
 )

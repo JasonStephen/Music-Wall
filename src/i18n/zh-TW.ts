@@ -4,6 +4,7 @@ import type { zhCN } from "./zh-CN";
 
 export const zhTW: typeof zhCN = {
   case: { title: "外殼", white: "白色", black: "黑色", wood: "原木", art: "跟隨封面" },
+  buffering: { pauseFade: "暫停與繼續漸變（秒）", crossFade: "切歌交叉漸變（秒）", cacheLimit: "歌曲快取上限（MB，0 為關閉）", cacheUsed: "歌曲快取已用空間", clearCache: "清除快取", cacheError: "快取清理失敗，請稍後重試" },
   library: {"title":"網易雲音樂庫","created":"我建立的歌單","collected":"我收藏的歌單","likes":"我喜歡的音樂","search":"搜尋歌單","searchPlaceholder":"輸入歌單名稱","refresh":"重新整理","more":"載入更多","empty":"暫無歌曲或歌單","failed":"載入失敗，請檢查網路和登入狀態。","retry":"重試"},
   queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌單播放","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
   labels: {

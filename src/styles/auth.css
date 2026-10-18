@@ -47,3 +47,8 @@
   cursor: pointer;
   color: var(--text-normal);
 }
+.mw-audio-setting { flex-wrap: wrap; gap: 8px; }
+.mw-audio-setting .setting-item-info { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.mw-audio-setting .setting-item-control { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.mw-audio-setting input[type="number"] { width: 140px; max-width: 100%; }
+.mw-audio-setting input[type="range"] { max-width: 100%; }

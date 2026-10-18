@@ -124,6 +124,15 @@
   z-index: 0;
   pointer-events: none;
 }
+.mw-player.has-backdrop.mw-bg--art::before { display: none; }
+.mw-player > .mw-zoombox { z-index: 1; }
+.mw-player__backdrop {
+  position: absolute; inset: -12%; z-index: 0; pointer-events: none;
+  background-size: cover; background-position: center;
+  filter: blur(52px) saturate(2.05) brightness(1.04);
+  opacity: 0; transition: opacity 650ms ease; visibility: hidden;
+}
+.mw-bg--art > .mw-player__backdrop { visibility: visible; }
 /* 这里原本是 `.mw-player.mw-bg--art::after`（第六/七轮的「底部信息区压暗」渐变）。
    已按要求整条移除：封面背景不叠任何背景层。**不要**再加回来——
    残留一个空的 ::after（只有 content/inset/z-index）没有任何意义，
@@ -759,8 +768,12 @@
   opacity: 0.35;
   pointer-events: none;
 }
-/* 曲目列表开关：与三个传输键同排，展开时高亮 */
-.mw-np__ctrl--list {
+/* 播放顺序与列表按钮一起换行，始终保持左右相邻。 */
+.mw-np__list-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
   margin-left: 6px;
 }
 .mw-np__ctrl--list.is-active {

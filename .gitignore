@@ -42,3 +42,4 @@ docs/
 
 tools/player-ui-e2e.bundle.js
 tools/library-ui-e2e.bundle.js
+tools/settings-e2e.bundle.js

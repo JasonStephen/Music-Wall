@@ -75,6 +75,11 @@ The quality menu shows verified qualities for the current track/account and
 labels the actual audio quality. Settings offer 128kbps, 192kbps, 320kbps, Lossless and Hi-Res, with
 automatic fallback to the best available lower quality. Player changes apply
 to the current session, preserving position and pause state where possible.
+Desktop playback streams audio and prepares the next track ahead of time, with whole-file playback as a compatibility fallback.
+Settings offer separate pause/resume and track crossfades from 0 to 6 seconds; 0 disables the effect.
+The local audio cache defaults to 1024 MB. Adjust its limit, view usage or clear it in settings. A zero limit disables disk caching while retaining a temporary next-track buffer.
+Cache entries are separated by account and actual quality, stored outside the vault and never synced with wall files. Clearing the cache keeps current playback running.
+Cover backgrounds wait for the new image to be ready before dissolving into it; a failed image leaves the previous background visible.
 
 **Your first preview or play opens a sign-in QR code.** Scan it with the
 NetEase mobile app and confirm. You can also sign in or out in plugin

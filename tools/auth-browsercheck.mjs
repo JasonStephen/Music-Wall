@@ -40,30 +40,49 @@ try {
   const { targetId } = await send("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
   const page = (method, params) => send(method, params, sessionId);
-  const evaluate = async (expression) => (await page("Runtime.evaluate", { expression, returnByValue: true })).result.value;
-  const html = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), "auth-e2e.html"));
+  const evaluate = async (expression, awaitPromise=false) => {
+    const result=await page("Runtime.evaluate", { expression, returnByValue: true, awaitPromise });
+    if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description||'Browser evaluation failed');
+    return result.result.value;
+  };
+  const player = process.argv.includes('--player');
+  const settings = process.argv.includes('--settings');
+  const html = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), settings ? "settings-e2e.html" : player ? "player-ui-e2e.html" : "auth-e2e.html"));
   const cases = [
     { name: "auth-zh-CN", lang: "zh-CN", width: 1000, height: 800 },
     { name: "auth-zh-TW", lang: "zh-TW", width: 1000, height: 800 },
     { name: "auth-en-narrow-dark", lang: "en", width: 360, height: 800, theme: "dark" },
   ];
+  if (player) cases.splice(0,cases.length,{name:'player',lang:'zh-CN',width:1280,height:760});
+  if (settings) {cases.splice(0,cases.length);for(const theme of ['light','dark'])for(const lang of ['zh-CN','zh-TW','en'])for(const [width,height] of [[1280,800],[360,740],[240,600],[640,360]])for(const zoom of [1,2])cases.push({name:`settings-${lang}-${theme}-${width}-${zoom}`,lang,theme,width,height,zoom});}
   const outputIndex = process.argv.indexOf("--screenshots");
   const screenshotRoot = outputIndex >= 0 ? path.resolve(process.argv[outputIndex + 1]) : null;
   for (const item of cases) {
     await page("Emulation.setDeviceMetricsOverride", { width: item.width, height: item.height, deviceScaleFactor: 1, mobile: false });
-    for (const preview of screenshotRoot ? [false, true] : [false]) {
+    for (const preview of screenshotRoot && !settings ? [false, true] : [false]) {
       const url = new URL(html); url.searchParams.set("lang", item.lang);
       if (item.theme) url.searchParams.set("theme", item.theme);
       if (preview) url.searchParams.set("preview", "1");
       await page("Page.navigate", { url: url.href });
+      if(settings){
+        for(let i=0;i<100;i++){if(await evaluate("typeof window.setupSettings==='function'"))break;await new Promise(resolve=>setTimeout(resolve,20));}
+        const result=await evaluate('window.setupSettings('+JSON.stringify(item)+')',true);
+        if(result.fail.length)throw Error(item.name+': '+result.fail.join('; '));
+        if(screenshotRoot&&item.width===360&&item.zoom===1&&item.lang==='en'){
+          fs.mkdirSync(screenshotRoot,{recursive:true});await evaluate("document.querySelector('.mw-audio-setting').scrollIntoView()");
+          const capture=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(screenshotRoot,item.name+'.png'),Buffer.from(capture.data,'base64'));
+        }
+        console.log('PASS '+item.name);continue;
+      }
       let title;
-      for (let attempt = 0; attempt < 150; attempt++) {
+      for (let attempt = 0; attempt < (player ? 1800 : 150); attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 30));
         title = await evaluate("document.title");
         if (/^(PASS|FAIL):/.test(title)) break;
       }
       const width = await evaluate("innerWidth");
       if (width !== item.width || !title.startsWith("PASS:")) {
+        console.log(await evaluate("Array.from(document.querySelectorAll('.bad')).map(x=>x.textContent)"));
         throw Error(`${item.name}: viewport=${width}, ${title}`);
       }
       if (!preview) console.log(`PASS ${item.name}: actual viewport ${width}px`);
