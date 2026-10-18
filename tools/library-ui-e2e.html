@@ -6,6 +6,7 @@ body.theme-dark { --background-primary:#202124;--background-secondary:#292b30;--
 body { --interactive-accent:#7762cc;--text-accent:#7762cc;--text-on-accent:#fff; color:var(--text-normal); background:var(--background-primary); }
 button:not(.clickable-icon) { background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border); }
 button { font:inherit; cursor:pointer; display:flex; justify-content:center;align-items:center; } svg { width:18px;height:18px; }
+.is-tablet button:not(.clickable-icon) { padding: 4px 20px; }
 /* Host/theme rules that previously displaced the thumb and centered footer contents. */
 input[type="range"] { height:4px; }
 input[type="range"]::-webkit-slider-thumb { transform:translateY(-50%); height:18px; width:18px; border:4px solid #777; margin-top:0; }

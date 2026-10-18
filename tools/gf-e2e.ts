@@ -376,7 +376,7 @@ async function caseSwap(): Promise<void> {
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       const rules = Array.from(sheet.cssRules ?? []);
-      const hit = rules.find((r) => (r as CSSStyleRule).selectorText?.includes("mw-gf__bar .mw-gf__tool"));
+      const hit = rules.find((r) => (r as CSSStyleRule).selectorText?.includes("mw-gf__bar button.mw-gf__tool"));
       if (hit) gfRuleFound = true;
       sheetInfo.push({ href: sheet.href?.split("/").pop(), rules: rules.length, hit: !!hit });
     } catch {
@@ -1064,7 +1064,7 @@ async function caseToolbarDrawer(): Promise<void> {
   const btns = Array.from(
     document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
   );
-  result(btns.length === 6, "工具栏 6 个图标钮", btns.length);
+  result(btns.length === 7, "工具栏 7 个图标钮", btns.length);
   const labels = btns.map((b) => b.getAttribute("aria-label") ?? "");
   result(
     labels.join("|") === "样式与布局|筛选|排序|添加专辑|搜索本墙专辑|更多操作",
@@ -1452,21 +1452,20 @@ async function caseManualOrder(): Promise<void> {
 
   result(orderOf().join(",") === "1,2,3,4,5,6", "初始 order 正确", orderOf().join(","));
 
-  // 长按 400ms → 进入编辑态（容差放宽后，手抖 10px 也应该进得去）
+  // 布局编辑必须通过明确菜单操作开启；普通长按不再隐式切换模式。
   const first = cardOf(1);
   const c = centerOf(first);
-  first.dispatchEvent(pointer("pointerdown", c.x, c.y));
-  await wait(120);
-  window.dispatchEvent(pointer("pointermove", c.x + 10, c.y)); // 手抖 10px（< 12px 容差）
-  await wait(LONG_PRESS_MS + 200);
+  first.dispatchEvent(new MouseEvent("contextmenu", {bubbles:true,cancelable:true,clientX:c.x,clientY:c.y}));
+  MENU_LOG.at(-1)?.items.find(item => item.icon === "move")?.run?.();
+  await wait(80);
   result(
     document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-    "长按（含 10px 手抖）进入布局编辑态"
+    "菜单明确进入布局编辑态"
   );
   result(!!document.querySelector(".mw-editbar"), "出现编辑态操作条");
   result(
     !document.querySelector(".mw-edit-layout .mw-card")!.closest(".mw-card")!.className.includes("is-dragging"),
-    "桌面长按不另起指针拖拽（交给原生拖拽）"
+    "进入编辑态不会自行开始拖拽"
   );
   window.dispatchEvent(pointer("pointerup", c.x, c.y));
   await wait(150);
@@ -1510,7 +1509,7 @@ async function caseManualOrder(): Promise<void> {
   await touchDragTo(cardOf(1), cardOf(3));
   result(
     document.querySelector<HTMLElement>(".mw-view")!.classList.contains("mw-edit-layout"),
-    "触屏长按同样进入编辑态"
+    "显式编辑态中触屏长按允许拖拽"
   );
   result(orderOf().join(",") === "2,1,3,4,5,6", "触屏指针拖拽换位生效", orderOf().join(","));
 
@@ -1623,8 +1622,8 @@ async function caseGroupMenus(): Promise<void> {
     document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
   ).map((b) => b.getAttribute("aria-label"));
   result(
-    labels.join("|") === "样式与布局|筛选|排序|添加专辑|搜索本墙专辑|更多操作",
-    "分组图标已移除（6 个图标）",
+    labels.join("|") === "样式与布局|筛选|排序|添加专辑|搜索本墙专辑|多选|更多操作",
+    "分组图标已移除，保留多选入口（7 个图标）",
     labels.join("|")
   );
 
@@ -1769,7 +1768,7 @@ async function caseFloatPanels(): Promise<void> {
   const btns = Array.from(
     document.querySelectorAll<HTMLElement>(".mw-toolbar__actions .mw-toolbtn")
   );
-  result(btns.length === 6, "顶部 6 个图标", btns.length);
+  result(btns.length === 7, "顶部 7 个图标", btns.length);
   result(!document.querySelector(".mw-searchrow"), "底部搜索条已移除");
 
   // 纯图标：无底色 / 无边框 / 无阴影
@@ -2770,7 +2769,7 @@ async function caseInteractionWalk(): Promise<void> {
 
   // ① 六个顶栏图标：每个都先确认点得到，再点开对应面板/菜单
   const iconList = icons();
-  result(iconList.length === 6, "顶栏 6 个图标齐全", iconList.length);
+  result(iconList.length === 7, "顶栏 7 个图标齐全", iconList.length);
   const reachable = iconList.every((b, i) => clickable(b, `图标${i}`));
   result(reachable, "六个图标都可点（无覆盖层）", steps.join(" "));
   steps.length = 0;
@@ -3401,7 +3400,7 @@ async function caseThemeResist(): Promise<void> {
     const toolIcons = Array.from(
       document.querySelectorAll<HTMLElement>(".mw-view .mw-toolbar .mw-toolbtn")
     );
-    result(toolIcons.length === 6, "顶栏 6 个图标存在", toolIcons.length);
+    result(toolIcons.length === 7, "顶栏 7 个图标存在", toolIcons.length);
     const iconBgs = toolIcons.map((b) => getComputedStyle(b).backgroundColor);
     result(
       iconBgs.every((c) => c === "rgba(0, 0, 0, 0)" || c === "transparent"),
@@ -3828,6 +3827,7 @@ async function caseNarrowDetail(): Promise<void> {
  */
 async function caseDragDiag(): Promise<void> {
   await resetView(gridData());
+  anyViewOf(view).enterEditMode();
   const from = cardOf(1);
   const to = cardOf(2);
   const a = centerOf(from);

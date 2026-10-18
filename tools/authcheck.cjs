@@ -20,10 +20,11 @@ const notices = [];
 const modals = [];
 class Element {
   constructor(tag = "div", options = {}) {
-    this.tag = tag; this.children = []; this.textContent = options.text || "";
+    this.tag = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = options.text || "";
     this.attrs = options.attr || {}; this.style = { setProperty() {}, removeProperty() {} };
   }
   addClass() {} removeClass() {} toggleClass() {} setText(value) { this.textContent = value; }
+  focus() {}
   removeAttribute(name) { delete this[name]; delete this.attrs[name]; }
   setAttr(name, value) { this.attrs[name] = value; }
   addEventListener(name, fn) { this[name] = fn; }
@@ -495,6 +496,23 @@ async function main() {
     assert.equal(attempts, 2); assert.deepEqual(controls, ["pause"]);
     player.now.status = "playing"; await player.control("toggle");
     assert.deepEqual(controls, ["pause", "toggle"]);
+  });
+  await test("Library wall picker writes only after selection, preserves target content and rejects duplicates", async () => {
+    const instance = plugin(); const file = {path:'Walls/Test.mw',basename:'Test'};
+    const meta = {albumId:9,name:'From search',artist:'Artist',cover:'',trackCount:0};
+    let content = JSON.stringify({version:2,name:'Test',style:'vinyl',items:[{albumId:7,meta:{albumId:7,name:'Existing',artist:'A',cover:'',trackCount:0},source:'manual',locked:false,addedAt:'original'}],order:[7]}), writes=0;
+    instance.wallFiles=()=>[file]; instance.app.vault={async process(target,update){assert.equal(target,file);content=update(content);writes++;}};
+    instance.addLibraryAlbum(meta);assert.equal(writes,0);
+    const picker=modals.at(-1);picker.onPick(0);await flush();
+    let saved=JSON.parse(content);assert.deepEqual(saved.items.map(item=>item.albumId),[7,9]);assert.equal(saved.items[1].locked,true);assert.equal(saved.items[0].addedAt,'original');assert.deepEqual(saved.order,[7,9]);
+    picker.onPick(0);await flush();saved=JSON.parse(content);assert.equal(saved.items.length,2);
+  });
+  await test("Library additions to an open wall use its current view instead of overwriting unsaved state", async () => {
+    const instance=plugin();const file={path:'Open.mw',basename:'Open'};let selected=null;
+    instance.wallFiles=()=>[file];instance.allWallViews=()=>[{getFile:()=>file,addAlbum:(meta,source)=>{selected={meta,source};}}];
+    instance.app.vault={async process(){throw Error('Must use live view');}};
+    const meta={albumId:9,name:'Search'};instance.addLibraryAlbum(meta);modals.at(-1).onPick(0);
+    assert.deepEqual(selected,{meta,source:'search'});
   });
   await test("Mobile sync command opens a pull preview without Git, basePath or desktop authentication", async () => {
     obsidian.Platform.isDesktopApp = false;

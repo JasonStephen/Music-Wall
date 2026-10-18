@@ -9,6 +9,7 @@ import type { AlbumMeta, AlbumSummary } from "../types";
 import { parseAlbumInput, sizedCover } from "../core/metadata";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
 import { t } from "../i18n";
+import { svgAction } from "./svgAction";
 
 export interface WallHost {
   searchAlbums(keyword: string, offset: number): Promise<AlbumSummary[]>;
@@ -18,6 +19,7 @@ export interface WallHost {
   confirmAdd(meta: AlbumMeta, onAdd: () => void): void;
   getPlaybackDeps?(): PlaybackDeps;
   getStyle?(): import("../types").DiscStyle;
+  enqueueAlbum?(meta: AlbumMeta): Promise<void>;
 }
 
 const PAGE = 20;
@@ -204,21 +206,22 @@ export class AlbumSearchPanel {
         }),
       });
 
-      const btn = row.createEl("button", {
-        cls: "mw-search-row__add",
-        text: added ? t("search.added") : t("search.add"),
-      });
+      const actions = row.createDiv({ cls: "mw-search-row__actions" });
+      const btn = svgAction(actions, added ? "check" : "plus", added ? t("search.added") : t("search.add"), () => this.onAddClick(a, btn));
+      btn.addClass("mw-search-row__add");
       btn.disabled = added;
-      btn.addEventListener("click", () => void this.onAddClick(a, btn));
 
       // 试听：未添加也能播，原理与播放一致，点即播
-      const preview = row.createEl("button", {
-        cls: "mw-search-row__preview",
-        text: t("search.preview"),
-      });
-      preview.setAttr("type", "button");
+      const preview = svgAction(actions, "play", t("search.preview"), () => this.onPreviewClick(a, preview));
+      preview.addClass("mw-search-row__preview");
       preview.setAttr("title", t("search.previewTip"));
-      preview.addEventListener("click", () => void this.onPreviewClick(a, preview));
+      if (this.host.enqueueAlbum) {
+        const queue = svgAction(actions, "list-plus", t("queue.add"), async () => {
+          const meta = await this.host.fetchAlbumDetail(a.albumId);
+          if (this.listEl && queue.isConnected) await this.host.enqueueAlbum!(meta);
+        });
+        queue.addClass("mw-search-row__queue");
+      }
     }
 
     if (this.hasMore && this.results.length) {
@@ -238,8 +241,6 @@ export class AlbumSearchPanel {
       return;
     }
     btn.disabled = true;
-    const old = btn.textContent;
-    btn.textContent = t("search.pulling");
     try {
       if (deps.authorize) {
         const authorized = await deps.authorize();
@@ -251,7 +252,6 @@ export class AlbumSearchPanel {
     } catch (e: any) {
       new Notice(t("search.previewFail", { error: e?.message ?? e }));
     } finally {
-      btn.textContent = old;
       btn.disabled = false;
     }
   }
@@ -272,7 +272,6 @@ export class AlbumSearchPanel {
 
   private async onAddClick(summary: AlbumSummary, btn: HTMLButtonElement): Promise<void> {
     btn.disabled = true;
-    btn.textContent = t("search.pulling");
     try {
       const meta = await this.host.fetchAlbumDetail(summary.albumId);
       this.host.confirmAdd(meta, () => {
@@ -282,7 +281,6 @@ export class AlbumSearchPanel {
     } catch (e: any) {
       new Notice(t("search.detailFail", { error: e?.message ?? e }));
     } finally {
-      btn.textContent = t("search.add");
       btn.disabled = this.host.getExistingIds().has(summary.albumId);
     }
   }

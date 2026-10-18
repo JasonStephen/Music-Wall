@@ -4,7 +4,7 @@
 // 顶部栏：固定不随网格滚动 —— 左「墙名 · N 张」，右一排图标钮
 // （样式与布局 / 筛选 / 分组 / 排序 / 添加 / 搜索 / ⋯），点图标从右侧滑出面板。
 // 网格：按分区分组渲染（分组头可展开收起、重命名、删除、整体拖拽换序）；
-// 手动排序：长按唱片或右键「编辑布局」进入编辑态后可直接拖拽唱片换位/跨组。
+// 手动排序：从菜单进入编辑态后拖拽换位/跨组；普通浏览长按只打开菜单。
 // 展示架布局点唱片 = 推镜 + 3D 开盒（gatefold）详情。
 
 import {
@@ -95,9 +95,7 @@ function rectCenter(r: DOMRect | null | undefined): { x: number; y: number; w: n
 const GF_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const GF_NEUTRAL = "translate(0px, 0px) scale(1) rotateY(0deg)";
 
-/** 长按进入编辑态 / 开始拖拽的阈值 */
-const LONG_PRESS_MS = 400;
-/** 触屏：长按后走指针拖拽（HTML5 原生拖拽在触屏不可用） */
+/** 触屏浏览长按打开菜单；显式编辑态内长按开始指针拖拽。 */
 const LONG_PRESS_MS_TOUCH = 350;
 /**
  * 指针移动超过该距离视为「不是长按」。
@@ -313,6 +311,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onUnloadFile(file: TFile): Promise<void> {
+    this.releasePress?.(); this.releasePress = null;
+    this.disposeDrag(); this.closeContext?.(); this.closeContext = null;
     this.data = null;
   }
 
@@ -421,6 +421,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onClose(): Promise<void> {
+    this.releasePress?.(); this.releasePress = null;
+    this.closeContext?.(); this.closeContext = null;
     this.stopHostInset?.(); this.stopHostInset = null;
     this.offNow?.(); this.offNow = null;
     this.miniPlayer?.dispose(); this.miniPlayer = null;
@@ -506,6 +508,7 @@ export class MusicWallView extends FileView implements WallHost {
   async fetchAlbumDetail(albumId: number): Promise<AlbumMeta> {
     return this.plugin.fetchAlbumDetail(albumId);
   }
+  async enqueueAlbum(meta: AlbumMeta): Promise<void> { await this.plugin.enqueueAlbum(meta); }
   getPlaybackDeps(): import("../core/playback").PlaybackDeps {
     return this.plugin.getPlaybackDeps();
   }
@@ -675,6 +678,7 @@ export class MusicWallView extends FileView implements WallHost {
   // ---- 渲染 ----
 
   private async render(): Promise<void> {
+    this.closeContext?.(); this.closeContext = null;
     const root = this.contentEl;
     this.miniPlayer?.dispose(); this.miniPlayer = null;
     // 场景动画句柄随 root 重建失效：先令牌失效 + cancel + 复位状态机
@@ -1256,6 +1260,7 @@ export class MusicWallView extends FileView implements WallHost {
    * 与木墙是两套语言（第五轮反馈 A3）；其它布局保持原生菜单。
    */
   private showCtxMenu(evt: MouseEvent, items: CtxItem[]): void {
+    this.disposeDrag(); this.closeContext?.(); this.closeContext = null;
     // 两种调用方式都要兼容：真实事件用 clientX/Y，触屏长按传的是 {x, y} 合成对象
     const x = num(evt.clientX ?? evt.x);
     const y = num(evt.clientY ?? evt.y);
@@ -1269,7 +1274,7 @@ export class MusicWallView extends FileView implements WallHost {
         separator: it.sep,
         onClick: it.onPick,
       }));
-      openShelfMenu(x, y, shelfItems);
+      this.closeContext = openShelfMenu(x, y, shelfItems);
       return;
     }
     const menu = new Menu();
@@ -1671,6 +1676,7 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private renderGrid(grid: HTMLElement): void {
+    this.clearLongPress(); this.closeContext?.(); this.closeContext = null;
     // 搜索/筛选等局部重绘也保持滚动位置
     const prevScroll = grid.scrollTop;
     grid.empty();
@@ -1801,6 +1807,7 @@ export class MusicWallView extends FileView implements WallHost {
         head.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (this.editMode && this.contextPointer !== "mouse") return;
           this.openGroupMenu(e as MouseEvent, section.id);
         });
       } else {
@@ -1810,6 +1817,7 @@ export class MusicWallView extends FileView implements WallHost {
         head.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (this.editMode && this.contextPointer !== "mouse") return;
           this.openUngroupedMenu(e as MouseEvent);
         });
       }
@@ -1872,7 +1880,8 @@ export class MusicWallView extends FileView implements WallHost {
     }
     card.appendChild(cap);
 
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (this.consumeLongPressClick(e, card)) return;
       if (this.editMode) return; // 编辑布局时不弹详情
       if (this.selectMode) {
         this.toggleSelect(item.albumId);
@@ -1881,9 +1890,7 @@ export class MusicWallView extends FileView implements WallHost {
       this.openPlayModal(item);
     });
     card.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (this.selectMode) return;
-      this.openCardMenu(e as MouseEvent, item);
+      this.cardContext(e, card, item);
     });
     return card;
   }
@@ -1903,8 +1910,33 @@ export class MusicWallView extends FileView implements WallHost {
       .forEach((el) => el.removeClass("is-pulled"));
   }
 
-  /** 长按标志：触屏长按唤出菜单后抑制同次 click */
-  private longPressFired = false;
+  private longPressClick: HTMLElement | null = null;
+  private longPressUntil = 0;
+  private releasePress: (() => void) | null = null;
+  private closeContext: (() => void) | null = null;
+  private contextPointer = "mouse";
+  private suppressCardClick(el: HTMLElement, pointerId?: number): void {
+    this.releasePress?.(); this.releasePress = null;
+    this.longPressClick = el; this.longPressUntil = pointerId === undefined ? Date.now() + 700 : Infinity;
+    if (pointerId === undefined) return;
+    const end = (event: PointerEvent) => { if (event.pointerId === pointerId) finish(); };
+    const finish = () => {
+      this.longPressUntil = Date.now() + 700;
+      window.removeEventListener("pointerup", end, true); window.removeEventListener("pointercancel", end, true); window.removeEventListener("blur", finish);
+      if (this.releasePress === finish) this.releasePress = null;
+    };
+    this.releasePress = finish;
+    window.addEventListener("pointerup", end, true); window.addEventListener("pointercancel", end, true); window.addEventListener("blur", finish);
+  }
+  private consumeLongPressClick(event: MouseEvent, el: HTMLElement): boolean {
+    if (event.detail === 0 || this.longPressClick !== el || Date.now() > this.longPressUntil) return false;
+    this.longPressClick = null; event.preventDefault(); event.stopPropagation(); return true;
+  }
+  private cardContext(event: MouseEvent, el: HTMLElement, item: WallItem): void {
+    event.preventDefault(); event.stopPropagation();
+    if (this.selectMode || (this.editMode && this.contextPointer !== "mouse") || (this.longPressClick === el && Date.now() <= this.longPressUntil)) return;
+    this.suppressCardClick(el); this.openCardMenu(event, item);
+  }
 
   /** 展示架卡片：木板上平放封套，hover/首触抽出（聚光灯照亮），点击进场景详情，右键/长按菜单 */
   private buildShelfCard(item: WallItem): HTMLElement {
@@ -1942,37 +1974,11 @@ export class MusicWallView extends FileView implements WallHost {
     cap.append(name, artist);
     card.appendChild(cap);
 
-    // 触屏长按 450ms 唤出菜单；滚动（pointercancel）自动取消。
-    // 长按同时也是「进入布局编辑并拖拽」的手势，因此已进入长按/拖拽流程时不再弹菜单。
-    let pressTimer = 0;
-    card.addEventListener("pointerdown", (e) => {
-      if (!this.touchMode || this.editMode) return;
-      const pe = e as PointerEvent;
-      const x = pe.clientX;
-      const y = pe.clientY;
-      pressTimer = window.setTimeout(() => {
-        pressTimer = 0;
-        if (this.dragActive) return;
-        this.longPressFired = true;
-        this.openCardMenu({ x, y } as MouseEvent, item);
-      }, LONG_PRESS_MS_TOUCH);
-    });
-    const cancelPress = () => {
-      if (pressTimer) window.clearTimeout(pressTimer);
-      pressTimer = 0;
-    };
-    card.addEventListener("pointerup", cancelPress);
-    card.addEventListener("pointercancel", cancelPress);
-    card.addEventListener("pointerleave", cancelPress);
-
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (this.consumeLongPressClick(e, card)) return;
       if (this.editMode) return; // 编辑布局时不进详情
       if (this.selectMode) {
         this.toggleSelect(item.albumId);
-        return;
-      }
-      if (this.longPressFired) {
-        this.longPressFired = false;
         return;
       }
       if (this.touchMode && !card.hasClass("is-pulled")) {
@@ -1983,10 +1989,7 @@ export class MusicWallView extends FileView implements WallHost {
       this.openShelfDetail(item);
     });
     card.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (this.selectMode) return;
-      cancelPress();
-      this.openCardMenu(e as MouseEvent, item);
+      this.cardContext(e, card, item);
     });
     this.wireCardReorder(card, item);
     return card;
@@ -2033,7 +2036,8 @@ export class MusicWallView extends FileView implements WallHost {
 
     row.append(thumbWrap, info, actions);
     this.wireCardReorder(row, item);
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (e) => {
+      if (this.consumeLongPressClick(e, row)) return;
       if (this.editMode) return;
       if (this.selectMode) {
         this.toggleSelect(item.albumId);
@@ -2042,9 +2046,7 @@ export class MusicWallView extends FileView implements WallHost {
       this.openPlayModal(item);
     });
     row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (this.selectMode) return;
-      this.openCardMenu(e as MouseEvent, item);
+      this.cardContext(e, row, item);
     });
     return row;
   }
@@ -2106,7 +2108,8 @@ export class MusicWallView extends FileView implements WallHost {
   private wireNativeDrag(el: HTMLElement, make: () => DragPayload | null): void {
     el.addEventListener("pointerdown", (e) => {
       const pe = e as PointerEvent;
-      if (pe.pointerType === "mouse" && pe.button !== 0) {
+      this.contextPointer = pe.pointerType;
+      if (pe.pointerType !== "mouse" || pe.button !== 0 || (pe.target as Element)?.closest("button, input, a, [role=checkbox]")) {
         el.draggable = false;
         return;
       }
@@ -2119,7 +2122,7 @@ export class MusicWallView extends FileView implements WallHost {
         e.preventDefault();
         return;
       }
-      // 已经走原生拖拽，就不要再进「长按进入编辑态」那条路
+      // 已经走原生拖拽，取消尚未触发的长按菜单
       this.clearLongPress();
       this.dragNative = true;
       this.dragPayload = payload;
@@ -2151,7 +2154,7 @@ export class MusicWallView extends FileView implements WallHost {
   /**
    * 网格落点接线：本墙自己的拖拽是否被接收，完全由编辑态决定。
    * - 非编辑态：不 preventDefault（浏览器显示禁止光标）+ dropEffect=none，并提示一次
-   *   「调整顺序请先长按进入布局编辑」；跨墙迁移不受影响（由 contentEl 处理外来拖拽）。
+   *   「调整顺序请先从菜单进入布局编辑」；跨墙迁移不受影响（由 contentEl 处理外来拖拽）。
    * - 编辑态：接收 → 复用 resolveDrop/updateDropHint 画落点线，松手时 commitDrop。
    */
   private wireGridDragTarget(grid: HTMLElement): void {
@@ -2260,8 +2263,7 @@ export class MusicWallView extends FileView implements WallHost {
 
   /**
    * 唱片拖拽接线。
-   * - 桌面：原生拖拽（编辑态由网格落点决定是否接收）；长按 400ms 进入编辑态，
-   *   长按成立后**不**另起指针拖拽——用户继续移动时浏览器会启动原生拖拽。
+   * - 桌面鼠标：原生拖拽，墙内换位由显式编辑态决定。
    * - 触屏：没有 HTML5 原生拖拽，长按 350ms 后走指针拖拽（编辑态内排序）。
    */
   private wireCardReorder(el: HTMLElement, item: WallItem): void {
@@ -2276,22 +2278,18 @@ export class MusicWallView extends FileView implements WallHost {
     this.wireNativeDrag(el, make);
     el.addEventListener("pointerdown", (e) => {
       const pe = e as PointerEvent;
-      // 多选态不走「长按进编辑态」，但触屏仍需长按启动指针拖拽（多选批量拖）
-      if (this.selectMode) {
-        if (pe.pointerType === "touch") this.armLongPress(pe, make(), el, false, true);
-        return;
-      }
-      if (pe.pointerType === "touch") {
-        this.armLongPress(pe, make(), el, false, true);
-        return;
-      }
-      if (pe.button !== 0) return;
-      this.armLongPress(pe, make(), el, false, false);
+      this.releasePress?.(); this.releasePress = null; this.longPressClick = null;
+      if (this.selectMode || pe.button !== 0 || !["touch", "pen"].includes(pe.pointerType)
+        || (pe.target as Element)?.closest("button, input, a, [role=checkbox]")) return;
+      this.armLongPress(pe, make(), el, false, this.editMode, this.editMode ? undefined : () => {
+        if (this.selectMode || this.editMode) return;
+        this.suppressCardClick(el, pe.pointerId); this.openCardMenu({ x: pe.clientX, y: pe.clientY } as MouseEvent, item);
+      });
     });
   }
 
   /**
-   * 分组头拖拽接线：**任何时候都能拖**（不需要编辑模式）。
+   * 分组头拖拽接线：桌面可原生拖拽，触屏仅在编辑态拖拽。
    * 桌面原生拖拽；触屏长按后指针拖拽。
    */
   private wireGroupDrag(head: HTMLElement, groupId: string): void {
@@ -2299,12 +2297,13 @@ export class MusicWallView extends FileView implements WallHost {
     this.wireNativeDrag(head, make);
     head.addEventListener("pointerdown", (e) => {
       const pe = e as PointerEvent;
-      if (pe.pointerType === "touch") this.armLongPress(pe, make(), head, true, true);
+      if (this.editMode && ["touch", "pen"].includes(pe.pointerType) && pe.button === 0
+        && !(pe.target as Element)?.closest("button, input, a")) this.armLongPress(pe, make(), head, true, true);
     });
   }
 
   /**
-   * 长按：鼠标 400ms / 触屏 350ms；移动超过容差才算「不是长按」。
+   * 触屏或笔长按 350ms；移动、取消、失焦或抬起均取消。
    * @param pointerDrag 长按成立后是否直接开始指针拖拽（触屏用；
    *                    桌面靠随后的移动触发原生拖拽，不在这里接管）
    */
@@ -2313,7 +2312,8 @@ export class MusicWallView extends FileView implements WallHost {
     payload: DragPayload,
     el: HTMLElement,
     isHead = false,
-    pointerDrag = false
+    pointerDrag = false,
+    onHold?: () => void
   ): void {
     this.clearLongPress();
     this.dragStart = { x: pe.clientX, y: pe.clientY };
@@ -2321,34 +2321,34 @@ export class MusicWallView extends FileView implements WallHost {
     const slop = pe.pointerType === "touch" ? LONG_PRESS_SLOP_TOUCH : LONG_PRESS_SLOP;
     const target = { payload, el, isHead };
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pe.pointerId) return;
       const dx = Math.abs(ev.clientX - this.dragStart.x);
       const dy = Math.abs(ev.clientY - this.dragStart.y);
       if (dx > slop || dy > slop) {
         cancel(); // 视为滚动 / 已经在拖别的（原生拖拽）
       }
     };
-    const up = () => cancel();
+    const up = (ev: PointerEvent) => { if (ev.pointerId === pe.pointerId) cancel(); };
     // 注意：这里只做「拆监听 + 清计时器」，不能回调 clearLongPress（会自引用递归）
     const cancel = () => {
       if (this.dragTimer) window.clearTimeout(this.dragTimer);
       this.dragTimer = 0;
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+      window.removeEventListener("blur", cancel);
       if (this.armCancel === cancel) this.armCancel = null;
     };
     // 记住取消函数：视图重建/卸载时也要拆掉这两个 window 监听，否则会残留
     this.armCancel = cancel;
     window.addEventListener("pointermove", move, true);
-    const delay = pe.pointerType === "touch" ? LONG_PRESS_MS_TOUCH : LONG_PRESS_MS;
+    const delay = LONG_PRESS_MS_TOUCH;
     this.dragTimer = window.setTimeout(() => {
       this.dragTimer = 0;
       cancel();
-      // 分组头任何时候都能拖，不需要编辑态；多选态下不进编辑态（多选拖拽独立）
-      if (!isHead && !this.editMode && !this.selectMode) {
-        this.enterEditMode();
-        new Notice(t("wall.editbar.entered"));
-      }
-      if (pointerDrag) {
+      if (!el.isConnected) return;
+      if (onHold) { onHold(); return; }
+      if (pointerDrag && this.editMode && !this.selectMode) {
         // 触屏：沿用同一个指针，直接开始拖拽
         this.beginPointerDrag(
           {
@@ -2363,6 +2363,8 @@ export class MusicWallView extends FileView implements WallHost {
       }
     }, delay);
     window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    window.addEventListener("blur", cancel);
   }
 
   /** 长按计时中，移除 window 监听用；disposeDrag 也会调用（记得在这里置空） */
@@ -2397,7 +2399,7 @@ export class MusicWallView extends FileView implements WallHost {
     this.dragActive = true;
     this.dragPayload = payload;
     this.dragCursor = { x: pe.clientX, y: pe.clientY };
-    this.longPressFired = true; // 抑制随后的 click
+    this.suppressCardClick(el, pe.pointerId);
     el.addClass("is-dragging");
     el.setAttribute("draggable", "false");
     // 刻意不做 setPointerCapture：指针被捕获后 Chromium 会把 pointerup/pointermove
@@ -2427,6 +2429,7 @@ export class MusicWallView extends FileView implements WallHost {
     window.addEventListener("pointermove", this.onDragMove, true);
     window.addEventListener("pointerup", this.onDragUp, true);
     window.addEventListener("pointercancel", this.onDragUp, true);
+    window.addEventListener("blur", this.onDragCancel);
   }
 
   /** 当前缩放系数：rect 差值（视觉像素）与样式长度（局部像素）之间需要它换算 */
@@ -2451,7 +2454,7 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private handleDragMove(e: PointerEvent): void {
-    if (!this.dragActive) return;
+    if (!this.dragActive || e.pointerId !== this.dragPointerId) return;
     e.preventDefault();
     this.dragCursor = { x: e.clientX, y: e.clientY };
     this.positionGhost(e.clientX, e.clientY);
@@ -2465,7 +2468,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   private handleDragUp(e: PointerEvent): void {
-    if (!this.dragActive) return;
+    if (!this.dragActive || e.pointerId !== this.dragPointerId) return;
+    if (e.type === "pointercancel") { this.disposeDrag(); return; }
     const payload = this.dragPayload;
     const cursor = this.dragCursor ?? { x: e.clientX, y: e.clientY };
     const target = this.resolveDrop(cursor.x, cursor.y);
@@ -2475,6 +2479,7 @@ export class MusicWallView extends FileView implements WallHost {
     if (payload && target) this.commitDrop(payload, target);
   }
 
+  private onDragCancel = (): void => this.disposeDrag();
   private disposeDrag(): void {
     this.clearLongPress();
     this.stopAutoScroll();
@@ -2483,6 +2488,7 @@ export class MusicWallView extends FileView implements WallHost {
     window.removeEventListener("pointermove", this.onDragMove, true);
     window.removeEventListener("pointerup", this.onDragUp, true);
     window.removeEventListener("pointercancel", this.onDragUp, true);
+    window.removeEventListener("blur", this.onDragCancel);
     this.dragGhost?.remove();
     this.dragGhost = null;
     this.dragLine?.remove();
@@ -3690,7 +3696,7 @@ export class MusicWallView extends FileView implements WallHost {
 
     const info = panelL.createDiv({ cls: "mw-gf__face mw-gf__face--info" });
     const bar = info.createDiv({ cls: "mw-gf__bar" });
-    const closeBtn = bar.createEl("button", { cls: "mw-gf__close" });
+    const closeBtn = bar.createEl("button", { cls: "clickable-icon mw-gf__close", attr: { type: "button", "aria-label": t("wall.shelf.closeTip") } });
     setIcon(closeBtn, "x");
     closeBtn.setAttr("title", t("wall.shelf.closeTip"));
     closeBtn.addEventListener("click", () => this.closeShelfDetail());
@@ -3715,7 +3721,8 @@ export class MusicWallView extends FileView implements WallHost {
     const tools = bar.createDiv({ cls: "mw-gf__tools" });
     const mkTool = (icon: string, title: string, danger: boolean, fn: () => void) => {
       const b = tools.createEl("button", {
-        cls: danger ? "mw-gf__tool mw-gf__tool--danger" : "mw-gf__tool",
+        cls: danger ? "clickable-icon mw-gf__tool mw-gf__tool--danger" : "clickable-icon mw-gf__tool",
+        attr: { type: "button", "aria-label": title },
       });
       setIcon(b, icon);
       b.setAttr("title", title);

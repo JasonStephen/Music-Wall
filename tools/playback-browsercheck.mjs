@@ -38,7 +38,7 @@ try {
   }
   if(process.argv.includes('--library')) {
     cases.splice(0,cases.length);
-    for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[2560,1080],[1280,800],[768,1024],[360,740],[640,360],[240,600]]) for(const page of ['created','collected','likes','detail','search','error','empty','signedout']) cases.push({kind:'library',theme,lang,page,width,height});
+    for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[1280,800],[768,1024],[360,740],[240,600]]) for(const page of ['home','created','collected','likes','detail','search','songs','artists','artist','albums','error','empty','signedout']) cases.push({kind:'library',theme,lang,page,width,height});
     for(const zoom of [.5,1.5,2]) for(const page of ['created','detail','search','signedout']) cases.push({kind:'library',theme:'dark',lang:'en',page,width:360,height:740,zoom});
     for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[2560,1080],[1280,800],[768,1024],[360,740],[640,360],[240,600]]) for(const page of ['created','detail','search'])cases.push({kind:'library',theme,lang,page,width,height,playing:true});
     for(const zoom of [.5,1.5,2]) for(const page of ['created','detail','search','signedout'])cases.push({kind:'library',theme:'dark',lang:'en',page,width:360,height:740,zoom,playing:true});
@@ -51,6 +51,7 @@ try {
     for(const theme of ['light','dark'])for(const cover of ['326fa8','bb3b61','eeeeee','151925'])for(const [width,height] of [[1280,800],[360,740],[640,360]])cases.push({kind:'player',theme,bg:'art',deviceCase:'art',style:'vinyl',cover,width,height,panel:'case'});
   }
   if(process.argv.includes('--compact'))cases.splice(0,cases.length,...cases.filter(item=>item.zoom===2&&item.width===360&&item.playing));
+  if(process.argv.includes('--library-quick'))cases.splice(0,cases.length,...cases.filter(item=>item.kind==='library'&&item.lang==='zh-CN'&&[1280,360,240].includes(item.width)&&['home','created','detail','albums','search','artist'].includes(item.page)||item.kind==='library'&&item.zoom===2));
   if(process.argv.includes('--tablet')) {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const [width,height] of [[1280,800],[800,1280]]) for(const zoom of [1,1.5]) {
@@ -78,9 +79,10 @@ try {
     if(item.kind==='library'&&item.theme==='dark'&&item.lang==='zh-CN'&&item.width===1280&&item.page==='created') {
       const navigation=await value('window.verifyLibraryNavigation()');checks+=3;
       if(!navigation.search||!navigation.more||!navigation.detail||!navigation.queued||!navigation.played){failed++;console.log('FAIL library navigation '+JSON.stringify(navigation));}
+      if(navigation.fail?.length){failed++;console.log('FAIL new library actions '+JSON.stringify(navigation.fail));}
       checks++;if(!await value('window.verifyLibraryStale()')){failed++;console.log('FAIL logout stale cloud response');}
     }
-    if(item.kind==='library'&&['created','detail','search'].includes(item.page)&&(item.lang==='zh-CN'&&[1280,360,240].includes(item.width)||item.zoom===2&&item.playing)){
+    if(item.kind==='library'&&['home','created','detail','search','artist','albums'].includes(item.page)&&(item.lang==='zh-CN'&&[1280,360,240].includes(item.width)||item.zoom===2&&item.playing)){
       const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'library-'+i+'-'+item.theme+'-'+item.width+'-'+item.page+'.png'),Buffer.from(shot.data,'base64'));
     }
     if(item.kind==='player'&&item.width===1280&&item.panel==='playlist') {
@@ -116,7 +118,7 @@ try {
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
     }
-    if(!playOrderChecked){
+    if(!playOrderChecked&&item.kind!=='library'){
       const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
       if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }

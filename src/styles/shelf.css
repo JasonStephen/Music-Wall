@@ -407,8 +407,8 @@
 .mw-gf__bar > .mw-gf__close {
   margin-right: auto;
 }
-.mw-gf__bar .mw-gf__tool,
-.mw-gf__bar .mw-gf__close {
+.mw-view .mw-gf__bar button.mw-gf__tool,
+.mw-view .mw-gf__bar button.mw-gf__close {
   /* 硬重置：Obsidian/主题对裸 button 的浅底、内阴影、padding 一律不继承。
      双类选择器压过主题的 `.theme-x button` 级规则 */
   appearance: none;
@@ -435,6 +435,9 @@
 }
 .mw-gf__bar .mw-gf__tool svg,
 .mw-gf__bar .mw-gf__close svg {
+  display: block;
+  flex: 0 0 20px;
+  min-width: 20px;
   width: 20px;
   height: 20px;
   stroke-width: 2;
@@ -769,6 +772,10 @@
 
 /* ---- 自绘展示架风格菜单（右键 / 触屏长按） ---- */
 .mw-shelf-menu {
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   position: fixed;
   z-index: 1000;
   min-width: 168px;
@@ -800,6 +807,7 @@
   user-select: none;
 }
 .mw-shelf-menu__item {
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -809,6 +817,10 @@
   white-space: nowrap;
   transition: background 0.12s;
 }
+/* Browsing retains native scrolling. Editing explicitly assigns card gestures to dragging. */
+.mw-edit-layout .mw-card,
+.mw-edit-layout .mw-row,
+.mw-edit-layout .mw-section__head { touch-action: none; }
 /* 图标占位与原生菜单一致：没有图标的项（如「移动到分组…」以外的自绘项）不缩进 */
 .mw-shelf-menu__icon {
   display: inline-flex;

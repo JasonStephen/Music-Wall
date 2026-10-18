@@ -59,11 +59,12 @@ import { InputModal } from "./ui/InputModal";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NeteaseLoginModal } from "./ui/NeteaseLoginModal";
 import { ChoiceModal, PickerModal, type ChoiceOption } from "./ui/smallModals";
+import { WallTreePickerModal } from "./ui/WallTreePickerModal";
 import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.2";
+const BUILD_TAG = "1.2.5-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -456,6 +457,25 @@ export default class MusicWallPlugin extends Plugin {
     if (!(await this.ensureNeteaseLogin())) return;
     if (this.settings.playbackMode !== "internal") { new Notice(t("queue.internalOnly")); return; }
     new Notice(t(this.internalPlayer.enqueueAlbum(meta) ? "queue.added" : "queue.duplicate"));
+  }
+  /** Search results can be collected into any wall without binding the library to a file. */
+  addLibraryAlbum(meta: AlbumMeta): void {
+    const files = this.wallFiles();
+    if (!files.length) { new Notice(t("library.noWalls")); return; }
+    new WallTreePickerModal(this.app, t("library.addToWall"), files.map(file => ({ label: file.basename, path: file.path })), index => {
+      const target = files[index]; if (!target || this.unloading) return;
+      const open = this.allWallViews().find(view => view.getFile()?.path === target.path);
+      if (open) { open.addAlbum(meta, "search"); return; }
+      const item: WallItem = { albumId: meta.albumId, meta, source: "search", locked: true, addedAt: new Date().toISOString() };
+      void (async () => {
+        let added = false;
+        await this.app.vault.process(target, content => {
+          const data = parseWall(content); added = insertItem(data, item);
+          return added ? JSON.stringify(data, null, 2) : content;
+        });
+        new Notice(t(added ? "wall.card.added" : "wall.card.alreadyIn", { name: meta.name }));
+      })().catch(() => new Notice(t("library.failed")));
+    }).open();
   }
   /** 解析来源墙中的条目（播放器接收拖拽用） */
   async resolveWallItem(srcPath: string, albumId: number): Promise<WallItem | null> {
