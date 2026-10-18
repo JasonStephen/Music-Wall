@@ -19,6 +19,9 @@
 .mw-cloud__search input { flex: 1 1 auto; min-width: 0; width: 100%; }
 .mw-cloud__search button { flex: 0 0 auto; }
 .mw-cloud__body { min-width: 0; min-height: 0; flex: 1; overflow: auto; padding: 0 16px calc(20px + var(--mw-host-bottom, 0px)); }
+/* The shared footer owns status-bar clearance whenever music is playing. */
+.mw-cloud .has-mini > .mw-cloud__body { padding-bottom: 20px; }
+.mw-cloud > .mw-zoombox > .mw-cloud__empty { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .mw-cloud__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 16px; }
 .mw-cloud .mw-cloud__card {
   display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; min-width: 0;
@@ -76,4 +79,9 @@
   .mw-cloud__head { flex-wrap: wrap; }
   .mw-cloud__head h2 { flex-basis: 100%; }
   .mw-cloud__search { flex-wrap: wrap; }
+  .mw-cloud .has-mini > .mw-cloud__head { flex-wrap: nowrap; gap: 4px; padding-block: 8px; }
+  .mw-cloud .has-mini > .mw-cloud__head h2 { flex-basis: auto; font-size: 14px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mw-cloud .has-mini > .mw-cloud__tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-bottom: 8px; }
+  .mw-cloud .has-mini > .mw-cloud__tabs button { min-width: 0; padding: 4px; font-size: 11px; line-height: 1.2; overflow-wrap: anywhere; justify-content: center; }
+  .mw-cloud .has-mini > .mw-cloud__body { padding-bottom: 8px; }
 }

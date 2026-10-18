@@ -40,7 +40,17 @@ try {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[2560,1080],[1280,800],[768,1024],[360,740],[640,360],[240,600]]) for(const page of ['created','collected','likes','detail','search','error','empty','signedout']) cases.push({kind:'library',theme,lang,page,width,height});
     for(const zoom of [.5,1.5,2]) for(const page of ['created','detail','search','signedout']) cases.push({kind:'library',theme:'dark',lang:'en',page,width:360,height:740,zoom});
+    for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[2560,1080],[1280,800],[768,1024],[360,740],[640,360],[240,600]]) for(const page of ['created','detail','search'])cases.push({kind:'library',theme,lang,page,width,height,playing:true});
+    for(const zoom of [.5,1.5,2]) for(const page of ['created','detail','search','signedout'])cases.push({kind:'library',theme:'dark',lang:'en',page,width:360,height:740,zoom,playing:true});
   }
+  if(process.argv.includes('--finish')){
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const bg of ['white','dark','art','wood']) for(const deviceCase of ['white','black','wood','art']) for(const style of ['vinyl','cd']) for(const [width,height] of [[1280,800],[360,740],[640,360]])cases.push({kind:'player',theme,bg,deviceCase,style,width,height,panel:'case',cover:'d8a430'});
+    for(const deviceCase of ['white','black','wood','art'])for(const zoom of [.5,1.5,2])for(const style of ['vinyl','cd'])cases.push({kind:'player',theme:'dark',bg:'white',deviceCase,style,zoom,width:240,height:600,panel:'case',lang:'en'});
+    for(const [width,height] of [[1280,800],[360,740],[240,600]])cases.push({kind:'player',theme:'light',bg:'white',deviceCase:'white',style:'cover',width,height,panel:'case'});
+    for(const theme of ['light','dark'])for(const cover of ['326fa8','bb3b61','eeeeee','151925'])for(const [width,height] of [[1280,800],[360,740],[640,360]])cases.push({kind:'player',theme,bg:'art',deviceCase:'art',style:'vinyl',cover,width,height,panel:'case'});
+  }
+  if(process.argv.includes('--compact'))cases.splice(0,cases.length,...cases.filter(item=>item.zoom===2&&item.width===360&&item.playing));
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
   let checks=0,failed=0;let savedFailures=0;
   for(let i=0;i<cases.length;i++) {
@@ -50,12 +60,16 @@ try {
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.panel==='case'&&item.theme==='light'&&item.bg==='white'&&item.width===1280){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`finish-${item.deviceCase}-${item.style}.png`),Buffer.from(shot.data,'base64'));}
+    if(item.panel==='case'&&item.theme==='light'&&item.bg==='art'&&item.width===1280){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`finish-cover-${item.cover}.png`),Buffer.from(shot.data,'base64'));}
+    if(item.panel==='case'&&item.theme==='light'&&item.bg==='white'&&item.width===1280&&item.deviceCase==='black'&&item.style==='vinyl'){const details=await value('window.verifyCaseControls()');checks+=6;if(details.length){failed++;console.log('FAIL case controls '+JSON.stringify(details));}}
+    if(item.kind==='library'&&item.playing&&item.theme==='light'&&item.lang==='zh-CN'&&item.width===1280&&item.page==='detail'){const mini=await value('window.verifyLibraryMini()');checks+=7;if(mini.length){failed++;console.log('FAIL library mini controls '+JSON.stringify(mini));}}
     if(item.kind==='library'&&item.theme==='dark'&&item.lang==='zh-CN'&&item.width===1280&&item.page==='created') {
       const navigation=await value('window.verifyLibraryNavigation()');checks+=3;
       if(!navigation.search||!navigation.more||!navigation.detail||!navigation.queued||!navigation.played){failed++;console.log('FAIL library navigation '+JSON.stringify(navigation));}
       checks++;if(!await value('window.verifyLibraryStale()')){failed++;console.log('FAIL logout stale cloud response');}
     }
-    if(item.kind==='library'&&item.lang==='zh-CN'&&[1280,360,240].includes(item.width)&&['created','detail','search'].includes(item.page)){
+    if(item.kind==='library'&&['created','detail','search'].includes(item.page)&&(item.lang==='zh-CN'&&[1280,360,240].includes(item.width)||item.zoom===2&&item.playing)){
       const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'library-'+i+'-'+item.theme+'-'+item.width+'-'+item.page+'.png'),Buffer.from(shot.data,'base64'));
     }
     if(item.kind==='player'&&item.width===1280&&item.panel==='playlist') {

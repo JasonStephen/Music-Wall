@@ -819,6 +819,9 @@
 .mw-player .mw-drawer {
   z-index: 29;
 }
+.mw-player .mw-drawer__body {
+  padding-bottom: calc(20px + var(--mw-host-bottom, 0px));
+}
 
 /* 上拉曲目面板。遮罩只做视觉；外部点击由视图处理，以保留页面控制按钮的操作。 */
 .mw-player__scrim {

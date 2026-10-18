@@ -54,7 +54,7 @@ const css = await esbuild.context({
   outfile: "styles.css",
   minify: prod,
   logLevel: "info",
-  loader: { ".css": "css" },
+  loader: { ".css": "css", ".svg": "dataurl" },
 });
 
 if (prod) {

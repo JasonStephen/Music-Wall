@@ -24,6 +24,7 @@ class FakeAudio extends EventTarget {
 let close = async()=>{};
 (window as any).setupPlaybackUI = async (config: any) => {
   await close();
+  setLanguage(config.lang || 'zh-CN');
   document.body.className = `theme-${config.theme}`;
   document.body.style.setProperty("--mw-zoom",String(config.zoom??1));
   const mount=document.getElementById("mount")!;mount.empty();
@@ -48,7 +49,7 @@ let close = async()=>{};
     tracks:[{id:11,name:"Nightlight · 夜色中的微光",duration:260000},{id:12,name:"A Waltz for Forgetting",duration:105000},{id:13,name:"Feeling Alone in a Room Full of People (2020 Ver.)",duration:192000},{id:14,name:"Dreamcatcher",duration:274000}]};
   let opens=0;
   const plugin={
-    settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
+    settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
     ensureNowPlayingStarted(){},async ensureNeteaseLogin(){return true;},async openPlayerView(){opens++;},
     getPlaybackDeps:()=>({isDesktop:false,request:async()=>{throw Error("No external calls");},playInside:(m:any,i:number)=>engine.playAlbum(m,i)}),
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},wallFiles:()=>[],firstPlayerView:()=>null,
@@ -162,7 +163,26 @@ let close = async()=>{};
     const track=root.querySelector<HTMLElement>(".mw-np__timeline .mw-slider__track")!.getBoundingClientRect();
     const thumb=root.querySelector<HTMLElement>(".mw-np__timeline .mw-slider__thumb")!.getBoundingClientRect();
     check(Math.abs(track.top+track.height/2-thumb.top-thumb.height/2)<1,"Seek thumb stays centered on its track under host styles");
-    if(config.panel==="volume") {
+    const chassis=root.querySelector<HTMLElement>('.mw-dev__chassis')!;
+    check(root.dataset.mwCase===(config.deviceCase??'black'),'Device case selection is applied');
+    if(config.style!=='cover') {
+      check(getComputedStyle(chassis).getPropertyValue('--mw-case-fill').length>0,'Chassis uses its own finish palette');
+      check(getComputedStyle(chassis).backgroundImage.includes('url(')&&getComputedStyle(chassis,'::after').content!=='none','Material details remain enabled even with an old disabled preference');
+    }
+    if(config.panel==='case') {
+      root.querySelector<HTMLButtonElement>('.mw-toolbtn')!.click();await wait(40);
+      const section=root.querySelector<HTMLElement>('.mw-case-options')!;
+      check(section.classList.contains('is-hidden')===(config.style==='cover'),'Case options are hidden for the pure cover style');
+      if(config.style!=='cover'){
+        check(section.querySelectorAll('[data-case-choice]').length===4,'Four case finishes are available');
+        check(!section.querySelector('[role="switch"]'),'Case options no longer contain a material switch');
+        for(const button of section.querySelectorAll<HTMLElement>('[data-case-choice]'))check(button.scrollWidth<=button.clientWidth+1,'Case preset contents fit their tile');
+      }
+      const drawerBody=root.querySelector<HTMLElement>('.mw-drawer__body')!;drawerBody.scrollTop=drawerBody.scrollHeight;
+      const last=root.querySelector<HTMLElement>('[data-mw-bg]:last-child')!;
+      check(last.getBoundingClientRect().bottom<=hostBar.getBoundingClientRect().top+1,'Last style option remains above the host status bar');
+      drawerBody.scrollTop=0;
+    } else if(config.panel==="volume") {
       volume.click();
       const slider=root.querySelector<HTMLInputElement>(".mw-np__volume-panel input")!;
       slider.value="0.35";slider.dispatchEvent(new Event("input"));
@@ -193,14 +213,14 @@ let close = async()=>{};
       check(getComputedStyle(name).color===getComputedStyle(panel).getPropertyValue("--mw-panel-fg").trim() || getComputedStyle(name).color==="rgb(242, 244, 248)" || getComputedStyle(name).color==="rgb(233, 236, 241)" || getComputedStyle(name).color==="rgb(34, 37, 43)" || getComputedStyle(name).color==="rgb(246, 239, 228)","Playlist uses its own text palette");
     }
     await wait(40);
-    const visible=root.querySelector<HTMLElement>(config.panel==="volume"?".mw-np__volume-panel":config.panel==="quality"?".mw-np__quality-panel":".mw-player__playlist")!;
+    const visible=root.querySelector<HTMLElement>(config.panel==='case'?'.mw-drawer.is-open':config.panel==="volume"?".mw-np__volume-panel":config.panel==="quality"?".mw-np__quality-panel":".mw-player__playlist")!;
     const rect=visible.getBoundingClientRect();
     check(rect.left>=-1&&rect.right<=innerWidth+1,"Panel fits pane width");
     check(rect.top>=-1&&rect.bottom<=innerHeight+1,"Panel fits pane height");
     // The blurred cover intentionally extends past the root; it is clipped and never scrolls.
     check(getComputedStyle(root).overflowX==="hidden"&&root.querySelector<HTMLElement>(".mw-zoombox")!.getBoundingClientRect().right<=innerWidth+1,"Player clips decorative overflow within pane");
     check(visible.scrollWidth<=visible.clientWidth+1,"Panel content has no horizontal overflow");
-    check(config.statusBar===false||rect.bottom<=hostBar.getBoundingClientRect().top+1,"Host status bar does not cover the panel");
+    check(config.panel==='case'||config.statusBar===false||rect.bottom<=hostBar.getBoundingClientRect().top+1,"Host status bar does not cover the panel");
     check(!root.querySelector(".mw-player__playlist-note"),"Playlist has no developer explanation");
     const panelBg=over(rgba(getComputedStyle(visible).backgroundColor),[255,255,255,1]);
     (window as any).verifyHoverContrast=()=>{
@@ -222,6 +242,28 @@ let close = async()=>{};
       const bg=rgba(config.bg==="white"?"#eef0f3":config.bg==="wood"?"#7a5433":"#252932");
       for(const text of root.querySelectorAll(".mw-np__title,.mw-np__artist,.mw-np__status,.mw-np__elapsed"))check(contrast(getComputedStyle(text).color,bg)>=4.5,"Player text contrast is readable");
     }
+    (window as any).verifyCaseControls = async()=>{
+      const failures:string[]=[];
+      if(!root.querySelector('.mw-drawer.is-open'))root.querySelector<HTMLButtonElement>('.mw-toolbtn')!.click();
+      const originalId=engine.state.songId, originalIndex=engine.index;
+      root.querySelector<HTMLButtonElement>('[data-case-choice="white"]')!.click();
+      if(plugin.settings.playerCase!=='white'||root.dataset.mwCase!=='white')failures.push('White case was not applied');
+      root.querySelector<HTMLButtonElement>('[data-case-choice="art"]')!.click();await wait(70);
+      const color=root.style.getPropertyValue('--mw-case-accent');
+      const vinylSurface=()=>getComputedStyle(root.querySelector<HTMLElement>('.mw-dev__platter .mw-record__plate')!).backgroundImage;
+      const vinylWell=()=>getComputedStyle(root.querySelector<HTMLElement>('.mw-dev__chassis')!,'::before').backgroundImage;
+      const plateColor=vinylSurface(), wellColor=vinylWell();
+      if(!color||color==='#596773')failures.push('Cover color extraction is unavailable with a non-cover page background');
+      if(engine.state.songId!==originalId||engine.index!==originalIndex)failures.push('Changing the case interrupted playback');
+      await engine.playPlaylist({...meta,albumId:0,playlistId:99,tracks:meta.tracks.map(track=>({...track,cover:probeCoverUri('c25b34')}))});await wait(90);
+      if(root.style.getPropertyValue('--mw-case-accent')===color)failures.push('Case color did not follow the current song cover');
+      if(vinylSurface()===plateColor||vinylWell()===wellColor)failures.push('Vinyl or recessed well did not follow the current song cover');
+      root.querySelector<HTMLButtonElement>('[data-case-choice="black"]')!.click();
+      if(vinylSurface().includes('color(srgb')||vinylWell().includes('color(srgb'))failures.push('Cover tint leaked into the black finish');
+      root.querySelector<HTMLButtonElement>('[data-mw-style="cover"]')!.click();
+      if(!root.querySelector('.mw-case-options.is-hidden'))failures.push('Pure-cover style still shows case options');
+      return failures;
+    };
     (window as any).verifyQueueUI = async()=>{
       const failures:string[]=[];
       const original=engine.currentEntryId;

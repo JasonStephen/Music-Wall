@@ -1,6 +1,7 @@
 // 简体中文（基准/回退语言：结构变更以此为源，zh-TW 与 en 用 typeof 约束对齐）。
 
 export const zhCN = {
+  case: { title: "外壳", white: "白色", black: "黑色", wood: "原木", art: "跟随封面" },
   library: {"title":"网易云音乐库","created":"我创建的歌单","collected":"我收藏的歌单","likes":"我喜欢的音乐","search":"搜索歌单","searchPlaceholder":"输入歌单名称","refresh":"刷新","more":"加载更多","empty":"暂无歌曲或歌单","failed":"加载失败，请检查网络和登录状态。","retry":"重试"},
   queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌单播放","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
   labels: {

@@ -79,4 +79,6 @@
   .mw-mini .mw-mini__open { flex-basis: 100%; width: 100%; }
   .mw-mini__controls { margin-left: auto; }
   .mw-mini__time { font-size: 10px; }
+  .mw-mini__tools { gap: 2px; }
+  .mw-mini .mw-mini__button[data-action="quality"] { min-width: 60px; padding-inline: 2px; gap: 2px; }
 }

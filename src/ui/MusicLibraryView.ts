@@ -8,6 +8,7 @@ import { sizedCover } from "../core/metadata";
 import { DEFAULT_COVER } from "./defaultCover";
 import { handleZoomWheel, syncZoomBox, disposeZoomBox } from "./zoom";
 import { watchHostInset } from "./hostInset";
+import { MiniPlayer } from "./MiniPlayer";
 
 type Tab = "created" | "collected" | "likes" | "search";
 export class MusicLibraryView extends ItemView {
@@ -19,6 +20,7 @@ export class MusicLibraryView extends ItemView {
   private collection: AlbumMeta | null = null;
   private stopInset: (() => void) | null = null;
   private auth = "";
+  private miniPlayer: MiniPlayer | null = null;
   constructor(leaf: WorkspaceLeaf, private plugin: MusicWallPlugin) { super(leaf); }
   getViewType(): string { return LIBRARY_VIEW_TYPE; }
   getDisplayText(): string { return t("library.title"); }
@@ -27,7 +29,7 @@ export class MusicLibraryView extends ItemView {
     this.registerDomEvent(this.contentEl, "wheel", (event: WheelEvent) => handleZoomWheel(event, this.plugin, this.contentEl), { capture: true, passive: false });
     this.render(); this.stopInset = watchHostInset(this.contentEl); await this.loadContent();
   }
-  async onClose(): Promise<void> { ++this.generation; this.stopInset?.(); disposeZoomBox(this.contentEl); }
+  async onClose(): Promise<void> { ++this.generation; this.stopInset?.(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl); }
   syncZoomBox(): void { syncZoomBox(this.contentEl, this.plugin.settings.zoomScale); }
   refresh(): void {
     const auth = this.plugin.settings.neteaseCookie;
@@ -39,6 +41,7 @@ export class MusicLibraryView extends ItemView {
     setIcon(button, name); button.addEventListener("click", action); return button;
   }
   private render(): void {
+    this.miniPlayer?.dispose(); this.miniPlayer = null;
     const root = this.contentEl; root.empty(); root.addClass("mw-view", "mw-cloud");
     const box = root.createDiv({ cls: "mw-zoombox" });
     const head = box.createDiv({ cls: "mw-cloud__head" }); head.createEl("h2", { text: t("library.title") });
@@ -47,6 +50,7 @@ export class MusicLibraryView extends ItemView {
     if (!this.plugin.settings.neteaseCookie) {
       const empty = box.createDiv({ cls: "mw-cloud__empty" }); empty.createEl("p", { text: t("auth.signedOutDesc") });
       empty.createEl("button", { text: t("auth.signIn"), cls: "mod-cta" }).addEventListener("click", () => void this.signIn());
+      this.miniPlayer = new MiniPlayer(box, this.plugin);
       this.syncZoomBox(); return;
     }
     const tabs = box.createDiv({ cls: "mw-cloud__tabs", attr: { role: "tablist", "aria-label": t("library.title") } });
@@ -62,6 +66,7 @@ export class MusicLibraryView extends ItemView {
     }
     const body = box.createDiv({ cls: "mw-cloud__body" });
     if (this.collection) this.renderTracks(body, this.collection); else this.renderLists(body);
+    this.miniPlayer = new MiniPlayer(box, this.plugin);
     this.syncZoomBox();
   }
   private renderLists(body: HTMLElement): void {

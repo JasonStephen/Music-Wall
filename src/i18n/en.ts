@@ -3,6 +3,7 @@
 import type { zhCN } from "./zh-CN";
 
 export const en: typeof zhCN = {
+  case: { title: "Case", white: "White", black: "Black", wood: "Wood", art: "Cover color" },
   library: {"title":"NetEase music library","created":"My playlists","collected":"Saved playlists","likes":"Liked songs","search":"Search playlists","searchPlaceholder":"Enter a playlist name","refresh":"Refresh","more":"Load more","empty":"No songs or playlists","failed":"Unable to load. Check your connection and account.","retry":"Retry"},
   queue: {"playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Playlist","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
   labels: {

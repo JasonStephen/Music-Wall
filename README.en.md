@@ -69,6 +69,8 @@ The volume button beside the track-list button opens a vertical slider. Click ou
 Use a record's menu to add it to the album queue. Pending albums can be reordered by dragging or arrow buttons. Any album can be removed; removing the current one advances playback.
 Album playback supports in-order, queue repeat and single-song repeat. Playlist playback also supports shuffle.
 The music-library ribbon opens your created and saved playlists, liked songs and playlist search. Play a list or append it to the song list. Switching between album and playlist playback preserves both queues and their positions.
+The library footer shares the wall's mini player, current song, queues and controls.
+In the player's style panel, vinyl and CD cases offer White, Black, Wood or Cover color, with material details always enabled. Case colors and page backgrounds are set separately. Cover color also tints the vinyl record and its recessed well.
 The quality menu shows verified qualities for the current track/account and
 labels the actual audio quality. Settings offer 128kbps, 192kbps, 320kbps, Lossless and Hi-Res, with
 automatic fallback to the best available lower quality. Player changes apply

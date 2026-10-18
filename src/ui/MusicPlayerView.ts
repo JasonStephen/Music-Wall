@@ -12,6 +12,7 @@ import {
   type AlbumMeta,
   type DiscStyle,
   type PlayerBackground,
+  type DeviceCase,
   type WallItem,
 } from "../types";
 import { playerBgLabel, styleLabel, t } from "../i18n";
@@ -73,6 +74,7 @@ export class MusicPlayerView extends ItemView {
   private qualityKey = "";
   private volumeIcon = "";
   private stopHostInset: (() => void) | null = null;
+  private caseToneKey = "";
 
   private shell: HTMLElement | null = null;
   private el: Record<string, HTMLElement> = {};
@@ -156,6 +158,7 @@ export class MusicPlayerView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.caseToneKey = "";
     this.stopHostInset?.(); this.stopHostInset = null;
     if (this.offNow) {
       this.offNow();
@@ -410,6 +413,7 @@ export class MusicPlayerView extends ItemView {
       this.styleBtn?.toggleClass("is-active", open);
       // 抽屉与上拉曲目面板互斥：都占右侧/底部，同时开会互相遮挡
       if (open) { this.togglePlaylist(false); this.togglePopover(null); }
+      if (open) this.applyCaseAppearance();
     });
     drawer.register("settings", t("player.styleBg"), (panel) => {
       // 样式：与音乐墙上四种样式同一套缩略预览（无专辑时给默认封面，别再空砖）
@@ -420,6 +424,7 @@ export class MusicPlayerView extends ItemView {
         text: t("player.style"),
       });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
+      let caseSection: HTMLElement | null = null;
       for (const s of PLAYER_STYLES) {
         grid.appendChild(
           buildStyleTile(s, styleLabel(s), cover, this.discStyle === s, (picked) => {
@@ -427,6 +432,7 @@ export class MusicPlayerView extends ItemView {
             // 清空 albumKey 让 updateNow 立即重建设备与曲目列表
             this.albumKey = "";
             this.updateNow();
+            caseSection?.toggleClass("is-hidden", picked === "cover");
             grid
               .querySelectorAll<HTMLElement>(".mw-preset")
               .forEach((el) =>
@@ -436,6 +442,24 @@ export class MusicPlayerView extends ItemView {
         );
       }
 
+      caseSection = panel.createDiv({ cls: "mw-panel__section mw-case-options" });
+      caseSection.toggleClass("is-hidden", this.discStyle === "cover");
+      caseSection.createDiv({ cls: "mw-panel__label", text: t("case.title") });
+      const cases = caseSection.createDiv({ cls: "mw-preset-grid mw-case-grid" });
+      for (const choice of ["white", "black", "wood", "art"] as DeviceCase[]) {
+        const tile = cases.createEl("button", { cls: "mw-preset", attr: { type: "button", "aria-label": t(`case.${choice}`), "aria-pressed": String((this.plugin.settings.playerCase || "black") === choice) } });
+        tile.dataset.caseChoice = choice;
+        tile.toggleClass("is-active", (this.plugin.settings.playerCase || "black") === choice);
+        const sample = tile.createDiv({ cls: "mw-case-sample", attr: { "aria-hidden": "true" } }); sample.dataset.mwCase = choice;
+        tile.createSpan({ cls: "mw-preset__label", text: t(`case.${choice}`) });
+        tile.addEventListener("click", () => {
+          this.plugin.settings.playerCase = choice; this.applyCaseAppearance();
+          for (const button of Array.from(cases.querySelectorAll<HTMLElement>("[data-case-choice]"))) {
+            const active = button.dataset.caseChoice === choice; button.toggleClass("is-active", active); button.setAttr("aria-pressed", String(active));
+          }
+          void this.plugin.saveData(this.plugin.settings);
+        });
+      }
       const secBg = panel.createDiv({ cls: "mw-panel__section" });
       secBg.createDiv({
         cls: "mw-panel__label",
@@ -667,6 +691,7 @@ export class MusicPlayerView extends ItemView {
   // ---- 增量更新 ----
 
   private updateNow(): void {
+    this.applyCaseAppearance();
     const album = this.displayAlbum();
     const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}` : "";
     if (albumKey !== this.albumKey) {
@@ -800,6 +825,21 @@ export class MusicPlayerView extends ItemView {
     const device = buildDevice(pseudo, this.discStyle, 500);
     this.readoutEl = device.readout;
     host.appendChild(device.root);
+  }
+
+  private applyCaseAppearance(): void {
+    const root = this.contentEl, choice = this.plugin.settings.playerCase || "black";
+    if (root.dataset.mwCase !== choice) root.dataset.mwCase = choice;
+    if (choice !== "art" && !this.drawer?.isOpen()) return;
+    const cover = this.displayAlbum()?.cover || DEFAULT_COVER;
+    const key = sizedCover(cover, 300);
+    if (this.caseToneKey === key) return;
+    this.caseToneKey = key;
+    root.style.setProperty("--mw-case-accent", "#596773");
+    void coverTone(key).then(tone => {
+      if (this.caseToneKey !== key) return;
+      root.style.setProperty("--mw-case-accent", tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#b4b6b8" : "#51555b"));
+    });
   }
 
   private syncLayout(): void {

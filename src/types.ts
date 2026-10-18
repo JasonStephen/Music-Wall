@@ -16,6 +16,7 @@ export type SortMode = "manual" | "addedAt" | "name" | "artist" | "year" | "rati
 
 /** 播放器页背景模式 */
 export type PlayerBackground = "white" | "dark" | "art" | "wood";
+export type DeviceCase = "white" | "black" | "wood" | "art";
 
 /** 专辑来源 */
 export type AlbumSource = "search" | "manual";
@@ -163,6 +164,7 @@ export interface MusicWallSettings {
   smtcEnabled: boolean;
   /** 播放器页背景模式 */
   playerBackground: PlayerBackground;
+  playerCase: DeviceCase;
   /**
    * 界面缩放（1 = 100%）。对音乐墙与播放器页全局生效，
    * 含侧边抽屉与模态框；可在设置里调，也可在视图内 Ctrl/Alt + 滚轮调。
@@ -187,6 +189,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   shelfCaption: "pull",
   smtcEnabled: true,
   playerBackground: "dark",
+  playerCase: "black",
   zoomScale: 1,
 };
 

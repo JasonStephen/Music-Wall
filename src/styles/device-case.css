@@ -1,0 +1,79 @@
+/* Player-only finishes. Swatches share the same palette as the real chassis. */
+:is(.mw-player, .mw-case-sample)[data-mw-case] {
+  --mw-case-fill: linear-gradient(168deg, #3d4046, #26282d 48%, #16181b);
+  --mw-case-fill-cd: linear-gradient(165deg, #444b54, #272c32 55%, #16191d);
+  --mw-case-pattern: linear-gradient(transparent, transparent);
+  --mw-case-edge: rgba(255, 255, 255, .12);
+  --mw-case-bottom: rgba(0, 0, 0, .48);
+  --mw-case-contact: rgba(0, 0, 0, .55);
+}
+.mw-player { --mw-case-detail: url("./textures/fine-grain.svg"); }
+:is(.mw-player, .mw-case-sample)[data-mw-case="white"] {
+  --mw-case-fill: linear-gradient(164deg, #fffefa, #eeeae2 55%, #d2cfc8);
+  --mw-case-fill-cd: var(--mw-case-fill);
+  --mw-case-edge: rgba(57, 53, 46, .22);
+  --mw-case-bottom: rgba(104, 99, 88, .15);
+  --mw-case-contact: rgba(41, 43, 46, .24);
+}
+:is(.mw-player, .mw-case-sample)[data-mw-case="wood"] {
+  --mw-case-fill: linear-gradient(165deg, #d4b38a, #b18a5d 55%, #8d653f);
+  --mw-case-fill-cd: var(--mw-case-fill);
+  --mw-case-pattern: url("./textures/wood-grain.svg");
+  --mw-case-edge: rgba(255, 235, 194, .33);
+  --mw-case-bottom: rgba(62, 36, 15, .28);
+  --mw-case-contact: rgba(48, 30, 14, .4);
+}
+:is(.mw-player, .mw-case-sample)[data-mw-case="art"] {
+  --mw-case-fill: linear-gradient(165deg, color-mix(in srgb, var(--mw-case-accent, #596773) 54%, #bec4c8), color-mix(in srgb, var(--mw-case-accent, #596773) 50%, #3b434b) 55%, color-mix(in srgb, var(--mw-case-accent, #596773) 38%, #171c22));
+  --mw-case-fill-cd: var(--mw-case-fill);
+  --mw-case-bottom: rgba(0, 0, 0, .28);
+  --mw-case-contact: rgba(10, 20, 28, .4);
+}
+.mw-player :is(.mw-dev--vinyl, .mw-dev--cd) .mw-dev__chassis {
+  background-image: var(--mw-case-detail), var(--mw-case-pattern), radial-gradient(120% 80% at 24% 0%, #ffffff18, transparent 60%), var(--mw-case-fill);
+  background-size: 128px 128px, 240px 400px, auto, auto;
+  background-repeat: repeat, repeat, no-repeat, no-repeat;
+  box-shadow: inset 0 0 0 1px var(--mw-case-edge), inset 0 -18px 30px var(--mw-case-bottom);
+}
+.mw-player .mw-dev--cd .mw-dev__chassis {
+  background-image: var(--mw-case-detail), var(--mw-case-pattern), radial-gradient(120% 100% at 22% 0%, #ffffff20, transparent 55%), var(--mw-case-fill-cd);
+}
+.mw-player :is(.mw-dev--vinyl, .mw-dev--cd) .mw-dev__chassis::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 1px 1px #ffffff50, inset 1px 0 0 #ffffff15, inset -1px -2px 2px var(--mw-case-contact), inset 0 0 0 3px #ffffff05;
+}
+.mw-player .mw-dev__hinge {
+  background-image: repeating-linear-gradient(0deg, #ffffff0a 0 1px, transparent 1px 3px), linear-gradient(#60646b, #272c33);
+  box-shadow: 0 2px 4px var(--mw-case-contact), inset 0 1px 0 #ffffff45, inset 0 -1px 0 #0008;
+}
+.mw-player .mw-dev__speedknob {
+  box-shadow: 0 5px 10px var(--mw-case-contact), inset 0 -6px 12px #0006, inset 0 4px 8px #ffffff59, 0 0 0 2px var(--mw-case-contact);
+}
+.mw-player :is(.mw-dev__deckbtn, .mw-dev__btn) {
+  background-image: repeating-linear-gradient(90deg, #ffffff09 0 1px, transparent 1px 3px), linear-gradient(#5e6269, #272b32);
+  box-shadow: inset 0 1px 0 #ffffff45, inset 1px 0 0 #ffffff12, 0 2px 3px var(--mw-case-contact);
+}
+.mw-player[data-mw-case="white"] .mw-dev__led { outline: 1px solid #0003; }
+.mw-case-options.is-hidden { display: none; }
+.mw-case-sample {
+  width: 100%; aspect-ratio: 16 / 9; border-radius: 6px;
+  background-image: var(--mw-case-detail), var(--mw-case-pattern), radial-gradient(120% 80% at 25% 0%, #ffffff22, transparent 60%), var(--mw-case-fill);
+  background-size: 128px 128px, 240px 400px, auto, auto;
+  box-shadow: inset 0 0 0 1px var(--mw-case-edge), inset 0 -8px 12px var(--mw-case-bottom);
+}
+.mw-case-grid .mw-preset__label { white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.3; }
+/* Colored vinyl and its recessed well share the cover hue, with different depths. */
+.mw-player[data-mw-case="art"] .mw-dev__platter .mw-disc--vinyl {
+  --mw-groove: repeating-radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #30363d) 0px,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #59636d) 1.5px,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #151b22) 2.6px,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #414a52) 3.4px);
+}
+.mw-player[data-mw-case="art"] .mw-dev--vinyl .mw-dev__chassis::before {
+  background: radial-gradient(circle at 50% 46%,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 58%, #28313a),
+    color-mix(in srgb, var(--mw-case-accent, #596773) 48%, #171e25) 70%,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 38%, #0e151d));
+  box-shadow: inset 0 2px 3px #0008, inset 0 10px 22px #0007, 0 1px 0 #ffffff20;
+}
