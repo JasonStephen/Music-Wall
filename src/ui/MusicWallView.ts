@@ -4025,16 +4025,17 @@ export class MusicWallView extends FileView implements WallHost {
         onPick: () => void this.plugin.importMwFile(this),
       },
       {
-        title: t("wall.more.git"),
-        icon: "git",
+        title: t("gitSync.pullCommand"),
+        icon: "download-cloud",
         onPick: () => {
           if (!Platform.isDesktopApp) {
             new Notice(t("main.git.desktopOnly"));
             return;
           }
-          void this.plugin.gitImport(this);
+          void this.plugin.gitSync("pull");
         },
       },
+      { title: t("gitSync.pushCommand"), icon: "upload-cloud", onPick: () => void this.plugin.gitSync("push") },
     ]);
   }
 }

@@ -18,6 +18,8 @@ text file you can back up or send to a friend. It stays in your hands.
 
 ### Step 1: Install the plugin
 
+In **BRAT → Add Beta plugin**, enter `JasonStephen/Music-Wall`. For manual installation, download the three files below from the [latest Release](https://github.com/JasonStephen/Music-Wall/releases/latest):
+
 1. Open the folder of your Obsidian vault;
 2. Inside it, find the `.obsidian` folder, then the `plugins` folder
    (can't see `.obsidian`? It's hidden — enable "Hidden items" in your
@@ -206,7 +208,25 @@ yourself in settings.
 | Playback playlist | Client mode only; attempts to create or reuse a dedicated private playlist |
 | Default style / shelf captions / column width / player background / zoom | Look-and-feel preferences, change anytime |
 | SMTC now-playing | Toggle the "what's playing" sync (Windows only) |
-| Git URL / branch / subdirectory | Advanced: import wall files from a Git repo |
+| Git URL / branch / local folder / repository folder | Select walls, review differences, then push or pull |
+
+### Sync walls with Git (desktop)
+
+Create a repository on GitHub or another Git host and install system Git first. The plugin does not create remote repositories.
+
+Open “GitHub account → Sign in / choose account” in settings, or the account button in the sync window. Start browser sign-in, complete GitHub authorization, then return to the plugin and click “Use this account”. This requires Git Credential Manager (usually included with Git for Windows); an installation link is provided when needed. Passwords and OAuth credentials are handled by the browser and system credential manager. The plugin saves only the account name, never tokens.
+
+The selected account is used for previews, pushes and pulls over `https://github.com/...`. It needs access to the repository; organization repositories may also require organization authorization. Returning to the system default does not remove saved system credentials. SSH and other Git hosts retain their existing authentication. Signing in does not sync files: preview and confirmation are still required.
+
+Open **Push walls to Git** or **Pull walls from Git** from Settings, the wall's More menu or the command palette. Leave the branch empty for the remote default (`main` for an empty repository).
+
+Local and repository folders map by relative path. Leaving both empty preserves paths such as `MusicWall/Gaming/Game.mw`. Setting the local folder to `MusicWall` and the repository folder to `walls` maps that file to `walls/Gaming/Game.mw`.
+
+The preview lists new, updated, identical and destination-only files. Check folders or individual `.mw` files. Push defaults select folders containing walls; standalone files at the vault root need manual selection. Specifying a local folder selects all its walls by default. Pull defaults select all remote walls. Click a filename to review album additions/removals, wall settings and highlighted local/remote text, then confirm.
+
+Only selected `.mw` files and their directories are synchronized. Obsidian settings, plugins, login credentials, other attachments and audio caches are excluded. Destination-only files are preserved. Updating replaces the whole wall file, including album removals shown in the diff; it does not merge albums. A changed local file or remote branch requires a new preview. Before overwriting local files, originals are backed up under `plugins/music-wall/wall-sync/backups/` inside the vault configuration directory and are never pushed.
+
+Sync is manual, with no background commits or scheduled synchronization.
 
 ---
 
@@ -231,12 +251,10 @@ account and privacy information.
 
 **Does it work on my phone?**
 Yes for browsing, searching and internal playback; client mode can open
-the NetEase app. Git import and client now-playing sync are desktop-only.
+the NetEase app. Git wall sync and client now-playing sync are desktop-only.
 
 **Where is my data? Is anything uploaded?**
-Everything is in plain `.mw` text files inside your own vault. The
-plugin never sends your data anywhere third-party — it only talks to
-NetEase's servers to fetch album info, sign in and retrieve playback audio.
+Collections live in plain `.mw` text files inside your vault. Normal network access queries NetEase for album information, sign-in and playback audio. Selected `.mw` files are uploaded to your chosen Git repository only when you confirm a push. Plugin settings and login credentials are excluded from Git wall sync.
 
 **Deleted something by mistake?**
 Deleting records or groups always asks first (a group with records

@@ -1,0 +1,56 @@
+.modal.mw-git-sync {
+  width: min(960px, calc(94vw / var(--mw-zoom, 1)));
+  min-width: 0; max-width: calc(94vw / var(--mw-zoom, 1));
+  max-height: calc(92vh / var(--mw-zoom, 1));
+  container-type: inline-size; container-name: mw-sync;
+}
+.mw-git-sync .modal-content { min-width: 0; }
+.mw-git-sync__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.mw-git-sync__fields label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mw-git-sync__fields input { width: 100%; min-width: 0; }
+.mw-git-sync__hint { font-size: .85em; color: var(--text-muted); }
+.mw-git-sync__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-block: 10px; }
+.mw-git-sync__status, .mw-git-sync__mapping, .mw-git-sync__summary { overflow-wrap: anywhere; font-size: .9em; margin-block: 10px; }
+.mw-git-sync .is-error { color: var(--text-error); }
+.mw-git-sync__tree { max-height: 340px; overflow: auto; border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 6px; }
+.mw-git-sync__folder > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 32px; overflow-wrap: anywhere; }
+.mw-git-sync__folder > summary::before { content: "▸"; flex: 0 0 12px; }
+.mw-git-sync__folder[open] > summary::before { content: "▾"; }
+.mw-git-sync__children { padding-left: 20px; }
+.mw-git-sync input[type="checkbox"] { flex: 0 0 auto; margin: 0 4px; }
+.mw-git-sync__count { color: var(--text-muted); font-size: .8em; }
+.mw-git-sync__file { display: flex; align-items: center; gap: 6px; min-height: 32px; padding-left: 16px; }
+.mw-git-sync .mw-git-sync__filename { flex: 1 1 auto; min-width: 0; height: auto; padding: 5px 4px; text-align: left; white-space: normal; overflow-wrap: anywhere; background: transparent; color: var(--text-normal); border: 0; box-shadow: none; }
+.mw-git-sync .mw-git-sync__filename:hover { background: var(--background-modifier-hover); }
+.mw-git-sync__badge { flex: 0 0 auto; color: var(--text-muted); font-size: .8em; }
+.mw-git-sync__file.is-new .mw-git-sync__badge { color: var(--text-success, var(--text-accent)); }
+.mw-git-sync__file.is-invalid .mw-git-sync__badge { color: var(--text-error); }
+.mw-git-sync__details h3 { overflow-wrap: anywhere; font-size: 1em; }
+.mw-git-sync__diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.mw-git-sync__diff > div { min-width: 0; }
+.mw-git-sync__diff h4 { margin: 8px 0; }
+.mw-git-sync__diff pre { margin: 0; padding: 8px; max-height: 300px; overflow: auto; font-size: 11px; white-space: pre; border: 1px solid var(--background-modifier-border); border-radius: 6px; }
+.mw-git-sync__diff .is-different { background: var(--text-highlight-bg); }
+.mw-git-sync__footer { border-top: 1px solid var(--background-modifier-border); margin-top: 14px; }
+.mw-git-sync__footer .mw-git-sync__actions { justify-content: flex-end; }
+.mw-git-sync-setting { flex-wrap: wrap; gap: 8px; }
+.mw-git-sync-setting .setting-item-info { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.mw-git-sync-setting .setting-item-control { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.modal.mw-github-login { width: min(540px, calc(94vw / var(--mw-zoom, 1))); min-width: 0; max-width: calc(94vw / var(--mw-zoom, 1)); max-height: calc(92vh / var(--mw-zoom, 1)); }
+.mw-github-login .modal-content { min-width: 0; overflow-wrap: anywhere; }
+.mw-github-login__account { display: flex; flex-direction: column; gap: 6px; }
+.mw-github-login__account select { width: 100%; min-width: 0; max-width: 100%; }
+.mw-github-login button, .mw-git-sync [data-action="github-manage"] { white-space: normal; height: auto; max-width: 100%; overflow-wrap: anywhere; }
+.mw-github-login .is-error { color: var(--text-error); }
+@media (max-width: 600px) {
+  .mw-git-sync__fields, .mw-git-sync__diff { grid-template-columns: minmax(0, 1fr); }
+  .mw-git-sync__children { padding-left: 12px; }
+  .mw-git-sync__tree { max-height: 260px; }
+}
+@container mw-sync (max-width: 260px) {
+  .mw-git-sync__file { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 6px; padding-left: 4px; }
+  .mw-git-sync__file input { grid-row: 1 / span 2; }
+  .mw-git-sync__filename, .mw-git-sync__badge { grid-column: 2; }
+  .mw-git-sync__children { padding-left: 8px; }
+  .mw-git-sync__folder > summary { flex-wrap: wrap; }
+}

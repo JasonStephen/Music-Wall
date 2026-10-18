@@ -137,12 +137,16 @@ export interface AlbumSummary {
 export interface MusicWallSettings {
   /** 界面语言：system = 跟随 Obsidian 界面语言（zh → 简中，zh-TW → 繁中，其他 → 英文） */
   language?: "system" | "zh-CN" | "zh-TW" | "en";
-  /** Git 远程仓库地址（用于 Git 导入） */
+  /** Git 远程仓库地址（用于音乐墙推送和拉取） */
   gitRepoUrl: string;
   /** Git 分支，留空用仓库默认分支 */
   gitBranch: string;
   /** 仓库内存放 .mw 的相对子目录，留空表示根目录 */
   gitSubdir: string;
+  /** Vault-relative root mapped to gitSubdir. Empty means the vault root. */
+  gitLocalDir: string;
+  /** Account name only; OAuth credentials stay in the system Git credential manager. */
+  githubAccount: string;
   /** 默认列宽 px（网格最小列宽），影响一屏显示几张 */
   minColumnWidth: number;
   /** 新建墙时的默认样式 */
@@ -180,6 +184,8 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   gitRepoUrl: "",
   gitBranch: "",
   gitSubdir: "",
+  gitLocalDir: "",
+  githubAccount: "",
   minColumnWidth: 180,
   defaultStyle: "vinyl",
   neteaseCookie: "",

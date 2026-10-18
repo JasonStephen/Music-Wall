@@ -9,7 +9,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$root = "E:\Project\Obsidian Plugin\Music Wall\tools"
+$root = $PSScriptRoot
 $html = "$root\$Page-e2e.html".Replace("\", "/").Replace(" ", "%20")
 $url = "file:///${html}?case=$Case"
 $png = Join-Path $env:TEMP "mw-shot-$Page-$Case.png"

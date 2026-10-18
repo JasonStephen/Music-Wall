@@ -1,6 +1,6 @@
 // 插件设置页：Git 仓库、网易云扫码登录、默认样式、列宽。
 
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
 import { AUDIO_QUALITIES, isAudioQuality, qualityLabel } from "./core/quality";
 import {
@@ -59,6 +59,15 @@ export class MusicWallSettingTab extends PluginSettingTab {
         );
       });
 
+    const github = new Setting(containerEl).setName(t("githubAuth.title"))
+      .setDesc(this.plugin.settings.githubAccount ? t("githubAuth.current", { name: this.plugin.settings.githubAccount }) : t("githubAuth.system"))
+      .addButton(button => button.setButtonText(t("githubAuth.manage")).setDisabled(!Platform.isDesktopApp).onClick(async () => {
+        button.setDisabled(true);
+        try { await this.plugin.loginGitHub(); if (generation === this.displayGeneration) this.display(); }
+        finally { button.setDisabled(false); }
+      }));
+    github.settingEl.addClass("mw-git-sync-setting");
+
     new Setting(containerEl)
       .setName(t("settings.gitUrl.name"))
       .setDesc(t("settings.gitUrl.desc"))
@@ -97,6 +106,14 @@ export class MusicWallSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl).setName(t("gitSync.localDirectory")).setDesc(t("gitSync.localDirectoryDesc"))
+      .addText(input => input.setPlaceholder(t("gitSync.vaultRoot")).setValue(this.plugin.settings.gitLocalDir ?? "")
+        .onChange(async value => { this.plugin.settings.gitLocalDir = value.trim(); await this.plugin.saveData(this.plugin.settings); }));
+    const gitSync = new Setting(containerEl).setName(t("gitSync.title")).setDesc(t("gitSync.scope"))
+      .addButton(button => button.setButtonText(t("gitSync.pushCommand")).onClick(() => void this.plugin.gitSync("push")))
+      .addButton(button => button.setButtonText(t("gitSync.pullCommand")).onClick(() => void this.plugin.gitSync("pull")));
+    gitSync.settingEl.addClass("mw-git-sync-setting");
 
     const hasLogin = hasLoginCookie(this.plugin.settings.neteaseCookie);
     const account = new Setting(containerEl)

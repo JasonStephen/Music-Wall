@@ -31,7 +31,12 @@ import {
   searchAlbums as searchAlbumsApi,
 } from "./core/metadata";
 import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
-import { checkGit, listWallFiles, syncRepo, type GitWallFile } from "./core/git";
+import { checkGit } from "./core/git";
+import { GitHubAuth } from "./core/githubAuth";
+import { GitHubLoginModal } from "./ui/GitHubLoginModal";
+import { prepareVaultSync } from "./core/vaultWallSync";
+import { syncPath, type SyncDirection } from "./core/wallSync";
+import { GitSyncModal } from "./ui/GitSyncModal";
 import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } from "./core/playlist";
 import type { PlaybackDeps } from "./core/playback";
 import { SongSourceResolver } from "./core/audioSource";
@@ -53,10 +58,8 @@ import { ChoiceModal, PickerModal, type ChoiceOption } from "./ui/smallModals";
 import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
-/** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
-const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.1.7";
+const BUILD_TAG = "1.2.0";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -88,6 +91,10 @@ export default class MusicWallPlugin extends Plugin {
   private verifiedAt = 0;
   private loginCheck: { cookie: string; promise: Promise<boolean> } | null = null;
   private unloading = false;
+  private gitSyncModal: GitSyncModal | null = null;
+  private githubAuth = new GitHubAuth();
+  private githubLoginModal: GitHubLoginModal | null = null;
+  private githubLoginPromise: Promise<boolean> | null = null;
 
   async onload(): Promise<void> {
     console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
@@ -187,15 +194,10 @@ export default class MusicWallPlugin extends Plugin {
     });
     this.addCommand({
       id: "git-import-wall",
-      name: t("cmd.gitImport"),
-      callback: () => {
-        if (!Platform.isDesktopApp) {
-          new Notice(t("main.git.desktopOnly"));
-          return;
-        }
-        void this.gitImport(this.activeWallView());
-      },
+      name: t("gitSync.pullCommand"),
+      callback: () => void this.gitSync("pull"),
     });
+    this.addCommand({ id: "git-push-wall", name: t("gitSync.pushCommand"), callback: () => void this.gitSync("push") });
 
     this.addCommand({
       id: "pick-playback-playlist",
@@ -261,6 +263,8 @@ export default class MusicWallPlugin extends Plugin {
     ++this.authGeneration;
     ++this.playbackRequest;
     this.loginModal?.close();
+    this.gitSyncModal?.close();
+    this.githubLoginModal?.close();
     this.combinedProvider?.dispose();
     this.audioTransport?.close(); this.audioTransport = null;
     this.nowPlaying?.stop();
@@ -1064,131 +1068,63 @@ export default class MusicWallPlugin extends Plugin {
     input.click();
   }
 
-  // ================= Git 导入 =================
+  // ================= 按目录预览并同步 .mw 文件 =================
+  async loginGitHub(): Promise<boolean> {
+    if (!Platform.isDesktopApp || this.unloading) { new Notice(t("main.git.desktopOnly")); return false; }
+    if (this.githubLoginPromise) return this.githubLoginPromise;
+    const previous = this.settings.githubAccount;
+    this.githubLoginPromise = new Promise<boolean>(resolve => {
+      this.githubLoginModal = new GitHubLoginModal(this.app, {
+        selected: () => this.settings.githubAccount,
+        inspect: signal => this.githubAuth.inspect(signal),
+        login: signal => this.githubAuth.login(signal),
+        select: async account => {
+          if (this.unloading) throw new Error(t("githubAuth.cancelled"));
+          const old = this.settings.githubAccount;
+          this.settings.githubAccount = account;
+          try { await this.saveData(this.settings); }
+          catch (error) { this.settings.githubAccount = old; throw error; }
+        },
+      }, () => {
+        this.githubLoginModal = null; this.githubLoginPromise = null;
+        resolve(previous !== this.settings.githubAccount);
+      });
+      this.githubLoginModal.open();
+    });
+    return this.githubLoginPromise;
+  }
 
-  async gitImport(targetView: MusicWallView | null): Promise<void> {
-    if (!this.settings.gitRepoUrl) {
-      new Notice(t("main.git.needUrl"));
-      return;
-    }
+  async gitSync(direction: SyncDirection = "pull"): Promise<void> {
+    if (!Platform.isDesktopApp) { new Notice(t("main.git.desktopOnly")); return; }
+    if (this.gitSyncModal) { new Notice(t("gitSync.alreadyOpen")); return; }
     if (!(await checkGit())) {
       new Notice(t("main.git.gitNotFound"));
       return;
     }
+    if (this.gitSyncModal || this.unloading) return;
     const basePath = (this.app.vault.adapter as any).basePath as string;
     if (!basePath) {
       new Notice(t("main.git.noBasePath"));
       return;
     }
-    const cacheDir = `${basePath}/${GIT_CACHE_SUBDIR}`;
-    new Notice(t("main.git.pulling"));
-    let files: GitWallFile[];
-    try {
-      await syncRepo(
-        this.settings.gitRepoUrl,
-        cacheDir,
-        this.settings.gitBranch || undefined
-      );
-      files = await listWallFiles(cacheDir, this.settings.gitSubdir || undefined);
-    } catch (e: any) {
-      new Notice(t("main.git.fail", { error: e?.message ?? e }));
-      return;
-    }
-    if (!files.length) {
-      new Notice(t("main.git.noWalls"));
-      return;
-    }
-    new PickerModal(
-      this.app,
-      t("main.git.pickTitle"),
-      files.map((f) => ({
-        label: f.name,
-        detail: `${f.relPath} · ${(f.sizeBytes / 1024).toFixed(1)} KB`,
-      })),
-      (idx) => void this.applyGitFile(files[idx], targetView)
-    ).open();
-  }
-
-  private async applyGitFile(
-    file: GitWallFile,
-    targetView: MusicWallView | null
-  ): Promise<void> {
-    let data: MusicWallData;
-    try {
-      data = parseWall(file.content);
-    } catch (e: any) {
-      new Notice(t("main.git.invalid", { error: e?.message ?? e }));
-      return;
-    }
-    const baseName = file.name;
-    const options: ChoiceOption[] = [];
-    if (targetView && targetView.getData()) {
-      options.push({
-        label: t("main.git.mergeLabel", {
-          name: targetView.getFile()?.basename ?? "",
-        }),
-        description: t("main.git.mergeDesc"),
-        onSelect: async () => {
-          const { addedCount, skippedCount } = mergeWalls(
-            targetView.getData()!,
-            data
-          );
-          await targetView.saveData();
-          new Notice(
-            t("main.git.mergeDone", {
-              added: addedCount,
-              skipped: skippedCount,
-            })
-          );
-        },
+    const cacheDir = `${basePath}/${this.app.vault.configDir}/plugins/${this.manifest.id}/wall-sync`;
+    this.gitSyncModal = new GitSyncModal(this.app, {
+      repoUrl: this.settings.gitRepoUrl, branch: this.settings.gitBranch,
+      localDirectory: this.settings.gitLocalDir ?? "", remoteDirectory: this.settings.gitSubdir,
+    }, async (config, mode) => {
+      config.localDirectory = syncPath(config.localDirectory); config.remoteDirectory = syncPath(config.remoteDirectory);
+      if (!config.repoUrl.trim()) throw new Error(t("main.git.needUrl"));
+      this.settings.gitRepoUrl = config.repoUrl.trim(); this.settings.gitBranch = config.branch.trim();
+      this.settings.gitLocalDir = config.localDirectory; this.settings.gitSubdir = config.remoteDirectory;
+      await this.saveData(this.settings);
+      const account = this.settings.githubAccount;
+      return prepareVaultSync(this.app.vault, cacheDir, config, mode, async repoUrl => {
+        if (account !== this.settings.githubAccount || this.unloading) throw new Error(t("githubAuth.changed"));
+        const args = await this.githubAuth.gitArguments(repoUrl, account);
+        if (account !== this.settings.githubAccount || this.unloading) throw new Error(t("githubAuth.changed"));
+        return args;
       });
-    }
-    options.push({
-      label: t("main.git.writeLabel", { name: baseName }),
-      description: t("main.git.writeDesc"),
-      onSelect: async () => {
-        const existing = this.app.vault.getAbstractFileByPath(baseName);
-        if (existing instanceof TFile) {
-          new ConfirmModal(this.app, {
-            title: t("main.git.overwriteTitle"),
-            message: t("main.git.overwriteMsg", { name: baseName }),
-            details: [
-              t("main.git.localInfo", {
-                size: existing.stat.size,
-                time: new Date(existing.stat.mtime).toLocaleString(),
-              }),
-              t("main.git.repoInfo", {
-                size: file.sizeBytes,
-                count: data.items.length,
-              }),
-            ],
-            confirmText: t("main.exportOverwrite.confirm"),
-            danger: true,
-            onConfirm: async () => {
-              await this.app.vault.modify(existing, file.content);
-              this.openWallFile(existing);
-            },
-          }).open();
-        } else {
-          await this.app.vault.create(baseName, file.content);
-          new Notice(t("main.git.written", { name: baseName }));
-          const f = this.app.vault.getAbstractFileByPath(baseName);
-          if (f instanceof TFile) this.openWallFile(f);
-        }
-      },
-    });
-    new ChoiceModal(
-      this.app,
-      t("main.git.choiceTitle", { name: baseName }),
-      t("main.git.choiceInfo", {
-        count: data.items.length,
-        style: styleLabel(data.style),
-      }),
-      options
-    ).open();
-  }
-
-  private openWallFile(file: TFile): void {
-    void this.openWall(file);
+    }, direction, () => { this.gitSyncModal = null; }, { name: () => this.settings.githubAccount, open: () => this.loginGitHub() });
+    this.gitSyncModal.open();
   }
 }

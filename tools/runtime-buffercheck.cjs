@@ -2,6 +2,7 @@
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{spawn}=require('node:child_process'),{build}=require('esbuild');
 const install=process.env.MW_OBSIDIAN_DIR||'C:\\Program Files\\Obsidian';
 async function main(){
+ if(!process.env.MW_PROBE_DATA)throw new Error('Set MW_PROBE_DATA to the plugin data.json path before running this check.');
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'mw-obsidian-runtime-'));
  let child;
  try{
@@ -16,7 +17,7 @@ async function main(){
   await fs.copyFile(path.join(__dirname,'runtime-buffercheck-renderer.cjs'),path.join(app,'probe.cjs'));
   await fs.writeFile(path.join(app,'index.html'),`<!doctype html><meta http-equiv="Content-Security-Policy" content="style-src 'unsafe-inline' 'self' https://fonts.googleapis.com"><style>.mw-player__backdrop{position:absolute;inset:0;opacity:0;transition:opacity 650ms ease}#cover{position:relative;width:100px;height:100px}</style><div id="cover"></div><script>require(${JSON.stringify(path.join(app,'probe.cjs'))})</script>`);
   const result=await new Promise((resolve,reject)=>{
-   child=spawn(path.join(root,'Obsidian.exe'),[],{windowsHide:true,env:{...process.env,MW_HIRES_FIXTURE:process.env.MW_HIRES_FIXTURE||path.resolve(__dirname,'shots','hires24-192.flac'),MW_PROBE_DATA:process.env.MW_PROBE_DATA||'F:\\我的其他文件\\Obsidian\\音乐墙\\.obsidian\\plugins\\music-wall\\data.json'},stdio:['ignore','pipe','pipe']});
+   child=spawn(path.join(root,'Obsidian.exe'),[],{windowsHide:true,env:{...process.env,MW_HIRES_FIXTURE:process.env.MW_HIRES_FIXTURE||path.resolve(__dirname,'shots','hires24-192.flac')},stdio:['ignore','pipe','pipe']});
    let output='',errors='';child.stdout.on('data',data=>{output+=data;});child.stderr.on('data',data=>{errors+=data;});child.on('error',reject);child.on('exit',code=>resolve({code,output,errors}));
   });
   console.log(result.output.trim());if(result.code){console.log('Runtime check exit '+result.code);console.log(result.errors.split('\n').filter(x=>/Error|error|failed/.test(x)).slice(-4).join('\n'));process.exitCode=1;}

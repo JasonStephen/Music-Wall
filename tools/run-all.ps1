@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$root = "E:\Project\Obsidian Plugin\Music Wall\tools"
+$root = $PSScriptRoot
 
 $gfCases = @(
   "boot-hold", "swap", "play", "interrupt", "close-position", "queue", "total-dur",

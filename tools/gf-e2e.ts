@@ -5,8 +5,7 @@
 //   npx esbuild tools/gf-e2e.ts --bundle --outfile=tools/gf-e2e.bundle.js ^
 //     --format=iife --target=es2020 --alias:obsidian=./tools/obsidian-shim.ts
 // 运行（逐场景）：
-//   msedge --headless=new --disable-gpu --window-size=1280,760 --virtual-time-budget=15000 ^
-//     --dump-dom "file:///E:/Project/Obsidian%20Plugin/Music%20Wall/tools/gf-e2e.html?case=swap"
+//   powershell -NoProfile -File tools/run-case.ps1 -Page gf -Case swap
 // 结果读 <title>：PASS:<case> 或 FAIL:<case>:<明细>（断言行在 #result）。
 
 import { MusicWallView } from "../src/ui/MusicWallView";
