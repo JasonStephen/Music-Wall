@@ -3,6 +3,8 @@
 import type { zhCN } from "./zh-CN";
 
 export const en: typeof zhCN = {
+  library: {"title":"NetEase music library","created":"My playlists","collected":"Saved playlists","likes":"Liked songs","search":"Search playlists","searchPlaceholder":"Enter a playlist name","refresh":"Refresh","more":"Load more","empty":"No songs or playlists","failed":"Unable to load. Check your connection and account.","retry":"Retry"},
+  queue: {"playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Playlist","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
   labels: {
     style: {
       vinyl: "Vinyl",
@@ -166,14 +168,12 @@ export const en: typeof zhCN = {
   cmd: {
     createWall: "New music wall",
     createWallFile: "New music wall file (.mw)",
-    createPlayerFile: "New music player file (.mwp)",
     openPlayer: "Open music player",
     addAlbum: "Add album (current wall)",
     exportWall: "Export current wall (share copy)",
     importWall: "Import .mw wall file",
     gitImport: "Import wall from Git repository",
     pickPlaylist: "Pick playback playlist (whole-album playback, sign-in required)",
-    newPlayer: "New music player",
   },
 
   main: {
@@ -181,7 +181,6 @@ export const en: typeof zhCN = {
     statusPlayer: "Music player",
     statusOpenPlayer: "Open music player",
     unknownTrack: "Unknown track",
-    noPlayerFile: "No player file yet: run “New music player file (.mwp)” first",
     readTargetFail: "Failed to read target wall: {error}",
     alreadyInTarget: "“{name}” is already in “{wall}”; migration cancelled",
     writeTargetFail: "Failed to write target wall: {error}",
@@ -201,12 +200,6 @@ export const en: typeof zhCN = {
     playlistTracks: "{count} tracks · ID {id}",
     playlistSet: "Playback playlist set to “{name}”",
     readPlaylistsFail: "Failed to read playlists: {error}",
-    createPlayer: {
-      title: "New music player",
-      ph: "File name (becomes the .mwp file)",
-      initial: "Music Player",
-    },
-    playerDefaultName: "Music player",
     createWallModal: {
       title: "New music wall",
       ph: "Wall name (becomes the .mw file name)",
@@ -390,7 +383,7 @@ export const en: typeof zhCN = {
     },
     ctx: {
       play: "Play",
-      addToPlayer: "Add to player",
+      addToPlayer: "Add to album queue",
       editLayout: "Edit layout",
       editLayoutExit: "Exit layout editing",
       editLayoutDrag: "Edit layout (drag to reorder)",
@@ -467,7 +460,6 @@ export const en: typeof zhCN = {
 
   player: {
     displayName: "Music player",
-    displayNameWith: "Player · {name}",
     styleBg: "Style & background",
     style: "Style",
     bg: "Background",

@@ -1,7 +1,7 @@
 # Run all e2e cases in headless Chrome and print a summary.
 # NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads .ps1 as ANSI,
 # so non-ASCII bytes without a BOM corrupt the parser).
-# Usage: powershell -NoProfile -File tools\run-all.ps1 [-Only gf|mwp] [-Filter keyword]
+# Usage: powershell -NoProfile -File tools\run-all.ps1 [-Only gf|player-ui] [-Filter keyword]
 param(
   [string]$Only = "",
   [string]$Filter = ""
@@ -20,11 +20,11 @@ $gfCases = @(
   "ungrouped-collapse", "shelf-menus", "shelf-modal-theme", "wall-edges", "theme-resist",
   "narrow-detail", "previews", "float-panels", "zoom", "dragdiag"
 )
-$mwpCases = @("default")
+$playerCases = @("default")
 
 $suites = @()
-if ($Only -ne "mwp") { $suites += @{ Page = "gf"; Cases = $gfCases; Height = 1000 } }
-if ($Only -ne "gf") { $suites += @{ Page = "mwp"; Cases = $mwpCases; Height = 760 } }
+if ($Only -ne "player-ui") { $suites += @{ Page = "gf"; Cases = $gfCases; Height = 1000 } }
+if ($Only -ne "gf") { $suites += @{ Page = "player-ui"; Cases = $playerCases; Height = 760 } }
 
 $totalPass = 0
 $failed = @()

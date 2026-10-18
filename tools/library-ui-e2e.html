@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><title>playback-ui</title>
+<link rel="stylesheet" href="../styles.css"><style>
+* { box-sizing: border-box; } body { margin:0; font:14px/1.5 system-ui; }
+body.theme-light { --background-primary:#fafafa;--background-secondary:#eee;--text-normal:#222;--text-muted:#555;--text-faint:#666;--background-modifier-border:#ccc;--background-modifier-hover:#ddd; }
+body.theme-dark { --background-primary:#202124;--background-secondary:#292b30;--text-normal:#eee;--text-muted:#bbb;--text-faint:#aaa;--background-modifier-border:#555;--background-modifier-hover:#ffffff18; }
+body { --interactive-accent:#7762cc;--text-accent:#7762cc;--text-on-accent:#fff; color:var(--text-normal); background:var(--background-primary); }
+button:not(.clickable-icon) { background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border); }
+button { font:inherit; cursor:pointer; display:flex; justify-content:center;align-items:center; } svg { width:18px;height:18px; }
+/* Host/theme rules that previously displaced the thumb and centered footer contents. */
+input[type="range"] { height:4px; }
+input[type="range"]::-webkit-slider-thumb { transform:translateY(-50%); height:18px; width:18px; border:4px solid #777; margin-top:0; }
+.status-bar { position:fixed;right:0;bottom:0;z-index:9999;display:flex;gap:8px;align-items:center;height:28px;padding:0 10px;max-width:95vw;background:#272727;color:#ccc;border:1px solid #444;border-radius:7px 0 0 0;font-size:10px; }
+#mount { width:100vw;height:100vh; display:flex; min-width:0; } #mount > .view-content { min-width:0; flex:1; }
+#result { display:none; }
+</style></head><body class="theme-light"><div id="mount"></div><div id="result"></div><div class="status-bar">0 backlinks · ◷ · ▶ Nightlight</div><script src="library-ui-e2e.bundle.js"></script></body></html>

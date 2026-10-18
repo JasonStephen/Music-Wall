@@ -1,4 +1,4 @@
-// 界面缩放（全局，MW + MWP + 模态框）。
+// 界面缩放（全局，音乐墙 + 播放器 + 模态框）。
 //
 // 实现：把缩放系数写进 body 上的 --mw-zoom；视图根的缩放盒用
 // `transform: scale(var(--mw-zoom))` + `transform-origin: 0 0` 缩放，

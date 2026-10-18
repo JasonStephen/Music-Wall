@@ -26,20 +26,38 @@ try {
   for(const zoom of [.5,1.5,2]) for(const kind of ['player','wall']) for(const panel of ['volume','quality']) cases.push({kind,theme:'dark',bg:'art',cover:'f5efe0',layout:'shelf',style:'vinyl',width:360,height:740,zoom,panel});
   for(const caption of ['hidden','pull','always']) for(const style of ['vinyl','cd','cassette','cover']) cases.push({kind:'wall',theme:'dark',layout:'shelf',style,caption,width:805,height:600});
   for(const width of [240,560,600,805,2048]) for(const zoom of [1,2]) cases.push({kind:'wall',theme:'dark',layout:'grid',style:'cover',width,height:740,zoom});
+  for(const theme of ['light','dark']) for(const bg of ['white','dark','art','wood']) for(const [width,height] of [[1280,800],[360,740],[640,360],[240,600]]) cases.push({kind:'player',theme,bg,style:'vinyl',panel:'queue',width,height});
+  for(const theme of ['light','dark']) for(const layout of ['grid','list','shelf']) for(const zoom of [1,2]) cases.push({kind:'wall',theme,layout,style:'vinyl',queue:true,width:360,height:740,zoom});
+  for(const theme of ['light','dark']) for(const [width,height] of [[1280,800],[360,740],[240,600]]) cases.push({kind:'player',theme,bg:'art',source:'playlist',style:'cd',panel:'playlist',width,height});
+  for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[360,740,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',theme,bg:'dark',style:'cd',panel:'queue',longQueue:true,width,height,zoom});
+  if(process.argv.includes('--queue')) cases.splice(0,cases.length,...cases.filter(item=>item.panel==='queue'||item.queue||item.source==='playlist'));
   if(process.argv.includes('--mini')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'));
   if(process.argv.includes('--quick')) {
     const selected=cases.filter(item=>item.width===1280&&item.kind==='player'&&item.panel==='playlist'||item.kind==='wall'&&item.width===360&&item.style==='cover');
     cases.splice(0,cases.length,...selected);
+  }
+  if(process.argv.includes('--library')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const lang of ['zh-CN','zh-TW','en']) for(const [width,height] of [[2560,1080],[1280,800],[768,1024],[360,740],[640,360],[240,600]]) for(const page of ['created','collected','likes','detail','search','error','empty','signedout']) cases.push({kind:'library',theme,lang,page,width,height});
+    for(const zoom of [.5,1.5,2]) for(const page of ['created','detail','search','signedout']) cases.push({kind:'library',theme:'dark',lang:'en',page,width:360,height:740,zoom});
   }
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
   let checks=0,failed=0;let savedFailures=0;
   for(let i=0;i<cases.length;i++) {
     const item=cases[i];
     await page('Emulation.setDeviceMetricsOverride',{width:item.width,height:item.height,deviceScaleFactor:1,mobile:false});
-    await page('Page.navigate',{url:pathToFileURL(path.join(root,'tools/playback-ui-e2e.html')).href});
+    await page('Page.navigate',{url:pathToFileURL(path.join(root,item.kind==='library'?'tools/library-ui-e2e.html':'tools/playback-ui-e2e.html')).href});
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.kind==='library'&&item.theme==='dark'&&item.lang==='zh-CN'&&item.width===1280&&item.page==='created') {
+      const navigation=await value('window.verifyLibraryNavigation()');checks+=3;
+      if(!navigation.search||!navigation.more||!navigation.detail||!navigation.queued||!navigation.played){failed++;console.log('FAIL library navigation '+JSON.stringify(navigation));}
+      checks++;if(!await value('window.verifyLibraryStale()')){failed++;console.log('FAIL logout stale cloud response');}
+    }
+    if(item.kind==='library'&&item.lang==='zh-CN'&&[1280,360,240].includes(item.width)&&['created','detail','search'].includes(item.page)){
+      const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'library-'+i+'-'+item.theme+'-'+item.width+'-'+item.page+'.png'),Buffer.from(shot.data,'base64'));
+    }
     if(item.kind==='player'&&item.width===1280&&item.panel==='playlist') {
       const point=await value("(()=>{const r=document.querySelector('.mw-np__track:nth-child(2)').getBoundingClientRect();return {x:r.left+50,y:r.top+r.height/2}})()");
       await page('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
@@ -54,6 +72,10 @@ try {
     if(item.kind==='wall'&&item.theme==='light'&&item.width===1280&&item.layout==='shelf' || item.kind==='wall'&&item.theme==='dark'&&item.width===360&&item.style==='cover' || item.kind==='player'&&item.width===640&&item.bg==='white'&&item.theme==='light'&&item.panel==='quality') {
       const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`${i}-${item.kind}-${item.layout??item.bg}-${item.style}-${item.panel??'footer'}.png`),Buffer.from(shot.data,'base64'));
     }
+    if(item.panel==='queue'&&!item.longQueue&&item.theme==='dark'&&item.bg==='dark'&&item.width===1280) {
+      const queue=await value('window.verifyQueueUI()');checks+=7;if(queue.length){failed++;console.log('FAIL queue UI '+JSON.stringify(queue));}
+    }
+    if(item.panel==='queue'||item.queue){const shot=await page('Page.captureScreenshot',{format:'png'});if(item.width===1280||item.width===240||item.zoom===2)fs.writeFileSync(path.join(shotRoot,'queue-'+i+'-'+item.kind+'-'+item.theme+'-'+item.width+'.png'),Buffer.from(shot.data,'base64'));}
     if(item.kind==='wall'&&item.layout==='grid'&&item.style==='vinyl'&&item.theme==='light'&&item.width===1280){const shared=await value('window.verifySharedPlayback()');checks+=shared.checks;if(shared.fail.length){failed++;console.log('FAIL shared controls '+JSON.stringify(shared.fail));}}
     if(item.kind==='wall'&&item.layout==='list'&&item.style==='cover'&&item.width===1280&&item.theme==='dark') {
       const mini=await value('window.verifyMiniControls()');checks+=8;if(mini.length){failed++;console.log('FAIL mini controls '+JSON.stringify(mini));}

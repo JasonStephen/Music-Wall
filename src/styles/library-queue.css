@@ -1,0 +1,79 @@
+.workspace-leaf-content[data-type="music-wall-library"] { padding: 0 !important; margin: 0 !important; }
+.mw-cloud__head { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 16px; min-width: 0; }
+.mw-cloud__head h2 { flex: 1; min-width: 0; margin: 0; font-size: 18px; overflow-wrap: anywhere; color: var(--mw-panel-fg); }
+.mw-cloud .mw-cloud__icon, .mw-queue .mw-queue__button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto;
+  min-width: 28px; height: 28px; padding: 4px; border: 1px solid transparent; border-radius: 6px;
+  box-shadow: none; background: transparent; color: var(--mw-panel-fg); font-size: 11px;
+}
+.mw-cloud svg, .mw-queue svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.mw-cloud .mw-cloud__icon:hover, .mw-queue .mw-queue__button:hover { background: var(--mw-panel-hover); }
+.mw-cloud__tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; flex: 0 0 auto; }
+.mw-cloud .mw-cloud__tabs button {
+  display: inline-flex; height: auto; min-height: 30px; white-space: normal; padding: 5px 10px;
+  border: 1px solid var(--mw-panel-line); border-radius: 6px; box-shadow: none;
+  color: var(--mw-panel-fg); background: transparent; font-size: 12px;
+}
+.mw-cloud .mw-cloud__tabs button[aria-selected="true"], .mw-cloud .mw-cloud__tabs button:hover { background: var(--mw-panel-hover); }
+.mw-cloud__search { display: flex; gap: 8px; padding: 0 16px 12px; flex: 0 0 auto; min-width: 0; }
+.mw-cloud__search input { flex: 1 1 auto; min-width: 0; width: 100%; }
+.mw-cloud__search button { flex: 0 0 auto; }
+.mw-cloud__body { min-width: 0; min-height: 0; flex: 1; overflow: auto; padding: 0 16px calc(20px + var(--mw-host-bottom, 0px)); }
+.mw-cloud__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 16px; }
+.mw-cloud .mw-cloud__card {
+  display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; min-width: 0;
+  width: 100%; height: auto; padding: 8px; border: 1px solid var(--mw-panel-line); border-radius: 9px;
+  text-align: left; background: var(--mw-panel-bg); color: var(--mw-panel-fg); box-shadow: none;
+}
+.mw-cloud .mw-cloud__card:hover { background: var(--mw-panel-hover); }
+.mw-cloud__card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 5px; margin-bottom: 8px; }
+.mw-cloud__name, .mw-cloud__creator { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mw-cloud__name { font-size: 13px; font-weight: 600; color: var(--mw-panel-fg); }
+.mw-cloud__creator { margin-top: 4px; font-size: 11px; color: var(--mw-panel-fg-dim); }
+.mw-cloud__collection { display: flex; align-items: center; gap: 10px; padding: 4px 0 16px; min-width: 0; }
+.mw-cloud__collection img { flex: 0 0 auto; width: 64px; height: 64px; object-fit: cover; border-radius: 6px; }
+.mw-cloud__collection h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; margin: 0; color: var(--mw-panel-fg); }
+.mw-cloud .mw-cloud__track {
+  display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  width: 100%; height: auto; min-height: 44px; padding: 6px 8px; border: 0; border-radius: 6px;
+  box-shadow: none; text-align: left; background: transparent; color: var(--mw-panel-fg); font-size: 12px;
+}
+.mw-cloud__track > span { min-width: 0; }
+.mw-cloud .mw-cloud__track:hover { background: var(--mw-panel-hover); outline: none; }
+.mw-cloud__duration { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mw-cloud__empty { padding: 24px 12px; text-align: center; color: var(--mw-panel-fg-dim); overflow-wrap: anywhere; }
+.mw-cloud__empty button { margin: 4px; }
+.mw-cloud__more { margin: 16px auto; }
+.mw-queue { color: var(--mw-panel-fg); min-width: 0; margin-bottom: 6px; }
+.mw-queue__head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.mw-queue__kind { font-size: 11px; color: var(--mw-panel-fg-dim); margin-right: auto; }
+.mw-queue .mw-queue__button { width: auto; max-width: 100%; height: auto; min-height: 28px; white-space: normal; }
+.mw-queue__list { border-top: 1px solid var(--mw-panel-line); margin-top: 5px; padding-top: 5px; }
+.mw-queue__row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 5px; align-items: center; padding: 4px; border-radius: 6px; }
+.mw-queue__row.is-current { background: var(--mw-panel-hover); }
+.mw-queue__grip { display: flex; cursor: grab; }
+.mw-queue__row.is-current .mw-queue__grip { cursor: default; }
+.mw-queue .mw-queue__name { display: block; width: 100%; min-width: 0; height: auto; padding: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--mw-panel-fg); background: transparent; border: 0; box-shadow: none; font-size: 12px; }
+.mw-queue__actions { display: flex; gap: 0; }
+.mw-queue .mw-queue__actions button { width: 24px; min-width: 24px; height: 26px; padding: 3px; }
+.mw-queue button:disabled { opacity: .4; cursor: default; }
+.mw-queue__empty { padding: 10px 6px; font-size: 12px; color: var(--mw-panel-fg-dim); }
+.mw-player__playlist > .mw-queue { flex: 0 0 auto; min-height: 0; max-height: 32cqh; overflow-y: auto; overflow-x: hidden; }
+.mw-player__playlist > .mw-np__tracks { min-height: min(80px, 10cqh); }
+.mw-queue button:focus-visible, .mw-cloud button:focus-visible { outline: 1px solid var(--mw-panel-fg-dim); outline-offset: -1px; }
+@container mw-pane (max-width: 360px) {
+  .mw-cloud__head { padding: 12px 10px; }
+  .mw-cloud__tabs { padding-inline: 10px; gap: 4px; }
+  .mw-cloud__search { padding-inline: 10px; }
+  .mw-cloud__body { padding-inline: 10px; }
+  .mw-cloud__collection { flex-wrap: wrap; gap: 6px; }
+  .mw-cloud__collection img { width: 40px; height: 40px; }
+  .mw-cloud__collection h3 { order: 3; flex-basis: 100%; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}
+@container mw-pane (max-width: 200px) {
+  .mw-queue__row { grid-template-columns: 16px minmax(0, 1fr); }
+  .mw-queue__actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .mw-cloud__head { flex-wrap: wrap; }
+  .mw-cloud__head h2 { flex-basis: 100%; }
+  .mw-cloud__search { flex-wrap: wrap; }
+}

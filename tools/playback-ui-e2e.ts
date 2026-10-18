@@ -64,7 +64,9 @@ let close = async()=>{};
   if(config.kind==="wall") {
     const wall=await createWall();
     check(wall.contentEl.querySelector(".mw-mini")?.classList.contains("is-hidden"),"No queue hides footer");
-    await engine.playAlbum(meta);await wait(40);
+    await engine.playAlbum(meta);
+    if(config.queue) { engine.enqueueAlbum({...meta,albumId:2,name:"A very long queued album · 第二张专辑"});engine.enqueueAlbum({...meta,albumId:3,name:"Third album"}); }
+    await wait(40);
     const mini=wall.contentEl.querySelector<HTMLElement>(".mw-mini")!;
     checkScrollbar(wall.contentEl.querySelector<HTMLElement>('.mw-grid')!);
     check(!mini.classList.contains("is-hidden"),"Playing shows footer");
@@ -121,6 +123,13 @@ let close = async()=>{};
       if(Math.abs(engine.state.positionMs-20000)>100)failures.push('Mini progress did not seek');
       return failures;
     };
+    if(config.queue) {
+      mini.querySelector<HTMLButtonElement>('[data-action="playlist"]')!.click();
+      mini.querySelector<HTMLButtonElement>('[data-action="album-queue"]')!.click();await wait(15);
+      const queue=mini.querySelector<HTMLElement>('.mw-mini__playlist')!;
+      check(queue.scrollWidth<=queue.clientWidth+1,"Expanded mini album queue has no horizontal overflow");
+      for(const button of queue.querySelectorAll<HTMLElement>('.mw-queue__button'))check(!!button.querySelector('svg'),"Queue actions use SVG icons");
+    }
     if(config.layout==="shelf") {
       const sections=wall.contentEl.querySelectorAll<HTMLElement>(".mw-section");
       const first=sections[0],nextHead=sections[1].querySelector<HTMLElement>(".mw-section__head")!;
@@ -137,8 +146,10 @@ let close = async()=>{};
     }
   } else {
     await engine.playAlbum(meta);await engine.seek(38000);await engine.pause();
+    if(config.panel==='queue') { engine.enqueueAlbum({...meta,albumId:2,name:'A very long queued album · 第二张专辑'});engine.enqueueAlbum({...meta,albumId:3,name:'Third album'});if(config.longQueue)for(let id=4;id<=60;id++)engine.enqueueAlbum({...meta,albumId:id,name:`Queued album ${id}`}); }
+    if(config.source==='playlist') await engine.playPlaylist({...meta,albumId:0,playlistId:42,tracks:meta.tracks.map(track=>({...track,albumId:1,albumName:meta.name,cover:meta.cover}))});
     const view=new MusicPlayerView(new WorkspaceLeaf(app),plugin as never);(view as any).discStyle=config.style??"vinyl";views.push(view);mount.appendChild(view.contentEl);await view.onOpen();await wait(80);
-    check(view.allowNoFile,"Player opens without a marker file");
+    check(!("file" in view) && !("onLoadFile" in view),"Player is an independent ItemView without file binding");
     check(!view.contentEl.querySelector(".mw-mini"),"Full player has no duplicate footer");
     const root=view.contentEl;
     check(!!root.querySelector('.mw-np__quality-button .mw-control-icon svg'),"Quality dropdown uses an SVG chevron");
@@ -173,6 +184,10 @@ let close = async()=>{};
       check(!!root.querySelector('.mw-np__quality-option[aria-pressed="true"] .mw-control-icon svg'),"Selected quality uses an SVG check");
     } else {
       list.click();
+      if(config.panel==='queue') {
+        root.querySelector<HTMLButtonElement>('[data-action="album-queue"]')!.click();await wait(20);
+        if(config.longQueue){const queue=root.querySelector<HTMLElement>('.mw-queue')!;check(queue.scrollHeight>queue.clientHeight,'Long album queues scroll inside the player panel');queue.scrollTop=queue.scrollHeight;const last=queue.querySelector<HTMLElement>('.mw-queue__row:last-child')!;check(last.getBoundingClientRect().bottom<=queue.getBoundingClientRect().bottom+1,'Last queued album remains accessible');}
+      }
       const panel=root.querySelector<HTMLElement>(".mw-player__playlist")!;
       const name=panel.querySelector<HTMLElement>(".mw-np__trackName")!;
       check(getComputedStyle(name).color===getComputedStyle(panel).getPropertyValue("--mw-panel-fg").trim() || getComputedStyle(name).color==="rgb(242, 244, 248)" || getComputedStyle(name).color==="rgb(233, 236, 241)" || getComputedStyle(name).color==="rgb(34, 37, 43)" || getComputedStyle(name).color==="rgb(246, 239, 228)","Playlist uses its own text palette");
@@ -207,6 +222,31 @@ let close = async()=>{};
       const bg=rgba(config.bg==="white"?"#eef0f3":config.bg==="wood"?"#7a5433":"#252932");
       for(const text of root.querySelectorAll(".mw-np__title,.mw-np__artist,.mw-np__status,.mw-np__elapsed"))check(contrast(getComputedStyle(text).color,bg)>=4.5,"Player text contrast is readable");
     }
+    (window as any).verifyQueueUI = async()=>{
+      const failures:string[]=[];
+      const original=engine.currentEntryId;
+      root.querySelector<HTMLButtonElement>('.mw-np__track:nth-child(2)')!.click();await wait(30);
+      if(engine.albumQueue.length!==3||engine.currentEntryId!==original||engine.index!==1)failures.push('Selecting a song destroyed the album queue');
+      const controls=root.querySelector('.mw-queue')!;
+      if(!controls.querySelector('.mw-queue__row'))controls.querySelector<HTMLButtonElement>('[data-action="album-queue"]')!.click();
+      const current=controls.querySelector('.mw-queue__row.is-current')!;
+      if([...current.querySelectorAll<HTMLButtonElement>('.mw-queue__actions button')].slice(0,2).some(button=>!button.disabled))failures.push('Current album can be moved');
+      const moving=controls.querySelectorAll<HTMLElement>('.mw-queue__row')[2], target=controls.querySelectorAll<HTMLElement>('.mw-queue__row')[1];
+      const transfer=new DataTransfer();moving.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer}));target.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:transfer}));
+      if(engine.albumQueue[1].album.albumId!==3||engine.currentEntryId!==original)failures.push('Queue drag failed or moved current album');
+      controls.querySelector<HTMLButtonElement>('.mw-queue__row.is-current .mw-queue__actions button:last-child')!.click();await wait(30);
+      if(engine.albumQueue.length!==2||engine.album?.albumId!==3)failures.push('Removing current album did not advance');
+      const seen:string[]=[];for(let i=0;i<3;i++){seen.push(engine.order);root.querySelector<HTMLButtonElement>('[data-action="play-order"]')!.click();}
+      if(seen.includes('shuffle')||new Set(seen).size!==3)failures.push('Album order modes are incorrect');
+      await engine.playPlaylist({...meta,albumId:0,playlistId:42});await wait(30);
+      for(let i=0;i<4&&engine.order!=='shuffle';i++)root.querySelector<HTMLButtonElement>('[data-action="play-order"]')!.click();
+      if(engine.order!=='shuffle')failures.push('Playlist shuffle is unavailable');
+      root.querySelector<HTMLButtonElement>('.mw-np__track:nth-child(3)')!.click();await wait(30);
+      if(engine.contentKind!=='playlist'||engine.order!=='shuffle'||engine.index!==2)failures.push('Playlist song selection reset its playback mode');
+      engine.enqueuePlaylist({...meta,albumId:0,playlistId:7,tracks:meta.tracks.map(track=>({...track,id:track.id+100}))});await wait(30);
+      if(root.querySelectorAll('.mw-np__track').length!==8)failures.push('Appended songs are missing from full player');
+      return failures;
+    };
     (window as any).verifyOutside = async()=>{
       const failures:string[]=[];
       list.click();if(!root.querySelector('.mw-player__playlist.is-open'))list.click();

@@ -27,11 +27,15 @@ export interface AlbumTrackSnapshot {
   /** 时长，毫秒 */
   duration: number;
   artists?: string;
+  albumId?: number;
+  albumName?: string;
+  cover?: string;
 }
 
 /** 专辑元数据快照 */
 export interface AlbumMeta {
   albumId: number;
+  playlistId?: number;
   name: string;
   artist: string;
   /** 原始封面 URL（网易云） */
@@ -212,14 +216,6 @@ export const WALL_VIEW_TYPE = "music-wall-view";
 /** 唱片卡片跨墙拖拽的 DataTransfer MIME */
 export const WALL_DRAG_MIME = "application/x-music-wall-item";
 
-/** 播放器文件扩展名（.mwp，仅作播放器页标记，不存播放数据） */
-export const PLAYER_EXT = "mwp";
 /** 播放器视图类型标识 */
 export const PLAYER_VIEW_TYPE = "music-wall-player";
-/** 播放器文件 schema 版本 */
-export const PLAYER_FILE_VERSION = 1;
-
-/** 播放器文件内容：仅标记，队列为运行时状态不落盘 */
-export interface PlayerFile {
-  version: number;
-}
+export const LIBRARY_VIEW_TYPE = "music-wall-library";

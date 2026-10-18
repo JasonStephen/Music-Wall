@@ -10,6 +10,7 @@
 // 结果读 <title>：PASS:<case> 或 FAIL:<case>:<明细>（断言行在 #result）。
 
 import { MusicWallView } from "../src/ui/MusicWallView";
+import { InternalPlayer } from "../src/core/internalPlayer";
 import { RatingModal } from "../src/ui/RatingModal";
 import { installDomHelpers, MENU_LOG, TFile, WorkspaceLeaf } from "./obsidian-shim";
 
@@ -129,6 +130,7 @@ function makeApp() {
 
 function makePlugin() {
   return {
+    internalPlayer: new InternalPlayer({ resolve: async () => { throw new Error("Unexpected playback request"); }, load: async () => new Blob(), notice() {} }),
     settings: {
       gitRepoUrl: "",
       gitBranch: "",
@@ -1732,7 +1734,7 @@ async function caseGroupMenus(): Promise<void> {
   );
 }
 
-/** 样式预览：四种（MWP 三种）唱片必须完整可见，不能只露一角 */
+/** 样式预览：四种（播放器三种）唱片必须完整可见，不能只露一角 */
 async function casePreviews(): Promise<void> {
   await resetView(gridData());
   (anyViewOf(view) as unknown as { drawer: { open(k: string): void } }).drawer.open("style");

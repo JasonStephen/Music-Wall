@@ -1,9 +1,9 @@
-// 音乐播放器 FileView（.mwp）。
+// 独立音乐播放器页面。
 // 页面本身不落盘任何播放数据：只保留「最近一次拖入的专辑」为运行时状态。
 // 结构：当前播放区（SMTC 或最近一次拖入的专辑）+ 曲目列表（可点单曲播放）。
 // 唱片可从任意音乐墙拖入本页（复用 WALL_DRAG_MIME），或经墙上菜单「加入播放器」。
 
-import { FileView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
   PLAYER_VIEW_TYPE,
@@ -29,6 +29,7 @@ import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
 import { decorateRange, paintRange } from "./range";
 import { watchHostInset } from "./hostInset";
+import { QueueControls } from "./QueueControls";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -52,8 +53,7 @@ function fmtClock(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export class MusicPlayerView extends FileView {
-  allowNoFile = true;
+export class MusicPlayerView extends ItemView {
   private plugin: MusicWallPlugin;
   /** 最近一次拖入 / 加入的专辑（运行时，不落盘） */
   private current: { meta: AlbumMeta; srcPath: string } | null = null;
@@ -69,6 +69,7 @@ export class MusicPlayerView extends FileView {
   /** 上拉曲目面板是否展开 */
   private playlistOpen = false;
   private popover: "volume" | "quality" | null = null;
+  private queueControls: QueueControls | null = null;
   private qualityKey = "";
   private volumeIcon = "";
   private stopHostInset: (() => void) | null = null;
@@ -107,21 +108,9 @@ export class MusicPlayerView extends FileView {
     return PLAYER_VIEW_TYPE;
   }
   getDisplayText(): string {
-    return this.file
-      ? t("player.displayNameWith", { name: this.file.basename })
-      : t("player.displayName");
+    return t("player.displayName");
   }
-  getIcon(): string {
-    return "disc";
-  }
-
-  async onLoadFile(_file: TFile): Promise<void> {
-    await this.render();
-  }
-
-  async onUnloadFile(_file: TFile): Promise<void> {
-    /* 播放器页不依赖文件内容 */
-  }
+  getIcon(): string { return "disc"; }
 
   async onOpen(): Promise<void> {
     this.plugin.ensureNowPlayingStarted();
@@ -174,6 +163,7 @@ export class MusicPlayerView extends FileView {
     }
     this.paneObserver?.disconnect();
     this.paneObserver = null;
+    this.queueControls?.dispose(); this.queueControls = null;
     this.drawer?.dispose();
     this.drawer = null;
     this.styleBtn = null;
@@ -256,7 +246,8 @@ export class MusicPlayerView extends FileView {
 
   /** 内置队列优先，其次 SMTC 命中和最近一次拖入的专辑。 */
   private displayAlbum(): AlbumMeta | null {
-    return this.plugin.internalPlayer?.album ?? this.matchedAlbum() ?? this.current?.meta ?? null;
+    const player = this.plugin.internalPlayer;
+    return player?.album ? { ...player.album, cover: player.currentCover } : this.matchedAlbum() ?? this.current?.meta ?? null;
   }
 
   /** 当前曲目下标来自内置队列或 SMTC 匹配。 */
@@ -401,7 +392,7 @@ export class MusicPlayerView extends FileView {
     const bar = root.createDiv({ cls: "mw-player__bar" });
     bar.createDiv({
       cls: "mw-player__title",
-      text: this.file?.basename ?? t("player.displayName"),
+      text: t("player.displayName"),
     });
     const btn = bar.createEl("button", { cls: "clickable-icon mw-toolbtn" });
     btn.setAttr("type", "button");
@@ -624,6 +615,7 @@ export class MusicPlayerView extends FileView {
     setIcon(close, "chevron-down");
     close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
+    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin());
     this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
     this.updateTrackList();
   }
@@ -655,7 +647,10 @@ export class MusicPlayerView extends FileView {
         row.addClass("is-playable");
         row.setAttr("role", "button"); row.setAttr("tabindex", "0");
         row.setAttr("aria-label", t("internal.playTrack", { name: track.name }));
-        const play = () => void playAlbum(album, this.plugin.getPlaybackDeps(), i);
+        const collection = this.plugin.internalPlayer.album;
+        const play = () => void (async () => {
+          if (await this.plugin.ensureNeteaseLogin() && this.plugin.internalPlayer.album === collection) await this.plugin.internalPlayer.select(i);
+        })();
         row.addEventListener("click", play);
         row.addEventListener("keydown", (event: KeyboardEvent) => {
           if (event.key === "Enter" || event.key === " ") { event.preventDefault(); play(); }
@@ -673,7 +668,7 @@ export class MusicPlayerView extends FileView {
 
   private updateNow(): void {
     const album = this.displayAlbum();
-    const albumKey = album ? `${album.albumId}|${this.discStyle ?? "def"}` : "";
+    const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}` : "";
     if (albumKey !== this.albumKey) {
       this.albumKey = albumKey;
       this.renderDisc(album);

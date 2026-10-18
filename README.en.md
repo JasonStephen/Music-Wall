@@ -64,8 +64,11 @@ The footer places previous, play/pause and next beside the song details, with pl
 Playing keeps your current wall open. A footer on every open wall controls the
 same global player. Click its cover/title or expand button, or the player icon
 in the left ribbon, to open the full player. An existing tab is focused;
-the first player can open without creating a `.mwp` file.
+the player opens as an independent page without a file.
 The volume button beside the track-list button opens a vertical slider. Click outside to close the track list or style panel.
+Use a record's menu to add it to the album queue. Pending albums can be reordered by dragging or arrow buttons. Any album can be removed; removing the current one advances playback.
+Album playback supports in-order, queue repeat and single-song repeat. Playlist playback also supports shuffle.
+The music-library ribbon opens your created and saved playlists, liked songs and playlist search. Play a list or append it to the song list. Switching between album and playlist playback preserves both queues and their positions.
 The quality menu shows verified qualities for the current track/account and
 labels the actual audio quality. Settings offer 128kbps, 192kbps, 320kbps, Lossless and Hi-Res, with
 automatic fallback to the best available lower quality. Player changes apply
@@ -163,8 +166,7 @@ over, and they use "Import .mw file" to recreate your wall exactly.
 
 ### 🎧 The player page: a wall just for listening
 
-Open it from the left ribbon, or create a `.mwp` file (right-click a folder →
-"New player"). Drag a record into it from any wall, and it becomes a **record
+Open the independent player page from the left ribbon. Drag a record into it from any wall, and it becomes a **record
 player**: turntable, CD deck, or big-cover device, with white / dark /
 cover-tinted / wooden-floor backgrounds. The play button even picks up
 the cover's color — a fresh look every day.

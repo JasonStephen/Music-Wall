@@ -1,11 +1,11 @@
-// 播放器页（.mwp）顶栏收敛后的 e2e：真实 MusicPlayerView + 真实 styles.css。
+// 播放器页顶栏收敛后的 e2e：真实 MusicPlayerView + 真实 styles.css。
 //
 // 打包：
-//   npx esbuild tools/mwp-e2e.ts --bundle --outfile=tools/mwp-e2e.bundle.js ^
+//   npx esbuild tools/player-ui-e2e.ts --bundle --outfile=tools/player-ui-e2e.bundle.js ^
 //     --format=iife --target=es2020 --alias:obsidian=./tools/obsidian-shim.ts
 // 运行：
 //   chrome --headless=new --disable-gpu --window-size=1280,760 --virtual-time-budget=15000 ^
-//     --dump-dom "file:///.../tools/mwp-e2e.html"
+//     --dump-dom "file:///.../tools/player-ui-e2e.html"
 // 结果读 <title>：PASS / FAIL:<明细>
 
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
@@ -127,7 +127,7 @@ const coverSvg = (label: string): string =>
     const app = { vault: { on: () => ({}) }, workspace: { on: () => ({}) } };
     const view = new MusicPlayerView(new WorkspaceLeaf(app), makePlugin() as never);
     viewRef = view;
-    (view as unknown as { file: TFile | null }).file = new TFile("Player.mwp");
+
     mount.appendChild(view.contentEl);
     await view.onOpen();
     await wait(120);
@@ -970,9 +970,9 @@ const coverSvg = (label: string): string =>
       check(false, "截图布景异常", String((e as Error)?.stack ?? e));
     }
   }
-  document.title = fails.length ? `FAIL:${fails.join("|")}` : "PASS:mwp";
+  document.title = fails.length ? `FAIL:${fails.join("|")}` : "PASS:player";
   const head = document.createElement("div");
-  head.textContent = fails.length ? `MWP FAIL (${fails.length})` : "MWP PASS";
+  head.textContent = fails.length ? `PLAYER FAIL (${fails.length})` : "PLAYER PASS";
   head.className = fails.length ? "bad" : "ok";
   box.prepend(head);
 })();

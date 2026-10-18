@@ -280,7 +280,7 @@ const origLoad = Module._load;
   const playerExtOk = FakePlugin.extensions.some(
     (e) => e.extensions.includes("mwp") && e.type === "music-wall-player"
   );
-  if (!wallExtOk || !playerExtOk)
+  if (!wallExtOk || playerExtOk || cmds.includes("create-player"))
     throw new Error("registerExtensions 映射异常: " + extList);
 
   // 渲染冒烟：视图 onOpen（空状态）

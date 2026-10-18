@@ -12,9 +12,8 @@ import {
 } from "obsidian";
 import {
   DEFAULT_SETTINGS,
-  PLAYER_FILE_VERSION,
-  PLAYER_EXT,
   PLAYER_VIEW_TYPE,
+  LIBRARY_VIEW_TYPE,
   WALL_DRAG_MIME,
   WALL_EXT,
   WALL_VIEW_TYPE,
@@ -24,7 +23,6 @@ import {
   type AlbumSummary,
   type MusicWallData,
   type MusicWallSettings,
-  type PlayerFile,
   type WallItem,
 } from "./types";
 import type { Requester } from "./core/metadata";
@@ -45,6 +43,8 @@ import {
 } from "./core/nowPlaying";
 import { MusicWallView } from "./ui/MusicWallView";
 import { MusicPlayerView } from "./ui/MusicPlayerView";
+import { MusicLibraryView } from "./ui/MusicLibraryView";
+import { MusicLibraryApi } from "./core/library";
 import { InputModal } from "./ui/InputModal";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NeteaseLoginModal } from "./ui/NeteaseLoginModal";
@@ -55,7 +55,7 @@ import { applyLanguagePref, styleLabel, t } from "./i18n";
 /** Git 缓存目录（相对库根，位于 .obsidian 下不会污染用户笔记） */
 const GIT_CACHE_SUBDIR = ".obsidian/plugins/music-wall/git-cache";
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.1.3";
+const BUILD_TAG = "1.1.4";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -69,6 +69,8 @@ export default class MusicWallPlugin extends Plugin {
   private combinedProvider: CombinedNowPlayingProvider;
   private requester: Requester;
   private audioSources: SongSourceResolver;
+  libraryApi: MusicLibraryApi;
+  private openingLibrary: Promise<void> | null = null;
   private openingPlayer: Promise<void> | null = null;
   private statusEl: HTMLElement | null = null;
   /** 库内全部 .mw 条目缓存（播放器匹配用），vault 变动时失效 */
@@ -127,24 +129,21 @@ export default class MusicWallPlugin extends Plugin {
     this.registerExtensions([WALL_EXT], WALL_VIEW_TYPE);
     this.registerView(WALL_VIEW_TYPE, (leaf) => new MusicWallView(leaf, this));
 
-    // .mwp 播放器页：同样是 FileView，但文件内容只是标记，队列为运行时状态
-    this.registerExtensions([PLAYER_EXT], PLAYER_VIEW_TYPE);
     this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
+    this.registerView(LIBRARY_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
+    this.libraryApi = new MusicLibraryApi(this.requester);
 
     this.addRibbonIcon("library", t("cmd.createWall"), () => {
       void this.createNewWallCommand();
     });
     this.addRibbonIcon("disc", t("cmd.openPlayer"), () => void this.openPlayerView());
+    this.addRibbonIcon("list-music", t("library.title"), () => void this.openLibraryView());
+    this.addCommand({ id: "open-library", name: t("library.title"), callback: () => void this.openLibraryView() });
 
     this.addCommand({
       id: "create-wall",
       name: t("cmd.createWallFile"),
       callback: () => void this.createNewWallCommand(),
-    });
-    this.addCommand({
-      id: "create-player",
-      name: t("cmd.createPlayerFile"),
-      callback: () => void this.createNewPlayerCommand(),
     });
     this.addCommand({
       id: "open-player",
@@ -233,12 +232,6 @@ export default class MusicWallPlugin extends Plugin {
             .setIcon("library")
             .onClick(() => void this.createNewWallIn(target))
         );
-        menu.addItem((item) =>
-          item
-            .setTitle(t("cmd.newPlayer"))
-            .setIcon("disc")
-            .onClick(() => void this.createNewPlayerIn(target))
-        );
       })
     );
 
@@ -299,11 +292,13 @@ export default class MusicWallPlugin extends Plugin {
     // 见 zoom.ts syncZoomBox：补偿退化的表现就是右侧/底部留白）
     for (const view of this.allWallViews()) view.syncZoomBox();
     for (const view of this.allPlayerViews()) view.syncZoomBox();
+    for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) (leaf.view as MusicLibraryView).syncZoomBox();
   }
 
   refreshOpenViews(): void {
     for (const view of this.allWallViews()) view.refresh();
     for (const view of this.allPlayerViews()) view.refresh();
+    for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) (leaf.view as MusicLibraryView).refresh();
   }
 
   private allWallViews(): MusicWallView[] {
@@ -374,9 +369,7 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 墙上菜单「加入播放器」：无播放器打开时静默无操作（按约定不自动创建） */
   addToPlayer(item: WallItem, srcPath: string): void {
-    const view = this.firstPlayerView();
-    if (!view) return;
-    view.playInPlayer(item.meta, srcPath);
+    void this.enqueueAlbum(item.meta);
   }
 
   /** 状态栏条目：显示正在播放并可点击打开播放器 */
@@ -420,38 +413,27 @@ export default class MusicWallPlugin extends Plugin {
     this.nowPlaying.start();
   }
 
-  /** 库内全部 .mwp 文件 */
-  playerFiles(): TFile[] {
-    return this.app.vault
-      .getFiles()
-      .filter(
-        (f) => f.extension === PLAYER_EXT && !f.path.startsWith(".obsidian/")
-      );
-  }
-
-  /** 打开（或聚焦）播放器页：优先已打开的，其次库内第一个 .mwp */
   async openPlayerView(): Promise<void> {
     if (this.openingPlayer) return this.openingPlayer;
-    this.openingPlayer = this.revealPlayerView();
+    this.openingPlayer = this.openStandaloneView(PLAYER_VIEW_TYPE);
     try { await this.openingPlayer; } finally { this.openingPlayer = null; }
   }
-
-  private async revealPlayerView(): Promise<void> {
-    const views = this.allPlayerViews();
-    if (views.length) {
-      this.app.workspace.revealLeaf(views[0].leaf);
-      return;
-    }
-    const files = this.playerFiles();
-    if (!files.length) {
-      const leaf = this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({ type: PLAYER_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-      return;
-    }
-    await this.openWall(files[0]);
+  async openLibraryView(): Promise<void> {
+    if (this.openingLibrary) return this.openingLibrary;
+    this.openingLibrary = this.openStandaloneView(LIBRARY_VIEW_TYPE);
+    try { await this.openingLibrary; } finally { this.openingLibrary = null; }
   }
-
+  private async openStandaloneView(type: string): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(type)[0];
+    if (existing) { this.app.workspace.revealLeaf(existing); return; }
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.setViewState({ type, active: true }); this.app.workspace.revealLeaf(leaf);
+  }
+  async enqueueAlbum(meta: AlbumMeta): Promise<void> {
+    if (!(await this.ensureNeteaseLogin())) return;
+    if (this.settings.playbackMode !== "internal") { new Notice(t("queue.internalOnly")); return; }
+    new Notice(t(this.internalPlayer.enqueueAlbum(meta) ? "queue.added" : "queue.duplicate"));
+  }
   /** 解析来源墙中的条目（播放器接收拖拽用） */
   async resolveWallItem(srcPath: string, albumId: number): Promise<WallItem | null> {
     const open = this.allWallViews().find((v) => v.getFile()?.path === srcPath);
@@ -832,6 +814,7 @@ export default class MusicWallPlugin extends Plugin {
 
   private async clearNeteaseLogin(): Promise<void> {
     this.audioSources?.clear();
+    this.libraryApi?.clear();
     const generation = ++this.authGeneration;
     this.loginModal?.close();
     this.internalPlayer?.stop();
@@ -921,40 +904,6 @@ export default class MusicWallPlugin extends Plugin {
       i++;
     }
     return candidate;
-  }
-
-  /** .mwp 内容：仅版本标记，播放队列不落盘 */
-  private playerFileContent(): string {
-    const marker: PlayerFile = { version: PLAYER_FILE_VERSION };
-    return JSON.stringify(marker, null, 2);
-  }
-
-  async createNewPlayerCommand(): Promise<void> {
-    new InputModal(
-      this.app,
-      t("main.createPlayer.title"),
-      t("main.createPlayer.ph"),
-      t("main.createPlayer.initial"),
-      async (name) => {
-        const path = this.uniquePath(name, "", PLAYER_EXT);
-        await this.app.vault.create(path, this.playerFileContent());
-        const f = this.app.vault.getAbstractFileByPath(path);
-        if (f instanceof TFile) await this.openWall(f);
-      }
-    ).open();
-  }
-
-  /** 在指定文件夹（含库根）直接创建默认名播放器并打开 */
-  async createNewPlayerIn(folder: TFolder): Promise<void> {
-    const parent = folder.isRoot() ? "" : folder.path;
-    const path = this.uniquePath(
-      t("main.playerDefaultName"),
-      parent,
-      PLAYER_EXT
-    );
-    await this.app.vault.create(path, this.playerFileContent());
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.openWall(f);
   }
 
   async createNewWallCommand(): Promise<void> {

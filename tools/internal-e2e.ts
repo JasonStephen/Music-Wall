@@ -55,7 +55,6 @@ function wave(): Blob {
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},
   };
   const player = new MusicPlayerView(new WorkspaceLeaf(app),plugin as never);
-  (player as any).file = new TFile("Player.mwp");
   document.getElementById("mount")!.appendChild(player.contentEl);
   try {
     check(await engine.playAlbum(meta),"Real audio decoder starts playback");

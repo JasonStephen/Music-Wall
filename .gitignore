@@ -39,3 +39,6 @@ Thumbs.db
 
 # docs/：现场决策/计划/验收档案（个人工作笔记，不对外）
 docs/
+
+tools/player-ui-e2e.bundle.js
+tools/library-ui-e2e.bundle.js

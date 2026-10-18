@@ -5,7 +5,7 @@ $caseRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.Replace('\', '/').Rep
 node (Join-Path $PSScriptRoot 'auth-browsercheck.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $cases = @(
-  @{ Name = 'player'; Page = 'mwp'; Query = 'case=default'; Width = 1280; Height = 760 },
+  @{ Name = 'player'; Page = 'player-ui'; Query = 'case=default'; Width = 1280; Height = 760 },
   @{ Name = 'previews'; Page = 'gf'; Query = 'case=previews'; Width = 1280; Height = 1000 },
   @{ Name = 'shelf-play'; Page = 'gf'; Query = 'case=play'; Width = 1280; Height = 1000 }
 )

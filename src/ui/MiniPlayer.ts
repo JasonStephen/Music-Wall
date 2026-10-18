@@ -5,6 +5,7 @@ import { sizedCover } from "../core/metadata";
 import { qualityLabel, type AudioQuality } from "../core/quality";
 import { DEFAULT_COVER } from "./defaultCover";
 import { decorateRange, paintRange } from "./range";
+import { QueueControls } from "./QueueControls";
 
 const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -31,6 +32,8 @@ export class MiniPlayer {
   private buttons = {} as Record<Panel, HTMLButtonElement>;
   private openPanel: Panel | null = null;
   private trackRows: HTMLButtonElement[] = [];
+  private queueControls: QueueControls;
+  private playlistBody: HTMLElement;
   private albumKey = "";
   private qualityKey = "";
   private coverKey = "";
@@ -69,6 +72,8 @@ export class MiniPlayer {
       this.buttons[name].setAttr("aria-expanded", "false");
       this.panels[name] = this.root.createDiv({ cls: `mw-mini__panel mw-mini__${name} is-hidden`, attr: { role: "group", "aria-label": this.buttons[name].getAttribute("aria-label")! } });
     }
+    this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin());
+    this.playlistBody = this.panels.playlist.createDiv();
     this.volume = this.panels.volume.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
     decorateRange(this.volume, true);
     this.volume.addEventListener("input", () => plugin.internalPlayer.setVolume(Number(this.volume.value)));
@@ -141,7 +146,7 @@ export class MiniPlayer {
     this.artist.setText(player.error || (player.loading ? t("mini.loading") : `${state.artist}${state.status === "paused" ? ` · ${t("mini.paused")}` : ""}`));
     this.artist.title = this.artist.textContent ?? "";
     this.time.setText(`${clock(state.positionMs)} / ${clock(state.durationMs)}`);
-    const cover = player.album?.cover || DEFAULT_COVER;
+    const cover = player.currentCover || DEFAULT_COVER;
     if (cover !== this.coverKey) { this.coverKey = cover; this.cover.src = sizedCover(cover, 160); }
     if (player.playingRequested !== this.playing) { this.playing = player.playingRequested; setIcon(this.toggle, this.playing ? "pause" : "play"); }
     this.previous.disabled = !state.canPrev; this.next.disabled = !state.canNext;
@@ -154,11 +159,11 @@ export class MiniPlayer {
     const icon = player.volume === 0 ? "volume-x" : player.volume < .5 ? "volume-1" : "volume-2";
     if (icon !== this.volumeIcon) { this.volumeIcon = icon; setIcon(this.volumeButton, icon); }
     this.qualityText.setText(player.quality ? qualityLabel(player.quality) : "…");
-    const albumKey = JSON.stringify([player.album?.albumId, player.album?.tracks]);
+    const albumKey = JSON.stringify([player.album?.albumId, player.album?.playlistId, player.album?.tracks]);
     if (this.albumKey !== albumKey) {
-      this.albumKey = albumKey; this.panels.playlist.empty(); this.trackRows = [];
-      this.panels.playlist.createDiv({ cls: "mw-mini__playlist-title", text: player.album?.name });
-      const tracks = this.panels.playlist.createDiv({ cls: "mw-mini__tracks" });
+      this.albumKey = albumKey; this.playlistBody.empty(); this.trackRows = [];
+      this.playlistBody.createDiv({ cls: "mw-mini__playlist-title", text: player.album?.name });
+      const tracks = this.playlistBody.createDiv({ cls: "mw-mini__tracks" });
       player.album?.tracks?.forEach((track, index) => {
         const row = tracks.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
         row.createSpan({ text: String(index + 1).padStart(2, "0") });
@@ -181,7 +186,7 @@ export class MiniPlayer {
     }
   }
   dispose(): void {
-    this.off(); this.observer?.disconnect(); this.parent.removeClass("has-mini");
+    this.queueControls.dispose(); this.off(); this.observer?.disconnect(); this.parent.removeClass("has-mini");
     this.parent.ownerDocument.removeEventListener("pointerdown", this.outside);
     this.parent.ownerDocument.removeEventListener("keydown", this.escape);
     this.parent.style.removeProperty("--mw-mini-height"); this.root.remove();

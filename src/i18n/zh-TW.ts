@@ -3,6 +3,8 @@
 import type { zhCN } from "./zh-CN";
 
 export const zhTW: typeof zhCN = {
+  library: {"title":"網易雲音樂庫","created":"我建立的歌單","collected":"我收藏的歌單","likes":"我喜歡的音樂","search":"搜尋歌單","searchPlaceholder":"輸入歌單名稱","refresh":"重新整理","more":"載入更多","empty":"暫無歌曲或歌單","failed":"載入失敗，請檢查網路和登入狀態。","retry":"重試"},
+  queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌單播放","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
   labels: {
     style: {
       vinyl: "黑膠",
@@ -166,14 +168,12 @@ export const zhTW: typeof zhCN = {
   cmd: {
     createWall: "新建音樂牆",
     createWallFile: "新建音樂牆檔案 (.mw)",
-    createPlayerFile: "新建音樂播放器檔案 (.mwp)",
     openPlayer: "開啟音樂播放器",
     addAlbum: "加入專輯（目前牆）",
     exportWall: "匯出目前音樂牆（分享副本）",
     importWall: "匯入 .mw 音樂牆檔案",
     gitImport: "從 Git 倉庫匯入音樂牆",
     pickPlaylist: "選擇播放歌單（整專連播，需登入）",
-    newPlayer: "新建音樂播放器",
   },
 
   main: {
@@ -181,7 +181,6 @@ export const zhTW: typeof zhCN = {
     statusPlayer: "音樂播放器",
     statusOpenPlayer: "開啟音樂播放器",
     unknownTrack: "未知曲目",
-    noPlayerFile: "還沒有播放器檔案：先執行「新建音樂播放器檔案 (.mwp)」",
     readTargetFail: "讀取目標牆失敗：{error}",
     alreadyInTarget: "《{name}》已在《{wall}》中，遷移取消",
     writeTargetFail: "寫入目標牆失敗：{error}",
@@ -201,12 +200,6 @@ export const zhTW: typeof zhCN = {
     playlistTracks: "{count} 首 · ID {id}",
     playlistSet: "播放歌單已設為《{name}》",
     readPlaylistsFail: "讀取歌單失敗：{error}",
-    createPlayer: {
-      title: "新建音樂播放器",
-      ph: "檔案名（將成為 .mwp 檔案）",
-      initial: "Music Player",
-    },
-    playerDefaultName: "音樂播放器",
     createWallModal: {
       title: "新建音樂牆",
       ph: "牆名稱（將成為 .mw 檔案名）",
@@ -390,7 +383,7 @@ export const zhTW: typeof zhCN = {
     },
     ctx: {
       play: "播放",
-      addToPlayer: "加入播放器",
+      addToPlayer: "加入專輯佇列",
       editLayout: "編輯佈局",
       editLayoutExit: "退出佈局編輯",
       editLayoutDrag: "編輯佈局（拖動排序）",
@@ -467,7 +460,6 @@ export const zhTW: typeof zhCN = {
 
   player: {
     displayName: "音樂播放器",
-    displayNameWith: "播放器 · {name}",
     styleBg: "樣式與背景",
     style: "樣式",
     bg: "背景",

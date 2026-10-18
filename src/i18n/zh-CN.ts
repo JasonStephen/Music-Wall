@@ -1,6 +1,8 @@
 // 简体中文（基准/回退语言：结构变更以此为源，zh-TW 与 en 用 typeof 约束对齐）。
 
 export const zhCN = {
+  library: {"title":"网易云音乐库","created":"我创建的歌单","collected":"我收藏的歌单","likes":"我喜欢的音乐","search":"搜索歌单","searchPlaceholder":"输入歌单名称","refresh":"刷新","more":"加载更多","empty":"暂无歌曲或歌单","failed":"加载失败，请检查网络和登录状态。","retry":"重试"},
+  queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌单播放","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
   labels: {
     style: {
       vinyl: "黑胶",
@@ -164,14 +166,12 @@ export const zhCN = {
   cmd: {
     createWall: "新建音乐墙",
     createWallFile: "新建音乐墙文件 (.mw)",
-    createPlayerFile: "新建音乐播放器文件 (.mwp)",
     openPlayer: "打开音乐播放器",
     addAlbum: "添加专辑（当前墙）",
     exportWall: "导出当前音乐墙（分享副本）",
     importWall: "导入 .mw 音乐墙文件",
     gitImport: "从 Git 仓库导入音乐墙",
     pickPlaylist: "选择播放歌单（整专连播，需登录）",
-    newPlayer: "新建音乐播放器",
   },
 
   main: {
@@ -179,7 +179,6 @@ export const zhCN = {
     statusPlayer: "音乐播放器",
     statusOpenPlayer: "打开音乐播放器",
     unknownTrack: "未知曲目",
-    noPlayerFile: "还没有播放器文件：先执行「新建音乐播放器文件 (.mwp)」",
     readTargetFail: "读取目标墙失败：{error}",
     alreadyInTarget: "《{name}》已在《{wall}》中，迁移取消",
     writeTargetFail: "写入目标墙失败：{error}",
@@ -199,12 +198,6 @@ export const zhCN = {
     playlistTracks: "{count} 首 · ID {id}",
     playlistSet: "播放歌单已设为《{name}》",
     readPlaylistsFail: "读取歌单失败：{error}",
-    createPlayer: {
-      title: "新建音乐播放器",
-      ph: "文件名（将成为 .mwp 文件）",
-      initial: "Music Player",
-    },
-    playerDefaultName: "音乐播放器",
     createWallModal: {
       title: "新建音乐墙",
       ph: "墙名称（将成为 .mw 文件名）",
@@ -388,7 +381,7 @@ export const zhCN = {
     },
     ctx: {
       play: "播放",
-      addToPlayer: "加入播放器",
+      addToPlayer: "加入专辑队列",
       editLayout: "编辑布局",
       editLayoutExit: "退出布局编辑",
       editLayoutDrag: "编辑布局（拖动排序）",
@@ -465,7 +458,6 @@ export const zhCN = {
 
   player: {
     displayName: "音乐播放器",
-    displayNameWith: "播放器 · {name}",
     styleBg: "样式与背景",
     style: "样式",
     bg: "背景",
