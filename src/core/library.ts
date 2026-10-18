@@ -5,7 +5,7 @@ import { t } from "../i18n";
 
 export interface CloudPlaylist { id: number; name: string; cover: string; creator: string; owner: number; count: number; special: number; }
 const playlist = (item: any): CloudPlaylist => ({ id: Number(item.id), name: String(item.name || ""), cover: item.coverImgUrl || item.picUrl || "", creator: item.creator?.nickname || "", owner: Number(item.creator?.userId || item.userId), count: Number(item.trackCount || 0), special: Number(item.specialType || 0) });
-const song = (item: any): AlbumTrackSnapshot => ({ id: Number(item.id), name: item.name || "", duration: Number(item.dt || item.duration || 0), artists: (item.ar || item.artists || []).map((artist: any) => artist.name).join(" / "), albumId: (item.al || item.album)?.id, albumName: (item.al || item.album)?.name, cover: (item.al || item.album)?.picUrl });
+const song = (item: any): AlbumTrackSnapshot => ({ id: Number(item.id), name: item.name || "", duration: Number(item.dt || item.duration || 0), artistRefs: (item.ar || item.artists || []).filter((a: any) => Number(a.id) > 0).map((a: any) => ({ id: Number(a.id), name: String(a.name || "") })), artists: (item.ar || item.artists || []).map((artist: any) => artist.name).join(" / "), albumId: (item.al || item.album)?.id, albumName: (item.al || item.album)?.name, cover: (item.al || item.album)?.picUrl });
 export type LibrarySearchKind = "songs" | "artists" | "albums" | "playlists";
 export interface CloudArtist { id: number; name: string; cover: string; }
 export interface LibrarySearchResult { songs: AlbumTrackSnapshot[]; artists: CloudArtist[]; albums: AlbumSummary[]; playlists: CloudPlaylist[]; more: boolean; }
@@ -63,7 +63,7 @@ export class MusicLibraryApi {
     ]);
     return { artist, tracks: (top.songs || []).map(song).filter((item: AlbumTrackSnapshot) => item.id > 0), ...albums };
   }
-  private async songs(ids: number[], cookie: string): Promise<AlbumTrackSnapshot[]> {
+  async songs(ids: number[], cookie: string): Promise<AlbumTrackSnapshot[]> {
     const result: AlbumTrackSnapshot[] = [];
     for (let start = 0; start < ids.length; start += 200) {
       const batch = ids.slice(start, start + 200);
@@ -78,6 +78,14 @@ export class MusicLibraryApi {
     const ids: number[] = (body.playlist?.trackIds || []).map((entry: any) => Number(entry.id)).filter((id: number) => id > 0);
     const tracks = await this.songs(ids, cookie);
     return { albumId: 0, playlistId: item.id, name: body.playlist?.name || item.name, artist: item.creator, cover: body.playlist?.coverImgUrl || item.cover, trackCount: tracks.length, tracks };
+  }
+  async playlistStats(id: number, cookie: string): Promise<{ count: number; duration?: number }> {
+    const body = await this.call("/api/v6/playlist/detail", { id, n: 100000, s: 0 }, cookie);
+    const ids: number[] = (body.playlist?.trackIds || []).map((entry: any) => Number(entry.id)).filter((id: number) => id > 0);
+    const count = Math.max(Number(body.playlist?.trackCount || 0), ids.length);
+    const tracks = await this.songs(ids, cookie);
+    return { count, duration: count === ids.length && tracks.length === ids.length && tracks.every(track => Number.isFinite(track.duration) && track.duration >= 0)
+      ? tracks.reduce((sum, track) => sum + track.duration, 0) : undefined };
   }
   async liked(uid: number, cookie: string): Promise<AlbumMeta> {
     const lists = await this.userPlaylists(uid, cookie);

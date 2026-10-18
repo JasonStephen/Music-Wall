@@ -6,20 +6,34 @@ import type { InternalPlayer } from "../core/internalPlayer";
 export class QueueControls {
   private off: () => void;
   private key = "";
-  private expanded = false;
+  view: "album" | "playlist";
   private dragging = "";
-  constructor(private root: HTMLElement, private player: InternalPlayer, private authorize: () => Promise<boolean>) {
-    root.addClass("mw-queue"); this.off = player.on(() => this.update()); this.update();
+  private disposed = false;
+  constructor(private root: HTMLElement, private player: InternalPlayer, private authorize: () => Promise<boolean>, private onView: () => void = () => {}) {
+    this.view = player.contentKind;
+    root.addClass("mw-queue"); this.off = player.on(() => { if (this.update()) this.onView(); }); this.update();
   }
   private button(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
-    const button = parent.createEl("button", { cls: "mw-queue__button", attr: { title: label, "aria-label": label } });
+    const button = parent.createEl("button", { cls: "clickable-icon mw-queue__button", attr: { title: label, "aria-label": label } });
     setIcon(button, icon); button.addEventListener("click", action); return button;
   }
-  private update(): void {
-    const key = `${this.player.contentKind}|${this.player.order}|${this.player.currentEntryId}|${this.player.albumQueue.map(entry => entry.id).join()}|${this.expanded}|${this.player.queuedPlaylist?.tracks?.length || 0}`;
-    if (key === this.key) return; this.key = key;
+  private update(): boolean {
+    const key = `${this.player.contentKind}|${this.player.order}|${this.player.currentEntryId}|${this.player.albumQueue.map(entry => entry.id).join()}|${this.view}|${this.player.revision}|${this.player.queuedPlaylist?.tracks?.length || 0}`;
+    if (key === this.key) return false; this.key = key;
     this.root.empty();
-    const head = this.root.createDiv({ cls: "mw-queue__head" });
+    const toolbar = this.root.createDiv({ cls: "mw-queue__toolbar" });
+    const tabs = toolbar.createDiv({ cls: "mw-queue__tabs", attr: { role: "tablist", "aria-label": t("player.playlistTip") } });
+    for (const kind of ["playlist", "album"] as const) {
+      const label = t(kind === "playlist" ? "queue.playlistQueue" : "queue.title");
+      const count = kind === "playlist" ? this.player.queuedPlaylist?.tracks?.length || 0 : this.player.albumQueue.length;
+      const tab = this.button(tabs, kind === "playlist" ? "list-music" : "disc", label, () => {
+        this.view = kind; this.update(); this.onView(); this.root.querySelector<HTMLButtonElement>(`[data-queue-view="${kind}"]`)?.focus();
+      });
+      tab.createSpan({ text: `${label} · ${count}` }); tab.dataset.queueView = kind;
+      if (kind === "album") tab.dataset.action = "album-queue";
+      tab.setAttr("role", "tab"); tab.setAttr("aria-selected", String(this.view === kind));
+    }
+    const head = toolbar.createDiv({ cls: "mw-queue__head" });
     head.createSpan({ cls: "mw-queue__kind", text: t(`queue.${this.player.contentKind}Mode`) });
     const icons = { order: "list-ordered", repeat: "repeat", one: "repeat-1", shuffle: "shuffle" };
     const modeLabel = () => t(`queue.${this.player.order === "repeat" && this.player.contentKind === "playlist" ? "repeatList" : this.player.order}`);
@@ -27,24 +41,17 @@ export class QueueControls {
       const orders = this.player.allowedOrders;
       this.player.setOrder(orders[(orders.indexOf(this.player.order) + 1) % orders.length]);
     });
-    if (this.player.contentKind === "album" && this.player.queuedPlaylist?.tracks?.length) {
-      const playlist = this.button(head, "list-music", t("queue.playlistQueue"), () => void (async () => { if (await this.authorize()) await this.player.resumePlaylist(); })());
-      playlist.createSpan({ text: t("queue.playlistQueue") });
-    }
-    mode.dataset.action = "play-order"; mode.setAttr("aria-label", modeLabel());
-    mode.createSpan({ text: t(`queue.${this.player.order}`) });
-    const expand = this.button(head, this.expanded ? "chevron-up" : "list-music", t("queue.title"), () => { this.expanded = !this.expanded; this.update(); });
-    expand.dataset.action = "album-queue"; expand.setAttr("aria-expanded", String(this.expanded)); expand.createSpan({ text: `${t("queue.title")} · ${this.player.albumQueue.length}` });
-    if (!this.expanded) return;
+    mode.dataset.action = "play-order"; mode.createSpan({ text: modeLabel() });
+    if (this.view !== "album") return true;
     const list = this.root.createDiv({ cls: "mw-queue__list" });
-    if (!this.player.albumQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return; }
+    if (!this.player.albumQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return true; }
     this.player.albumQueue.forEach((entry, index) => {
       const current = entry.id === this.player.currentEntryId;
       const row = list.createDiv({ cls: `mw-queue__row${current ? " is-current" : ""}`, attr: { "data-entry": entry.id } });
       row.draggable = !current;
       const grip = row.createSpan({ cls: "mw-queue__grip", attr: { "aria-hidden": "true" } }); setIcon(grip, current ? "disc" : "grip-vertical");
       const play = row.createEl("button", { cls: "mw-queue__name", text: entry.album.name, attr: { title: entry.album.name } });
-      play.addEventListener("click", () => void (async () => { if (await this.authorize()) await this.player.playQueued(entry.id); })());
+      play.addEventListener("click", () => void (async () => { if (await this.authorize() && !this.disposed) await this.player.playQueued(entry.id); })());
       const actions = row.createDiv({ cls: "mw-queue__actions" });
       for (const direction of [-1, 1]) {
         let target = index + direction;
@@ -66,6 +73,19 @@ export class QueueControls {
       });
       row.addEventListener("dragend", () => { this.dragging = ""; });
     });
+    return true;
   }
-  dispose(): void { this.off(); }
+  get collection() {
+    return this.view === "playlist" ? this.player.queuedPlaylist : this.player.contentKind === "album" ? this.player.album : null;
+  }
+  async selectTrack(index: number): Promise<void> {
+    const collection = this.collection;
+    const track = collection?.tracks?.[index];
+    if (!collection || !track || !(await this.authorize()) || this.disposed || collection !== this.collection) return;
+    const selected = collection.tracks!.indexOf(track); if (selected < 0) return;
+    if (this.player.album === collection) await this.player.select(selected);
+    else await this.player.playPlaylist(collection, selected);
+  }
+  isCurrent(index: number): boolean { return this.collection === this.player.album && index === this.player.index; }
+  dispose(): void { this.disposed = true; this.off(); }
 }

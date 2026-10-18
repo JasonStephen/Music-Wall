@@ -99,6 +99,7 @@ export const en: typeof zhCN = {
   },
   case: { title: "Case", white: "White", black: "Black", wood: "Wood", art: "Cover color" },
   buffering: { pauseFade: "Pause / resume fade (seconds)", crossFade: "Track crossfade (seconds)", cacheLimit: "Audio cache limit (MB, 0 disables)", cacheUsed: "Audio cache used", clearCache: "Clear cache", cacheError: "Unable to clear the cache. Try again later." },
+  libraryDetails: {"durationLoading": "Calculating duration…", "durationUnavailable": "Duration unavailable","summary": "{count} songs · {duration}", "hours": "{value} hours", "minutes": "{value} minutes", "moreActions": "More actions", "chooseArtist": "Choose an artist", "viewAlbum": "View album", "viewArtist": "View artist", "copyLink": "Copy NetEase link", "viewDetails": "View details", "wallAlbum": "Wall album", "playlist": "Playlist", "album": "Album"},
   wallPicker: {"search": "Search wall names or folder paths", "clear": "Clear search", "count": "{count} music walls", "noResults": "No matching music walls"},
   library: {
       "title": "NetEase music library",

@@ -1,7 +1,7 @@
 /* The left artwork spans the bar; only right-hand tools clear the floating status bar. */
 .mw-view .mw-mini {
   position: relative; z-index: 21; flex: 0 0 auto; display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center; gap: 12px; min-width: 0; min-height: 76px; padding: 8px 14px;
   box-sizing: border-box; background: var(--mw-panel-bg); color: var(--mw-panel-fg);
   border-top: 1px solid var(--mw-panel-line);
@@ -23,8 +23,8 @@
 .mw-mini__artist, .mw-mini__time { font-size: 11px; color: var(--mw-panel-fg-dim); }
 .mw-mini__time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mw-mini__controls, .mw-mini__tools { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.mw-mini__controls { flex: 0 0 auto; }
-.mw-mini__tools { grid-column: 2; align-self: start; margin-bottom: var(--mw-host-bottom, 0px); }
+.mw-mini__controls { flex: 0 0 auto; grid-column: 2; justify-self: center; }
+.mw-mini__tools { grid-column: 3; justify-self: end; align-self: start; margin-bottom: var(--mw-host-bottom, 0px); }
 .mw-mini .mw-mini__button {
   flex: 0 0 auto; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
   padding: 0; background: transparent; border: 1px solid transparent; border-radius: 6px;
@@ -41,10 +41,11 @@
 .mw-mini svg { width: 16px; height: 16px; }
 .mw-mini [data-action="quality"] svg { width: 12px; height: 12px; }
 .mw-mini .mw-slider { --mw-range-fill: var(--mw-panel-fg); --mw-range-track: color-mix(in srgb, var(--mw-panel-fg) 22%, transparent); }
-.mw-mini .mw-mini__progress { position: absolute; top: -6px; left: 0; width: 100%; height: 12px; z-index: 2; }
+.mw-mini .mw-mini__progress { position: absolute; top: -12px; left: 0; width: 100%; height: 24px; z-index: 2; }
+.mw-mini .mw-mini__progress input[type="range"].mw-range { touch-action: none; }
 .mw-mini__progress .mw-slider__track { left: 0; right: 0; height: 2px; }
 .mw-mini__progress .mw-slider__thumb { opacity: 0; width: 8px; height: 8px; }
-.mw-mini__progress:hover .mw-slider__thumb, .mw-mini__progress:focus-within .mw-slider__thumb { opacity: 1; }
+.mw-mini__progress:hover .mw-slider__thumb, .mw-mini__progress:focus-within .mw-slider__thumb, .mw-mini.is-seeking .mw-mini__progress .mw-slider__thumb { opacity: 1; }
 .mw-mini .mw-mini__panel {
   position: absolute; right: 8px; bottom: calc(100% + 6px); z-index: 3; max-width: calc(100% - 16px);
   max-height: max(48px, calc(100cqh - var(--mw-mini-height, 76px) - 20px)); overflow-y: auto;
@@ -67,6 +68,7 @@
 .mw-mini .mw-mini__volume { right: 34px; width: 42px; padding: 8px; }
 @container mw-pane (max-width: 560px) {
   .mw-view .mw-mini { grid-template-columns: minmax(0, 1fr); gap: 6px 10px; padding: 8px 10px; }
+  .mw-mini__controls { grid-column: 1; justify-self: center; }
   .mw-mini .mw-mini__open { max-width: 100%; }
   .mw-mini__cover { width: 48px; min-height: 52px; }
   .mw-mini__tools { grid-column: 1 / -1; justify-self: end; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }

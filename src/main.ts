@@ -64,7 +64,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.5-exp-1";
+const BUILD_TAG = "1.2.5";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -447,6 +447,22 @@ export default class MusicWallPlugin extends Plugin {
     this.openingLibrary = this.openStandaloneView(LIBRARY_VIEW_TYPE);
     try { await this.openingLibrary; } finally { this.openingLibrary = null; }
   }
+  async openLibraryCollection(meta: AlbumMeta): Promise<void> {
+    await this.openLibraryView();
+    const view = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof MusicLibraryView) await view.showCollection(meta);
+  }
+  async openLibraryArtist(artist: { id: number; name: string; cover: string }): Promise<void> {
+    await this.openLibraryView();
+    const view = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof MusicLibraryView) await view.showArtist(artist);
+  }
+  async revealWallAlbum(path: string, albumId: number): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) { new Notice(t("player.noSource")); return; }
+    await this.openWall(file);
+    this.allWallViews().find(view => view.getFile()?.path === path)?.revealAlbum(albumId);
+  }
   private async openStandaloneView(type: string): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(type)[0];
     if (existing) { this.app.workspace.revealLeaf(existing); return; }
@@ -705,7 +721,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   /** 供播放/详情面板使用的播放依赖 */
-  getPlaybackDeps(): PlaybackDeps {
+  getPlaybackDeps(wallPath?: string): PlaybackDeps {
     const pid = parseInt(this.settings.playbackPlaylistId, 10);
     const generation = this.authGeneration;
     const cookie = this.settings.neteaseCookie;
@@ -718,7 +734,7 @@ export default class MusicWallPlugin extends Plugin {
       authorize: async () => {
         const token = ++this.playbackRequest;
         if (!(await this.ensureNeteaseLogin()) || token !== this.playbackRequest) return null;
-        const authorized = this.getPlaybackDeps();
+        const authorized = this.getPlaybackDeps(wallPath);
         return {
           ...authorized,
           authorize: undefined,
@@ -729,7 +745,7 @@ export default class MusicWallPlugin extends Plugin {
       playInside: this.settings.playbackMode !== "client" && this.internalPlayer
         ? async (meta, startIndex) => {
           if (!isCurrent()) return false;
-          return this.internalPlayer.playAlbum(meta, startIndex);
+          return this.internalPlayer.playAlbum(wallPath ? { ...meta, playbackWallPath: wallPath } : meta, startIndex);
         }
         : undefined,
       onPlaylistResolved: (id) => {

@@ -97,6 +97,7 @@ export const zhCN = {
   },
   case: { title: "外壳", white: "白色", black: "黑色", wood: "原木", art: "跟随封面" },
   buffering: { pauseFade: "暂停与继续渐变（秒）", crossFade: "切歌交叉渐变（秒）", cacheLimit: "歌曲缓存上限（MB，0 为关闭）", cacheUsed: "歌曲缓存已用空间", clearCache: "清除缓存", cacheError: "缓存清理失败，请稍后重试" },
+  libraryDetails: {"durationLoading": "正在统计时长…", "durationUnavailable": "时长暂不可用","summary": "{count} 首 · {duration}", "hours": "{value}小时", "minutes": "{value}分钟", "moreActions": "更多操作", "chooseArtist": "选择艺术家", "viewAlbum": "查看所属专辑", "viewArtist": "查看艺术家", "copyLink": "复制网易云链接", "viewDetails": "查看详情", "wallAlbum": "音乐墙专辑", "playlist": "歌单", "album": "专辑"},
   wallPicker: {"search": "搜索音乐墙名称或文件夹路径", "clear": "清空搜索", "count": "{count} 个音乐墙", "noResults": "未找到匹配的音乐墙"},
   library: {
       "title": "网易云音乐库",

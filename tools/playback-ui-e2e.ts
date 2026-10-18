@@ -15,7 +15,17 @@ const over=(front:number[],back:number[])=>front.slice(0,3).map((v,i)=>v*front[3
 const luminance=(color:number[])=>color.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
 const contrast=(text:string,background:number[])=>{const a=luminance(over(rgba(text),background)),b=luminance(background);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
 class FakeAudio extends EventTarget {
-  currentTime=0; duration=260; paused=true; ended=false; volume=1; preload="";
+  private time=0;
+  get currentTime(){return this.time;}
+  set currentTime(value:number){
+    this.time=value;
+    (window as any).miniSeekWrites=((window as any).miniSeekWrites||0)+1;
+    if((window as any).miniSeekBuffering&&!this.paused)queueMicrotask(()=>{
+      this.dispatchEvent(new Event('waiting'));
+      setTimeout(()=>this.dispatchEvent(new Event('playing')),30);
+    });
+  }
+  duration=260; paused=true; ended=false; volume=1; preload="";
   set src(_url:string) { queueMicrotask(()=>this.dispatchEvent(new Event("loadedmetadata"))); }
   async play() {this.paused=false;this.dispatchEvent(new Event("playing"));}
   pause(){this.paused=true;this.dispatchEvent(new Event("pause"));}
@@ -24,6 +34,7 @@ class FakeAudio extends EventTarget {
 let close = async()=>{};
 (window as any).setupPlaybackUI = async (config: any) => {
   await close();
+  (window as any).miniSeekBuffering=false;
   setLanguage(config.lang || 'zh-CN');
   document.body.className = `theme-${config.theme}${config.tablet ? " is-mobile is-tablet" : ""}`;
   document.body.style.setProperty("--mw-zoom",String(config.zoom??1));
@@ -47,9 +58,12 @@ let close = async()=>{};
   const cover=probeCoverUri(config.cover??"f0e8dc");
   const meta={albumId:1,name:"Dreamcatcher · 测试专辑",artist:"Xeuphoria",cover,trackCount:4,
     tracks:[{id:11,name:"Nightlight · 夜色中的微光",duration:260000},{id:12,name:"A Waltz for Forgetting",duration:105000},{id:13,name:"Feeling Alone in a Room Full of People (2020 Ver.)",duration:192000},{id:14,name:"Dreamcatcher",duration:274000}]};
-  let opens=0;
+  let opens=0; const sourceCalls:any[]=[];
+  let artistLookup = async () => [{ id: 11, artistRefs: [{ id: 91, name: "Resolved artist" }] }];
   const plugin={
     settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
+    async openLibraryCollection(meta:any){sourceCalls.push({kind:"library",meta});},async revealWallAlbum(path:string,id:number){sourceCalls.push({kind:"wall",path,id});},
+    async openLibraryArtist(artist:any){sourceCalls.push({kind:"artist",artist});},libraryApi:{songs:()=>artistLookup()},
     ensureNowPlayingStarted(){},async ensureNeteaseLogin(){return true;},async openPlayerView(){opens++;},
     getPlaybackDeps:()=>({isDesktop:false,request:async()=>{throw Error("No external calls");},playInside:(m:any,i:number)=>engine.playAlbum(m,i)}),
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},wallFiles:()=>[],firstPlayerView:()=>null,
@@ -70,6 +84,49 @@ let close = async()=>{};
     if(config.queue) { engine.enqueueAlbum({...meta,albumId:2,name:"A very long queued album · 第二张专辑"});engine.enqueueAlbum({...meta,albumId:3,name:"Third album"}); }
     await wait(40);
     const mini=wall.contentEl.querySelector<HTMLElement>(".mw-mini")!;
+    (window as any).prepareMiniSeek=async(buffering=false)=>{
+      (window as any).miniSeekBuffering=false;
+      await engine.pause();await engine.seek(0);
+      if(buffering)await engine.play();
+      (window as any).miniSeekBuffering=buffering;(window as any).miniSeekWrites=0;
+      const input=mini.querySelector<HTMLInputElement>('.mw-mini__progress input')!,r=input.getBoundingClientRect();
+      return {x:r.left+r.width*.25,end:r.left+r.width*.75,y:r.top+r.height/2,hit:document.elementFromPoint(r.left+r.width*.25,r.top+r.height/2)===input};
+    };
+    (window as any).miniSeekResult=()=>({position:engine.state.positionMs,duration:engine.state.durationMs,status:engine.state.status,writes:(window as any).miniSeekWrites,
+      dragging:mini.classList.contains('is-seeking'),disabled:mini.querySelector<HTMLInputElement>('.mw-mini__progress input')!.disabled});
+    (window as any).verifyMiniSeekFollow=async()=>{
+      (window as any).miniSeekBuffering=false;
+      await engine.seek(10000);await wait();
+      return Number(mini.querySelector<HTMLInputElement>('.mw-mini__progress input')!.value)===10;
+    };
+    (window as any).verifyMiniSeekLifecycle=async()=>{
+      const input=mini.querySelector<HTMLInputElement>('.mw-mini__progress input')!;const failures:string[]=[];
+      input.dispatchEvent(new PointerEvent('pointerdown',{pointerId:701,isPrimary:true,button:0,bubbles:true}));input.value='20';
+      await engine.seek(10000);if(Number(input.value)!==20)failures.push('playback updates overwrite active drag');
+      document.dispatchEvent(new PointerEvent('pointerup',{pointerId:702,bubbles:true}));await engine.seek(12000);
+      if(Number(input.value)!==20)failures.push('unrelated pointer releases drag');
+      document.dispatchEvent(new PointerEvent('pointercancel',{pointerId:701,bubbles:true}));
+      if(Number(input.value)!==12||mini.classList.contains('is-seeking'))failures.push('cancel does not restore progress');
+      input.focus();input.value='30';input.dispatchEvent(new Event('input'));await wait();
+      if(engine.state.positionMs!==30000)failures.push('keyboard input does not seek');
+      await engine.seek(40000);if(Number(input.value)!==40)failures.push('keyboard focus prevents progress updates');
+      await engine.play();await engine.seek(0);
+      input.dispatchEvent(new PointerEvent('pointerdown',{pointerId:703,isPrimary:true,button:0,bubbles:true}));input.value='45';input.dispatchEvent(new Event('input'));
+      (engine as any).media.dispatchEvent(new Event('waiting'));
+      if(input.disabled||!mini.classList.contains('is-seeking'))failures.push('buffering cancels active preview');
+      document.dispatchEvent(new PointerEvent('pointerup',{pointerId:703,bubbles:true}));
+      if(engine.state.positionMs!==0)failures.push('buffered release seeks too early');
+      (engine as any).media.dispatchEvent(new Event('playing'));
+      if(engine.state.positionMs!==45000)failures.push('buffered release never commits after recovery');
+      input.dispatchEvent(new PointerEvent('pointerdown',{pointerId:704,isPrimary:true,button:0,bubbles:true}));input.value='65';input.dispatchEvent(new Event('input'));
+      document.dispatchEvent(new PointerEvent('pointercancel',{pointerId:704,bubbles:true}));
+      if(engine.state.positionMs!==45000)failures.push('cancel commits preview');
+      input.dispatchEvent(new PointerEvent('pointerdown',{pointerId:705,isPrimary:true,button:0,bubbles:true}));input.value='85';input.dispatchEvent(new Event('input'));
+      (engine as any).media.dispatchEvent(new Event('waiting'));document.dispatchEvent(new PointerEvent('pointerup',{pointerId:705,bubbles:true}));
+      await engine.select(1);await wait();
+      if(engine.state.positionMs!==0||Number(input.value)!==0)failures.push('pending seek leaks into next song');
+      return failures;
+    };
     checkScrollbar(wall.contentEl.querySelector<HTMLElement>('.mw-grid')!);
     check(!mini.classList.contains("is-hidden"),"Playing shows footer");
     const stage=wall.contentEl.querySelector<HTMLElement>(".mw-stage")!.getBoundingClientRect(), rect=mini.getBoundingClientRect();
@@ -86,7 +143,7 @@ let close = async()=>{};
     check(getComputedStyle(mini.querySelector(".mw-mini__cover")!).display==="none"||Math.abs(openRect.left-coverRect.left)<2,"Footer metadata stays left aligned");
     check(coverRect.height>=openRect.height-2,"Footer cover spans the information area's height");
     const transport=mini.querySelector<HTMLElement>('.mw-mini__controls')!.getBoundingClientRect();
-    check(openRect.bottom<=transport.top+1||openRect.right<=transport.left+1&&transport.left-openRect.right<25*(config.zoom??1),"Transport stays beside song information or wraps below in very narrow panes");
+    check(openRect.bottom<=transport.top+1||openRect.right<=transport.left+1,"Centered transport stays beside song information or wraps below in very narrow panes");
     check(coverRect.right<=transport.left+1||coverRect.bottom<=transport.top+1,"Cover does not overlap playback controls");
     for(const button of mini.querySelectorAll<HTMLElement>('.mw-mini__button')) {
       const r=button.getBoundingClientRect();check(r.left>=-1&&r.right<=innerWidth+1,"Every footer control remains inside its pane");
@@ -244,7 +301,7 @@ let close = async()=>{};
       list.click();
       if(config.panel==='queue') {
         root.querySelector<HTMLButtonElement>('[data-action="album-queue"]')!.click();await wait(20);
-        if(config.longQueue){const queue=root.querySelector<HTMLElement>('.mw-queue')!;check(queue.scrollHeight>queue.clientHeight,'Long album queues scroll inside the player panel');queue.scrollTop=queue.scrollHeight;const last=queue.querySelector<HTMLElement>('.mw-queue__row:last-child')!;check(last.getBoundingClientRect().bottom<=queue.getBoundingClientRect().bottom+1,'Last queued album remains accessible');}
+        if(config.longQueue){const queue=root.querySelector<HTMLElement>('.mw-queue')!;check(queue.scrollHeight>queue.clientHeight,'Long album queues scroll inside the player panel');queue.scrollTop=queue.scrollHeight;const toolbar=queue.querySelector<HTMLElement>('.mw-queue__toolbar')!.getBoundingClientRect();check(toolbar.top>=queue.getBoundingClientRect().top-1&&toolbar.bottom<=queue.getBoundingClientRect().bottom+1,'Queue view tabs remain reachable when scrolled');const last=queue.querySelector<HTMLElement>('.mw-queue__row:last-child')!;check(last.getBoundingClientRect().bottom<=queue.getBoundingClientRect().bottom+1,'Last queued album remains accessible');}
       }
       const panel=root.querySelector<HTMLElement>(".mw-player__playlist")!;
       const name=panel.querySelector<HTMLElement>(".mw-np__trackName")!;
@@ -302,6 +359,79 @@ let close = async()=>{};
       if(!root.querySelector('.mw-case-options.is-hidden'))failures.push('Pure-cover style still shows case options');
       return failures;
     };
+    (window as any).verifyQueueSwitches = async()=>{
+      let checks=0;const errors:string[]=[];const expect=(ok:unknown,label:string)=>{checks++;if(!ok)errors.push(label);};
+      const artistButton=()=>root.querySelector<HTMLButtonElement>('.mw-np__artist')!;
+      await engine.playAlbum({...meta,tracks:[{...meta.tracks[0],artistRefs:[{id:7,name:'Solo artist'}]}]});await wait();await engine.pause();
+      artistButton().click();await wait();expect(sourceCalls.at(-1)?.artist?.id===7,'player single artist opens directly');
+      expect(engine.state.status==='paused'&&engine.state.songId===11,'artist navigation preserves playback');
+      await engine.playAlbum({...meta,tracks:[{...meta.tracks[0],artistRefs:[{id:7,name:'Solo artist'},{id:8,name:'Second artist'}]}]});await wait();
+      artistButton().click();await wait();
+      const choices=[...document.querySelectorAll<HTMLElement>('.mw-picker__row')];
+      expect(choices.length===2,'player multiple artists opens chooser');choices[1]?.click();await wait();
+      expect(sourceCalls.at(-1)?.artist?.id===8,'player chooser opens selected artist');
+      await engine.playAlbum(meta);await wait();artistButton().click();await wait();
+      expect(sourceCalls.at(-1)?.artist?.id===91,'old snapshots resolve actual artist IDs');
+      let resolveLookup:any;artistLookup=()=>new Promise(resolve=>{resolveLookup=resolve;});
+      const before=sourceCalls.length;artistButton().click();await wait();await engine.select(1);await wait();
+      resolveLookup([{id:11,artistRefs:[{id:93,name:'Stale artist'}]}]);await wait();
+      expect(sourceCalls.length===before&&!document.querySelector('.mw-picker__row'),'stale artist lookup ignored after song changes');
+      artistLookup=async()=>[{id:11,artistRefs:[{id:91,name:'Resolved artist'}]}];
+      await engine.playPlaylist({...meta,albumId:0,playlistId:99,name:'Saved playlist'});await engine.seek(43000);await engine.pause();
+      await engine.playAlbum({...meta,playbackWallPath:'MusicWall/Test.mw'});engine.enqueueAlbum({...meta,albumId:2});await engine.seek(27000);await engine.pause();await wait(20);
+      const tabs=()=>[...root.querySelectorAll<HTMLButtonElement>('.mw-queue [data-queue-view]')];
+      expect(tabs().length===2,'both queue tabs always present');
+      const unchanged=()=>engine.contentKind==='album'&&engine.index===0&&engine.state.positionMs===27000&&engine.state.status==='paused'&&engine.albumQueue.length===2;
+      tabs().find(t=>t.dataset.queueView==='playlist')!.click();await wait();
+      expect(unchanged(),'viewing songs preserves album, progress, pause and album queue');
+      expect(root.querySelectorAll('.mw-np__track').length===4,'saved song list visible');
+      expect(!root.querySelector('.mw-np__track.is-current'),'inactive saved list has no playing highlight');
+      tabs().find(t=>t.dataset.queueView==='album')!.click();await wait();
+      expect(unchanged()&&root.querySelectorAll('.mw-queue__row').length===2,'switching back keeps playback unchanged');
+      const source=root.querySelector<HTMLButtonElement>('.mw-player__source')!;
+      expect(source.textContent==='音乐墙专辑·'+meta.name,'wall source uses type and album name');
+      source.click();await wait();expect(sourceCalls.at(-1)?.kind==='wall'&&sourceCalls.at(-1)?.id===1,'wall source locates original wall');
+      expect(!root.querySelector('.mw-np__jump'),'old source pill removed');
+      const bar=root.querySelector('.mw-player__bar')!.getBoundingClientRect(),src=source.getBoundingClientRect();
+      expect(Math.abs(src.left+src.width/2-bar.left-bar.width/2)<1,'source centered across full header');
+      tabs().find(t=>t.dataset.queueView==='playlist')!.click();await wait();
+      root.querySelector<HTMLElement>('.mw-np__track:nth-child(3)')!.click();await wait(20);
+      expect(engine.contentKind==='playlist'&&engine.index===2&&engine.albumQueue.length===2,'song click explicitly switches playback retaining albums');
+      expect(source.textContent==='歌单·Saved playlist','playlist source is displayed');source.click();await wait();expect(sourceCalls.at(-1)?.kind==='library'&&sourceCalls.at(-1)?.meta.playlistId===99,'playlist source opens details');
+      tabs().find(t=>t.dataset.queueView==='album')!.click();await wait();
+      const song=engine.state.songId;expect(engine.contentKind==='playlist'&&engine.state.songId===song,'album tab only browses');
+      root.querySelector<HTMLButtonElement>('.mw-queue__row:nth-child(2) .mw-queue__name')!.click();await wait(20);
+      expect(engine.contentKind==='album'&&engine.album?.albumId===2&&engine.queuedPlaylist?.tracks?.length===4,'album click explicitly switches retaining song list');
+      expect(source.textContent==='专辑·'+meta.name,'ordinary album source displayed');source.click();await wait();expect(sourceCalls.at(-1)?.meta.albumId===2,'album source opens album details');
+      const wall=await createWall();await wait(20);const mini=wall.contentEl.querySelector<HTMLElement>('.mw-mini')!;
+      const detail=document.createElement('div');wall.contentEl.appendChild(detail);
+      const wallMeta={...meta,artistRefs:[{id:71,name:'Album artist'},{id:72,name:'Second album artist'}]};
+      (wall as any).buildGatefold(detail,{albumId:1,meta:wallMeta});
+      detail.querySelector<HTMLButtonElement>('.mw-gf__name')!.click();await wait();
+      expect(sourceCalls.at(-1)?.kind==='library'&&sourceCalls.at(-1)?.meta===wallMeta,'wall album name opens album details');
+      detail.querySelector<HTMLButtonElement>('.mw-gf__artist')!.click();await wait();
+      const wallArtists=[...document.querySelectorAll<HTMLElement>('.mw-picker__row')];
+      expect(wallArtists.length===2,'wall album artists open chooser');wallArtists[1]?.click();await wait();
+      expect(sourceCalls.at(-1)?.artist?.id===72,'wall chooser uses album artists');
+      (wall as any).buildGatefold(detail,{albumId:1,meta:{...meta,artistRefs:[{id:73,name:'Single album artist'}]}});
+      detail.querySelector<HTMLButtonElement>('.mw-gf__artist')!.click();await wait();
+      expect(sourceCalls.at(-1)?.artist?.id===73,'wall single artist opens directly');
+      let resolveAlbum:any;(plugin as any).fetchAlbumDetail=()=>new Promise(resolve=>{resolveAlbum=resolve;});
+      (wall as any).buildGatefold(detail,{albumId:1,meta});const callsBefore=sourceCalls.length;
+      detail.querySelector<HTMLButtonElement>('.mw-gf__artist')!.click();await wait();
+      (wall as any).snapShut(detail,null);resolveAlbum({...meta,artistRefs:[{id:74,name:'Stale album artist'}]});await wait();
+      expect(sourceCalls.length===callsBefore,'wall closed detail ignores pending artist lookup');detail.remove();
+      await engine.pause();expect(!mini.querySelector('.mw-mini__artist')!.textContent?.includes('已暂停'),'mini omits paused label');
+      const r=mini.getBoundingClientRect(),ctrl=mini.querySelector('.mw-mini__controls')!.getBoundingClientRect();expect(Math.abs(ctrl.left+ctrl.width/2-r.left-r.width/2)<1,'mini controls centered across bar');
+      mini.querySelector<HTMLButtonElement>('[data-action=playlist]')!.click();
+      mini.querySelector<HTMLButtonElement>('[data-queue-view=playlist]')!.click();await wait();
+      expect(mini.querySelectorAll('.mw-mini__track').length===4&&engine.contentKind==='album','mini can browse saved songs without playing');
+      mini.querySelector<HTMLButtonElement>('.mw-mini__track:nth-child(2)')!.click();await wait();
+      expect(engine.contentKind==='playlist'&&engine.index===1,'mini saved song click plays selected index');
+      mini.querySelector<HTMLButtonElement>('[data-queue-view=album]')!.click();await wait();expect(engine.contentKind==='playlist','mini album tab never starts audio');
+      root.querySelector<HTMLButtonElement>('[data-queue-view=playlist]')!.click();await wait();await engine.playQueued(engine.albumQueue[0].id);await wait();engine.enqueuePlaylist({...meta,albumId:0,playlistId:17,tracks:[{...meta.tracks[0],id:999}]});await wait();expect(root.querySelectorAll('.mw-np__track').length===5,'inactive saved song list updates when appended');
+      await wall.onClose();wall.contentEl.remove();return {checks,fail:errors};
+    };
     (window as any).verifyQueueUI = async()=>{
       const failures:string[]=[];
       const original=engine.currentEntryId;
@@ -319,6 +449,7 @@ let close = async()=>{};
       const seen:string[]=[];for(let i=0;i<3;i++){seen.push(engine.order);root.querySelector<HTMLButtonElement>('[data-action="play-order"]')!.click();}
       if(seen.includes('shuffle')||new Set(seen).size!==3)failures.push('Album order modes are incorrect');
       await engine.playPlaylist({...meta,albumId:0,playlistId:42});await wait(30);
+      root.querySelector<HTMLButtonElement>('[data-queue-view=playlist]')!.click();await wait(0);
       for(let i=0;i<4&&engine.order!=='shuffle';i++)root.querySelector<HTMLButtonElement>('[data-action="play-order"]')!.click();
       if(engine.order!=='shuffle')failures.push('Playlist shuffle is unavailable');
       root.querySelector<HTMLButtonElement>('.mw-np__track:nth-child(3)')!.click();await wait(30);

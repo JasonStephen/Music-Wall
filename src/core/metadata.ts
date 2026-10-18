@@ -150,13 +150,18 @@ export async function fetchAlbumDetail(
   const tracks: AlbumTrackSnapshot[] = songs.map((s) => ({
     id: s.id,
     name: s.name ?? "",
-    duration: s.dt ?? 0,
-    artists: joinArtists(s.ar, ""),
+    duration: s.dt ?? s.duration ?? 0,
+    artists: joinArtists(s.ar || s.artists, ""),
+    artistRefs: (s.ar || s.artists || []).filter((a: any) => Number(a.id) > 0).map((a: any) => ({ id: Number(a.id), name: String(a.name || "") })),
+    albumId: Number((s.al || s.album)?.id || album.id),
+    albumName: (s.al || s.album)?.name || album.name,
+    cover: (s.al || s.album)?.picUrl || album.picUrl,
   }));
   return {
     albumId: album.id,
     name: album.name ?? "",
     artist: joinArtists(album.artists, album?.artist?.name ?? ""),
+    artistRefs: (album.artists?.length ? album.artists : [album.artist]).filter((a: any) => Number(a?.id) > 0).map((a: any) => ({ id: Number(a.id), name: String(a.name || "") })),
     cover: album.picUrl ?? "",
     publishTime: album.publishTime,
     year: yearFrom(album.publishTime),

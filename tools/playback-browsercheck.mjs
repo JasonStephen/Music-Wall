@@ -32,6 +32,7 @@ try {
   for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[360,740,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',theme,bg:'dark',style:'cd',panel:'queue',longQueue:true,width,height,zoom});
   if(process.argv.includes('--queue')) cases.splice(0,cases.length,...cases.filter(item=>item.panel==='queue'||item.queue||item.source==='playlist'));
   if(process.argv.includes('--mini')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'));
+  if(process.argv.includes('--seek')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'&&item.layout==='grid'&&item.style==='cover'&&[1280,360].includes(item.width)));
   if(process.argv.includes('--quick')) {
     const selected=cases.filter(item=>item.width===1280&&item.kind==='player'&&item.panel==='playlist'||item.kind==='wall'&&item.width===360&&item.style==='cover');
     cases.splice(0,cases.length,...selected);
@@ -68,6 +69,33 @@ try {
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(process.argv.includes('--seek')) {
+      for(const buffering of [false,true]) for(const touch of [false,true]) {
+        const p=await value('window.prepareMiniSeek('+buffering+')');
+        const preview=async()=>{
+          const state=await value('window.miniSeekResult()');checks++;
+          if(state.writes!==0||state.position!==0||!state.dragging||state.disabled){failed++;console.log('FAIL mini seek preview '+JSON.stringify({touch,buffering,state}));}
+        };
+        if(touch) {
+          await page('Emulation.setTouchEmulationEnabled',{enabled:true});
+          await page('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:p.x,y:p.y}]});
+          for(let step=1;step<=5;step++)await page('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:p.x+(p.end-p.x)*step/5,y:p.y}]});
+          await preview();
+          await page('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+          await page('Emulation.setTouchEmulationEnabled',{enabled:false});
+        } else {
+          await page('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});
+          for(let step=1;step<=5;step++)await page('Input.dispatchMouseEvent',{type:'mouseMoved',x:p.x+(p.end-p.x)*step/5,y:p.y,button:'left',buttons:1});
+          await preview();
+          await page('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.end,y:p.y,button:'left',clickCount:1});
+        }
+        await new Promise(resolve=>setTimeout(resolve,50));
+        const state=await value('window.miniSeekResult()');checks++;
+        if(!p.hit||Math.abs(state.position/state.duration-.75)>.04||state.status!==(buffering?'playing':'paused')||state.writes!==1){failed++;console.log('FAIL native mini seek '+JSON.stringify({touch,buffering,width:item.width,hit:p.hit,state}));}
+        checks++;if(!await value('window.verifyMiniSeekFollow()')){failed++;console.log('FAIL mini progress stops following while focused '+JSON.stringify({touch,width:item.width}));}
+      }
+      const lifecycle=await value('window.verifyMiniSeekLifecycle()');checks+=10;if(lifecycle.length){failed++;console.log('FAIL mini seek lifecycle '+JSON.stringify(lifecycle));}
+    }
     if(item.kind==='player'&&!keyboardChecked){
       const keyboard=await value('window.verifyKeyboardPlayback()');checks+=keyboard.checks;keyboardChecked=true;
       if(keyboard.fail.length){failed++;console.log('FAIL keyboard playback '+JSON.stringify(keyboard.fail));}
@@ -80,6 +108,13 @@ try {
       const navigation=await value('window.verifyLibraryNavigation()');checks+=3;
       if(!navigation.search||!navigation.more||!navigation.detail||!navigation.queued||!navigation.played){failed++;console.log('FAIL library navigation '+JSON.stringify(navigation));}
       if(navigation.fail?.length){failed++;console.log('FAIL new library actions '+JSON.stringify(navigation.fail));}
+      const features=await value('window.verifyLibraryDetails()');checks+=features.checks;if(features.fail.length){failed++;console.log('FAIL library detail features '+JSON.stringify(features.fail));}
+      await page('Emulation.setTouchEmulationEnabled',{enabled:true});
+      const hold=await value('window.prepareLibraryNativeHold()');await page('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[hold]});await new Promise(r=>setTimeout(r,550));await page('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await new Promise(r=>setTimeout(r,50));
+      const held=await value('window.libraryNativeHoldResult()');checks++;if(held.menus!==1||held.detail||!held.unchanged){failed++;console.log('FAIL native library hold '+JSON.stringify(held));}
+      const overflow=await value('window.prepareLibraryNativeMore()');await page('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[overflow]});await page('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await new Promise(r=>setTimeout(r,50));
+      const overflowResult=await value('window.libraryNativeMoreResult()');checks++;if(overflowResult.menus!==1||overflowResult.actions!==5){failed++;console.log('FAIL native library overflow '+JSON.stringify(overflowResult));}
+      await page('Emulation.setTouchEmulationEnabled',{enabled:false});
       checks++;if(!await value('window.verifyLibraryStale()')){failed++;console.log('FAIL logout stale cloud response');}
     }
     if(item.kind==='library'&&['home','created','detail','search','artist','albums'].includes(item.page)&&(item.lang==='zh-CN'&&[1280,360,240].includes(item.width)||item.zoom===2&&item.playing)){
@@ -100,6 +135,7 @@ try {
       const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`${i}-${item.kind}-${item.layout??item.bg}-${item.style}-${item.panel??'footer'}.png`),Buffer.from(shot.data,'base64'));
     }
     if(item.panel==='queue'&&!item.longQueue&&item.theme==='dark'&&item.bg==='dark'&&item.width===1280) {
+      const switches=await value('window.verifyQueueSwitches()');checks+=switches.checks;if(switches.fail.length){failed++;console.log('FAIL queue browsing/source '+JSON.stringify(switches.fail));} await value('window.setupPlaybackUI('+JSON.stringify(item)+')');
       const queue=await value('window.verifyQueueUI()');checks+=7;if(queue.length){failed++;console.log('FAIL queue UI '+JSON.stringify(queue));}
     }
     if(item.panel==='queue'||item.queue){const shot=await page('Page.captureScreenshot',{format:'png'});if(item.width===1280||item.width===240||item.zoom===2)fs.writeFileSync(path.join(shotRoot,'queue-'+i+'-'+item.kind+'-'+item.theme+'-'+item.width+'.png'),Buffer.from(shot.data,'base64'));}

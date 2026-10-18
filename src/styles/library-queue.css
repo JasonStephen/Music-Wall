@@ -49,6 +49,9 @@
 .mw-cloud__more { margin: 16px auto; }
 .mw-queue { color: var(--mw-panel-fg); min-width: 0; margin-bottom: 6px; }
 .mw-queue__head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.mw-queue__tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.mw-queue__toolbar { position: sticky; top: 0; z-index: 2; padding-bottom: 4px; background: var(--mw-panel-bg); }
+.mw-queue__tabs [aria-selected="true"] { background: var(--mw-panel-hover); border-color: var(--mw-panel-line); }
 .mw-queue__kind { font-size: 11px; color: var(--mw-panel-fg-dim); margin-right: auto; }
 .mw-queue .mw-queue__button { width: auto; max-width: 100%; height: auto; min-height: 28px; white-space: normal; }
 .mw-queue__list { border-top: 1px solid var(--mw-panel-line); margin-top: 5px; padding-top: 5px; }

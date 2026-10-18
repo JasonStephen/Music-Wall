@@ -99,6 +99,7 @@ export const zhTW: typeof zhCN = {
   },
   case: { title: "外殼", white: "白色", black: "黑色", wood: "原木", art: "跟隨封面" },
   buffering: { pauseFade: "暫停與繼續漸變（秒）", crossFade: "切歌交叉漸變（秒）", cacheLimit: "歌曲快取上限（MB，0 為關閉）", cacheUsed: "歌曲快取已用空間", clearCache: "清除快取", cacheError: "快取清理失敗，請稍後重試" },
+  libraryDetails: {"durationLoading": "正在統計時長…", "durationUnavailable": "時長暫不可用","summary": "{count} 首 · {duration}", "hours": "{value}小時", "minutes": "{value}分鐘", "moreActions": "更多操作", "chooseArtist": "選擇藝術家", "viewAlbum": "查看所屬專輯", "viewArtist": "查看藝術家", "copyLink": "複製網易雲連結", "viewDetails": "查看詳情", "wallAlbum": "音樂牆專輯", "playlist": "歌單", "album": "專輯"},
   wallPicker: {"search": "搜尋音樂牆名稱或資料夾路徑", "clear": "清除搜尋", "count": "{count} 個音樂牆", "noResults": "找不到符合條件的音樂牆"},
   library: {
       "title": "網易雲音樂庫",

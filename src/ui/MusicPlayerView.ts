@@ -33,6 +33,7 @@ import { watchHostInset } from "./hostInset";
 import { QueueControls } from "./QueueControls";
 import { CoverBackdrop } from "./CoverBackdrop";
 import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
+import { PickerModal } from "./smallModals";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -74,6 +75,9 @@ export class MusicPlayerView extends ItemView {
   private popover: "volume" | "quality" | null = null;
   private queueControls: QueueControls | null = null;
   private qualityKey = "";
+  private artistPicker: PickerModal | null = null;
+  private artistRequest = 0;
+  private artistContext = "";
   private volumeIcon = "";
   private stopHostInset: (() => void) | null = null;
   private caseToneKey = "";
@@ -172,6 +176,7 @@ export class MusicPlayerView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
     this.backdrop?.dispose(); this.backdrop = null;
     this.caseToneKey = "";
     this.stopHostInset?.(); this.stopHostInset = null;
@@ -204,9 +209,9 @@ export class MusicPlayerView extends ItemView {
 
   /** 拖入或菜单「加入播放器」：替换当前专辑并立即整专播放 */
   playInPlayer(meta: AlbumMeta, srcPath: string): void {
-    this.current = { meta, srcPath };
+    this.current = { meta: { ...meta, playbackWallPath: srcPath || undefined }, srcPath };
     void this.render();
-    void playAlbum(meta, this.plugin.getPlaybackDeps());
+    void playAlbum(meta, this.plugin.getPlaybackDeps(srcPath));
   }
 
   /** 外部（设置变更 / 库变动）触发重绘 */
@@ -280,6 +285,7 @@ export class MusicPlayerView extends ItemView {
     const root = this.contentEl;
     const prevDrawer = this.drawer?.currentKey() ?? null;
     this.drawer?.dispose();
+    this.queueControls?.dispose(); this.queueControls = null;
     this.drawer = null;
     this.backdrop?.dispose(); root.empty();
     root.addClass("mw-view", "mw-player");
@@ -376,6 +382,8 @@ export class MusicPlayerView extends ItemView {
       cls: "mw-player__title",
       text: t("player.displayName"),
     });
+    this.el.source = bar.createEl("button", { cls: "clickable-icon mw-player__source", attr: { type: "button" } });
+    this.el.source.addEventListener("click", () => void this.openSource());
     const btn = bar.createEl("button", { cls: "clickable-icon mw-toolbtn" });
     btn.setAttr("type", "button");
     btn.setAttr("aria-label", t("player.styleBg"));
@@ -476,14 +484,10 @@ export class MusicPlayerView extends ItemView {
 
     const meta = stack.createDiv({ cls: "mw-np__meta" });
     this.el.title = meta.createDiv({ cls: "mw-np__title" });
-    this.el.artist = meta.createDiv({ cls: "mw-np__artist" });
+    this.el.artist = meta.createEl("button", { cls: "mw-np__artist", attr: { type: "button" } });
+    this.el.artist.addEventListener("click", () => { void this.openCurrentArtist().catch(() => new Notice(t("library.failed"))); });
     const line = meta.createDiv({ cls: "mw-np__line" });
     this.el.status = line.createSpan({ cls: "mw-np__status" });
-    this.el.jump = line.createEl("button", {
-      cls: "mw-np__jump",
-      text: t("player.jump"),
-    });
-    this.el.jump.addEventListener("click", () => void this.jumpToWall());
 
     const timeline = stack.createDiv({ cls: "mw-np__timeline is-hidden" });
     this.el.timeline = timeline;
@@ -626,7 +630,7 @@ export class MusicPlayerView extends ItemView {
     setIcon(close, "chevron-down");
     close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
-    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin());
+    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateTrackList(); this.updateHighlights(); });
     this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
     this.updateTrackList();
   }
@@ -637,7 +641,7 @@ export class MusicPlayerView extends ItemView {
     if (!host) return;
     host.empty();
     this.trackRows = [];
-    const album = this.displayAlbum();
+    const album = this.plugin.settings.playbackMode === "internal" && this.queueControls ? this.queueControls.collection : this.displayAlbum();
     const tracks = album?.tracks ?? [];
     const internal = this.plugin.settings.playbackMode === "internal";
     if (this.el.tracksTitle) {
@@ -660,7 +664,8 @@ export class MusicPlayerView extends ItemView {
         row.setAttr("aria-label", t("internal.playTrack", { name: track.name }));
         const collection = this.plugin.internalPlayer.album;
         const play = () => void (async () => {
-          if (await this.plugin.ensureNeteaseLogin() && this.plugin.internalPlayer.album === collection) await this.plugin.internalPlayer.select(i);
+          if (this.queueControls) await this.queueControls.selectTrack(i);
+          else if (await this.plugin.ensureNeteaseLogin() && this.plugin.internalPlayer.album === collection) await this.plugin.internalPlayer.select(i);
         })();
         row.addEventListener("click", play);
         row.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -678,6 +683,11 @@ export class MusicPlayerView extends ItemView {
   // ---- 增量更新 ----
 
   private updateNow(): void {
+    const artistContext = this.currentArtistContext();
+    if (artistContext !== this.artistContext) {
+      this.artistContext = artistContext; this.artistRequest++;
+      this.artistPicker?.close(); this.artistPicker = null;
+    }
     this.applyCaseAppearance();
     const album = this.displayAlbum();
     const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}` : "";
@@ -697,6 +707,7 @@ export class MusicPlayerView extends ItemView {
           : t("player.notPlaying");
     }
     if (this.el.artist) {
+      (this.el.artist as HTMLButtonElement).disabled = !this.now.active || !this.now.songId;
       this.el.artist.textContent = this.now.active
         ? this.now.artist || t("common.unknownArtist")
         : album
@@ -704,7 +715,7 @@ export class MusicPlayerView extends ItemView {
           : t("player.dragHint");
     }
     if (this.el.status) this.el.status.textContent = this.statusText();
-    if (this.el.jump) this.el.jump.toggleClass("is-hidden", !this.match);
+    this.updateSource();
 
     const paused = this.now.status !== "playing" && !(this.now.source === "internal" && this.plugin.internalPlayer?.loading && this.plugin.internalPlayer.playingRequested);
     this.el.discWrap?.toggleClass("is-paused", paused);
@@ -752,6 +763,31 @@ export class MusicPlayerView extends ItemView {
 
     this.updateHighlights();
   }
+  private currentArtistContext(): string {
+    return `${this.now.active}|${this.now.source}|${this.now.songId || 0}|${this.plugin.settings.neteaseCookie}`;
+  }
+  private async openCurrentArtist(): Promise<void> {
+    const id = this.now.active && this.now.songId;
+    if (!id) return;
+    const context = this.currentArtistContext(), request = ++this.artistRequest;
+    const valid = () => !!this.shell && request === this.artistRequest && context === this.currentArtistContext();
+    this.artistPicker?.close(); this.artistPicker = null;
+    const track = this.plugin.internalPlayer?.album?.tracks?.find(track => track.id === id);
+    const refs = track?.artistRefs?.length ? track.artistRefs :
+      (await this.plugin.libraryApi.songs([id], this.plugin.settings.neteaseCookie))[0]?.artistRefs || [];
+    if (!valid()) return;
+    const artists = [...new Map(refs.filter(artist => artist.id > 0).map(artist => [artist.id, artist])).values()];
+    const open = async (index: number) => {
+      if (valid()) await this.plugin.openLibraryArtist({ ...artists[index], cover: "" });
+    };
+    if (artists.length === 1) await open(0);
+    else if (artists.length > 1) {
+      this.artistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"),
+        artists.map(artist => ({ label: artist.name, icon: "mic" })),
+        index => { void open(index).catch(() => new Notice(t("library.failed"))); });
+      this.artistPicker.open();
+    }
+  }
 
   private statusText(): string {
     if (this.now.source === "internal") {
@@ -779,7 +815,7 @@ export class MusicPlayerView extends ItemView {
 
   private updateHighlights(): void {
     const idx = this.activeTrackIndex();
-    this.trackRows.forEach((row, i) => row.toggleClass("is-current", i === idx));
+    this.trackRows.forEach((row, i) => row.toggleClass("is-current", this.queueControls ? this.queueControls.isCurrent(i) : i === idx));
   }
 
   private renderDisc(album: AlbumMeta | null): void {
@@ -869,14 +905,19 @@ export class MusicPlayerView extends ItemView {
 
   // ---- 跳转到所在墙 ----
 
-  private async jumpToWall(): Promise<void> {
-    const albumId = this.match?.albumId;
-    if (!albumId) return;
-    const found = await this.plugin.findAlbumWall(albumId);
-    if (!found) {
-      new Notice(t("player.jumpNotFound"));
-      return;
-    }
-    await this.plugin.openWall(found.file);
+  private updateSource(): void {
+    const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
+    const source = this.el.source; if (!source) return;
+    const wall = meta?.playbackWallPath;
+    const kind = wall ? "wallAlbum" : meta?.playlistId || this.plugin.internalPlayer?.contentKind === "playlist" ? "playlist" : "album";
+    source.setText(meta ? `${t(`libraryDetails.${kind}`)}·${meta.name}` : "");
+    source.title = source.textContent || ""; source.toggleClass("is-hidden", !meta);
+  }
+  private async openSource(): Promise<void> {
+    const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
+    if (!meta) return;
+    if (meta.playbackWallPath) {
+      await this.plugin.revealWallAlbum(meta.playbackWallPath, meta.albumId);
+    } else await this.plugin.openLibraryCollection(meta);
   }
 }

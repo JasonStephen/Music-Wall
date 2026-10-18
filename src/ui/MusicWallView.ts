@@ -421,6 +421,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onClose(): Promise<void> {
+    this.detailArtistPicker?.close(); this.detailArtistPicker = null;
+    this.detailArtistRequest++;
     this.releasePress?.(); this.releasePress = null;
     this.closeContext?.(); this.closeContext = null;
     this.stopHostInset?.(); this.stopHostInset = null;
@@ -508,16 +510,24 @@ export class MusicWallView extends FileView implements WallHost {
   async fetchAlbumDetail(albumId: number): Promise<AlbumMeta> {
     return this.plugin.fetchAlbumDetail(albumId);
   }
-  async enqueueAlbum(meta: AlbumMeta): Promise<void> { await this.plugin.enqueueAlbum(meta); }
+  async enqueueAlbum(meta: AlbumMeta): Promise<void> { await this.plugin.enqueueAlbum(this.data?.items.some(item => item.albumId === meta.albumId) ? { ...meta, playbackWallPath: this.getFile()?.path } : meta); }
+  revealAlbum(albumId: number): void {
+    this.contentEl.querySelector<HTMLElement>(`[data-mw-album="${albumId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
   getPlaybackDeps(): import("../core/playback").PlaybackDeps {
-    return this.plugin.getPlaybackDeps();
+    const wrap = (deps: import("../core/playback").PlaybackDeps): import("../core/playback").PlaybackDeps => ({
+      ...deps,
+      authorize: deps.authorize ? async () => { const next = await deps.authorize!(); return next ? wrap(next) : null; } : undefined,
+      playInside: deps.playInside ? (meta, index) => deps.playInside!(this.data?.items.some(item => item.albumId === meta.albumId) ? { ...meta, playbackWallPath: this.getFile()?.path } : meta, index) : undefined,
+    });
+    return wrap(this.plugin.getPlaybackDeps());
   }
   confirmAdd(meta: AlbumMeta, onAdd: () => void): void {
     new AlbumPanelModal(this.app, "add", {
       meta,
       style: this.getStyle(),
       source: "search",
-      deps: this.plugin.getPlaybackDeps(),
+      deps: this.getPlaybackDeps(),
       onAdd: () => {
         onAdd();
         new Notice(t("wall.card.added", { name: meta.name }));
@@ -3187,7 +3197,7 @@ export class MusicWallView extends FileView implements WallHost {
       source: item.source,
       rating: item.rating,
       onRate: (r) => this.applyRating(item, r),
-      deps: this.plugin.getPlaybackDeps(),
+      deps: this.getPlaybackDeps(),
     }).open();
   }
 
@@ -3241,6 +3251,8 @@ export class MusicWallView extends FileView implements WallHost {
   private detailBusy = false;
   /** 异步时序令牌：render 重建/中止时自增，使陈旧回调失效 */
   private detailSeq = 0;
+  private detailArtistPicker: PickerModal | null = null;
+  private detailArtistRequest = 0;
   /** 进入详情前的架子滚动位（关闭时相机回撤目标） */
   private detailPrevScroll = 0;
   private detailOpen = false;
@@ -3434,6 +3446,7 @@ export class MusicWallView extends FileView implements WallHost {
    * 盒子精确落回原唱片。完成后按队列自动开下一张。
    */
   private async driveClose(): Promise<void> {
+    this.detailArtistPicker?.close(); this.detailArtistPicker = null; this.detailArtistRequest++;
     if (this.gfClosing) return;
     this.gfClosing = true;
     const seq = this.detailSeq;
@@ -3591,6 +3604,7 @@ export class MusicWallView extends FileView implements WallHost {
 
   /** 硬切关闭：无动画直接回到闭合骨架 */
   private snapShut(detail: HTMLElement, grid: HTMLElement | null): void {
+    this.detailArtistPicker?.close(); this.detailArtistPicker = null; this.detailArtistRequest++;
     this.detailSeq++;
     this.cancelAllDetailAnims();
     detail.removeClass("is-open", "is-booting", "is-shutting");
@@ -3740,11 +3754,35 @@ export class MusicWallView extends FileView implements WallHost {
     );
 
     const metaBox = info.createDiv({ cls: "mw-gf__meta" });
-    const nameEl = metaBox.createDiv({ cls: "mw-gf__name", text: meta.name });
+    const nameEl = metaBox.createEl("button", { cls: "mw-gf__name mw-gf__link", text: meta.name, attr: { type: "button" } });
     nameEl.title = meta.name;
-    metaBox.createDiv({
-      cls: "mw-gf__artist",
+    nameEl.addEventListener("click", event => {
+      event.stopPropagation();
+      void this.plugin.openLibraryCollection(meta).catch(() => new Notice(t("library.failed")));
+    });
+    const artistEl = metaBox.createEl("button", {
+      cls: "mw-gf__artist mw-gf__link", attr: { type: "button" },
       text: meta.artist || t("common.unknownArtist"),
+    });
+    artistEl.title = meta.artist || t("common.unknownArtist");
+    let artistRefs = meta.artistRefs;
+    artistEl.addEventListener("click", event => {
+      event.stopPropagation();
+      const seq = this.detailSeq, request = ++this.detailArtistRequest, cookie = this.plugin.settings.neteaseCookie;
+      const valid = () => request === this.detailArtistRequest && seq === this.detailSeq && artistEl.isConnected && cookie === this.plugin.settings.neteaseCookie;
+      this.detailArtistPicker?.close(); this.detailArtistPicker = null;
+      void (async () => {
+        if (!artistRefs?.length) artistRefs = (await this.fetchAlbumDetail(item.albumId)).artistRefs;
+        if (!valid()) return;
+        const artists = [...new Map((artistRefs || []).filter(artist => artist.id > 0).map(artist => [artist.id, artist])).values()];
+        const open = async (index: number) => { if (valid()) await this.plugin.openLibraryArtist({ ...artists[index], cover: "" }); };
+        if (artists.length === 1) await open(0);
+        else if (artists.length > 1) {
+          this.detailArtistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(artist => ({ label: artist.name, icon: "mic" })),
+            index => { void open(index).catch(() => new Notice(t("library.failed"))); });
+          this.detailArtistPicker.open();
+        }
+      })().catch(() => { if (valid()) new Notice(t("library.failed")); });
     });
     // 评分行：五星只读展示＋“评分”按钮（弹出评分框，悬停预览）
     const gfRateRow = info.createDiv({ cls: "mw-rate-row mw-gf__rate" });
@@ -3784,7 +3822,7 @@ export class MusicWallView extends FileView implements WallHost {
     const tray = panelR.createDiv({ cls: "mw-gf__face mw-gf__face--tray" });
     const discWrap = tray.createDiv({ cls: "mw-gf__discwrap" });
     discWrap.addEventListener("click", () => {
-      void playAlbum(item.meta, this.plugin.getPlaybackDeps());
+      void playAlbum(item.meta, this.getPlaybackDeps());
     });
     const vinylFace = discWrap.createDiv({ cls: "mw-gf__discface" });
     vinylFace.appendChild(buildDiscElement(item, "vinyl", { coverSize: 500 }));
@@ -3838,7 +3876,7 @@ export class MusicWallView extends FileView implements WallHost {
       {
         title: t("wall.ctx.play"),
         icon: "play",
-        onPick: () => void playAlbum(item.meta, this.plugin.getPlaybackDeps()),
+        onPick: () => void playAlbum(item.meta, this.getPlaybackDeps()),
       },
       {
         title: t("wall.ctx.addToPlayer"),

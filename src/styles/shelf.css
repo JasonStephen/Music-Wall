@@ -460,6 +460,22 @@
   flex-shrink: 0;
   min-width: 0;
 }
+.mw-view button.mw-gf__link {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+.mw-view button.mw-gf__artist { color: #c9b8a2; }
+.mw-view button.mw-gf__link:hover { text-decoration: underline; cursor: pointer; }
+.mw-view button.mw-gf__link:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 3px; }
 .mw-gf__name {
   font-size: clamp(1em, 2.4cqw, 1.6em);
   font-weight: 700;

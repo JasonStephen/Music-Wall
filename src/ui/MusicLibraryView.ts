@@ -10,12 +10,26 @@ import { DEFAULT_COVER } from "./defaultCover";
 import { handleZoomWheel, syncZoomBox, disposeZoomBox } from "./zoom";
 import { watchHostInset } from "./hostInset";
 import { MiniPlayer } from "./MiniPlayer";
+import { PickerModal } from "./smallModals";
+import { bindLibraryMenu, type LibraryMenuAction } from "./libraryMenu";
+import { collectionSummary, collectionStats, statsSummary, type CollectionStats } from "./collectionSummary";
 import { svgAction } from "./svgAction";
 
 type Tab = "home" | "created" | "collected" | "likes" | "search";
 const emptySearch = (): LibrarySearchResult => ({ songs: [], artists: [], albums: [], playlists: [], more: false });
 
 export class MusicLibraryView extends ItemView {
+  private albumItem: AlbumSummary | null = null;
+  private artistSection: "songs" | "albums" = "songs";
+  private history: (() => void)[] = [];
+  private menuCleanups: (() => void)[] = [];
+  private artistPicker: PickerModal | null = null;
+  private statsObserver: IntersectionObserver | null = null;
+  private statsTargets = new Map<Element, () => void>();
+  private statsQueue: (() => Promise<void>)[] = [];
+  private statsRunning = 0;
+  private statsEpoch = 0;
+  private statsCache = new Map<string, Promise<CollectionStats>>();
   private tab: Tab = "home";
   private generation = 0;
   private keyword = "";
@@ -46,7 +60,7 @@ export class MusicLibraryView extends ItemView {
   private playIntent = 0;
   constructor(leaf: WorkspaceLeaf, private plugin: MusicWallPlugin) { super(leaf); }
   getViewType(): string { return LIBRARY_VIEW_TYPE; }
-  getDisplayText(): string { return this.tab === "likes" ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
+  getDisplayText(): string { return this.tab === "likes" && !this.albumItem && !this.artistItem && !this.playlistItem ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.albumItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
   getIcon(): string { return "list-music"; }
   async onOpen(): Promise<void> {
     this.closed = false; this.auth = this.plugin.settings.neteaseCookie;
@@ -65,8 +79,9 @@ export class MusicLibraryView extends ItemView {
     this.render(); this.stopInset = watchHostInset(root);
   }
   async onClose(): Promise<void> {
+    this.resetCardStats(); this.statsCache.clear();
     this.closed = true; ++this.generation; ++this.playIntent;
-    this.stopInset?.(); this.resize?.disconnect(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl);
+    this.clearMenus(); this.artistPicker?.close(); this.stopInset?.(); this.resize?.disconnect(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl);
   }
   syncZoomBox(): void { syncZoomBox(this.contentEl, this.plugin.settings.zoomScale); this.updateLayout(); }
   refresh(): void {
@@ -75,7 +90,8 @@ export class MusicLibraryView extends ItemView {
     if (auth !== this.auth) {
       // A first sign-in may belong to a pending play action; logout/account replacement invalidates it.
       if (this.auth || !auth) ++this.playIntent;
-      this.auth = auth; ++this.generation; this.plugin.libraryApi.clear();
+      this.auth = auth; this.history = []; this.albumItem = null; this.artistPicker?.close(); ++this.generation; this.plugin.libraryApi.clear();
+      this.statsCache.clear();
       this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.lists = []; this.results = emptySearch(); this.offset = 0;
       this.loading = false; this.retry = null; this.tab = "home";
     }
@@ -111,18 +127,19 @@ export class MusicLibraryView extends ItemView {
   }
   private render(): void {
     if (this.closed || !this.body) return;
-    this.renderNav(); this.head.empty(); this.body.empty();
+    this.resetCardStats();
+    this.clearMenus(); this.renderNav(); this.head.empty(); this.body.empty();
     const nav = svgAction(this.head, "menu", t("library.expandNav"), () => this.toggleNav()); nav.dataset.navToggle = "true"; nav.addClass("mw-cloud__menu");
     this.head.createEl("h2", { text: this.getDisplayText() });
     svgAction(this.head, "home", t("library.home"), () => this.navigate("home"));
-    svgAction(this.head, "refresh-cw", t("library.refresh"), () => { this.plugin.libraryApi.clear(); return this.reload(); });
+    svgAction(this.head, "refresh-cw", t("library.refresh"), () => { this.statsCache.clear(); this.plugin.libraryApi.clear(); return this.reload(); });
     svgAction(this.head, "disc", t("cmd.openPlayer"), () => this.plugin.openPlayerView());
     const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void; tabHeaderInnerTitleEl?: HTMLElement };
     leaf.updateHeader?.(); leaf.tabHeaderInnerTitleEl?.setText(this.getDisplayText());
     (this as unknown as { containerEl?: HTMLElement }).containerEl?.querySelector<HTMLElement>(".view-header-title")?.setText(this.getDisplayText());
     if (this.tab === "home") this.renderHome();
     else {
-      if (this.tab === "search" && !this.collection && !this.playlistItem && !this.artistItem) { this.renderSearch(this.body); this.renderSearchTabs(); }
+      if (this.tab === "search" && !this.collection && !this.playlistItem && !this.artistItem && !this.albumItem) { this.renderSearch(this.body); this.renderSearchTabs(); }
       if (this.loading) this.body.createDiv({ cls: "mw-cloud__empty", text: t("mini.loading") });
       else if (this.retry) this.renderError();
       else if (["created", "collected", "likes"].includes(this.tab) && !this.plugin.settings.neteaseCookie) this.renderSignIn(this.body);
@@ -146,7 +163,7 @@ export class MusicLibraryView extends ItemView {
     svgAction(form, "search", t("library.search"), () => form.requestSubmit());
     form.addEventListener("submit", event => {
       event.preventDefault(); const keyword = input.value.trim(); if (!keyword) { input.focus(); return; }
-      this.keyword = keyword; this.results = emptySearch(); this.offset = 0; this.tab = "search";
+      this.keyword = keyword; this.results = emptySearch(); this.offset = 0; this.tab = "search"; this.history = []; this.albumItem = null;
       this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.closeDrawer(); void this.loadContent();
     });
   }
@@ -167,6 +184,7 @@ export class MusicLibraryView extends ItemView {
       for (const artist of this.results.artists) {
         const card = this.card(grid, artist.name, "", artist.cover); card.addClass("mw-cloud__artist-card");
         card.addEventListener("click", () => void this.openArtist(artist));
+        this.context(card, () => this.artistActions(artist));
       }
       if (!this.results.artists.length) this.empty(this.body);
     }
@@ -182,55 +200,137 @@ export class MusicLibraryView extends ItemView {
   private renderLists(parent: HTMLElement, lists: CloudPlaylist[]): void {
     if (!lists.length) { this.empty(parent); return; }
     const grid = parent.createDiv({ cls: "mw-cloud__grid" });
-    for (const item of lists) this.card(grid, item.name, item.creator, item.cover).addEventListener("click", () => void this.openPlaylist(item));
+    for (const item of lists) {
+      const card = this.card(grid, item.name, item.creator, item.cover);
+      this.cardStats(card, `playlist:${item.id}`, item.count, () => this.plugin.libraryApi.playlistStats(item.id, this.plugin.settings.neteaseCookie));
+      card.addEventListener("click", () => void this.openPlaylist(item));
+      this.context(card, () => this.playlistActions(item));
+    }
   }
   private renderAlbums(parent: HTMLElement, albums: AlbumSummary[]): void {
     if (!albums.length) { this.empty(parent); return; }
     const grid = parent.createDiv({ cls: "mw-cloud__grid" });
     for (const album of albums) {
       const entry = grid.createDiv({ cls: "mw-cloud__album" });
-      const card = entry.createDiv({ cls: "mw-cloud__album-card" });
+      const card = entry.createEl("button", { cls: "mw-cloud__album-card", attr: { type: "button", title: album.name } });
+      card.addEventListener("click", () => void this.openAlbum(album));
+      this.context(entry, () => this.albumActions(album));
       card.createEl("img", { attr: { src: sizedCover(album.cover || DEFAULT_COVER, 300), alt: "", loading: "lazy" } });
       card.createSpan({ cls: "mw-cloud__name", text: album.name }); card.createSpan({ cls: "mw-cloud__creator", text: album.artist });
+      this.cardStats(card, `album:${album.albumId}`, album.trackCount, async () => collectionStats(await this.plugin.fetchAlbumDetail(album.albumId)));
       const actions = entry.createDiv({ cls: "mw-cloud__actions" });
       svgAction(actions, "play", t("search.preview"), () => this.albumAction(album, "play"));
       svgAction(actions, "folder-plus", t("library.addToWall"), () => this.albumAction(album, "wall"));
       svgAction(actions, "list-plus", t("queue.add"), () => this.albumAction(album, "queue"));
     }
   }
-  private back(): void { ++this.generation; this.loading = false; this.retry = null; this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; if (this.tab === "likes") this.tab = "home"; this.render(); }
+  private resetCardStats(): void {
+    ++this.statsEpoch; this.statsObserver?.disconnect(); this.statsObserver = null;
+    this.statsTargets.clear(); this.statsQueue = [];
+  }
+  private drainCardStats(): void {
+    while (this.statsRunning < 2 && this.statsQueue.length) {
+      const task = this.statsQueue.shift()!; ++this.statsRunning;
+      void task().finally(() => { --this.statsRunning; this.drainCardStats(); });
+    }
+  }
+  private cardStats(card: HTMLElement, key: string, count: number, load: () => Promise<CollectionStats>): void {
+    const label = card.createSpan({ cls: "mw-cloud__card-stats", text: statsSummary({ count }, true) });
+    const epoch = this.statsEpoch, cookie = this.plugin.settings.neteaseCookie;
+    const valid = () => !this.closed && epoch === this.statsEpoch && cookie === this.plugin.settings.neteaseCookie && label.isConnected;
+    const enqueue = () => {
+      this.statsQueue.push(async () => {
+        if (!valid()) return;
+        let result = this.statsCache.get(key);
+        if (!result) {
+          result = load(); this.statsCache.set(key, result);
+          if (this.statsCache.size > 200) this.statsCache.delete(this.statsCache.keys().next().value!);
+        }
+        try {
+          const stats = await result;
+          if (valid()) { label.textContent = statsSummary(stats); label.title = label.textContent; }
+        } catch {
+          if (this.statsCache.get(key) === result) this.statsCache.delete(key);
+          if (valid()) label.textContent = statsSummary({ count });
+        }
+      }); this.drainCardStats();
+    };
+    if (typeof IntersectionObserver === "undefined") { queueMicrotask(enqueue); return; }
+    if (!this.statsObserver) this.statsObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        const start = this.statsTargets.get(entry.target); this.statsTargets.delete(entry.target);
+        this.statsObserver?.unobserve(entry.target); start?.();
+      }
+    }, { rootMargin: "200px" });
+    this.statsTargets.set(card, enqueue); this.statsObserver.observe(card);
+  }
+  private remember(): void {
+    const snapshot = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset };
+    const scroll = this.body.scrollTop;
+    this.history.push(() => { Object.assign(this, snapshot); this.render(); this.body.scrollTop = scroll; });
+  }
+  private back(): void {
+    ++this.generation; this.loading = false; this.retry = null;
+    const restore = this.history.pop(); if (restore) { restore(); return; }
+    this.collection = null; this.playlistItem = null; this.albumItem = null; this.artist = null; this.artistItem = null;
+    if (this.tab === "likes") this.tab = "home"; this.render();
+  }
+  async showCollection(meta: AlbumMeta): Promise<void> {
+    if ((!meta.playlistId && meta.albumId <= 0) || (meta.playlistId && meta.playlistId < 0) || meta.name === t("queue.playlistQueue")) { this.remember(); this.tab = "search"; this.albumItem = null; this.artist = null; this.artistItem = null; this.playlistItem = null; this.collection = meta; ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
+    if (meta.playlistId) return this.openPlaylist({ id: meta.playlistId, name: meta.name, creator: meta.artist, cover: meta.cover, count: meta.trackCount, owner: 0, special: 0 });
+    return this.openAlbum(meta);
+  }
+  private async openAlbum(album: AlbumSummary, remember = true): Promise<void> {
+    if (remember) this.remember();
+    if (this.tab === "home") this.tab = "search";
+    this.albumItem = album; this.playlistItem = null; this.collection = null; this.artist = null; this.artistItem = null;
+    return this.request(() => this.plugin.fetchAlbumDetail(album.albumId), meta => { this.collection = meta; }, () => this.openAlbum(album, false));
+  }
   private renderCollection(collection: AlbumMeta): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });
     svgAction(head, "arrow-left", t("common.back"), () => this.back());
     head.createEl("img", { attr: { src: sizedCover(collection.cover || DEFAULT_COVER, 160), alt: "" } });
-    head.createEl("h3", { text: collection.name });
+    const info = head.createDiv({ cls: "mw-cloud__collection-info" });
+    info.createEl("h3", { text: collection.name });
+    info.createDiv({ cls: "mw-cloud__summary", text: collectionSummary(collection) });
     svgAction(head, "play", t("panel.play"), () => this.play(collection, 0));
-    svgAction(head, "list-plus", t("queue.addPlaylist"), async () => {
+    svgAction(head, "list-plus", t(this.albumItem ? "queue.add" : "queue.addPlaylist"), async () => {
       if (!(await this.authorizeInternal())) return;
-      this.plugin.internalPlayer.enqueuePlaylist(collection); new Notice(t("queue.playlistAdded"));
+      if (this.albumItem) await this.plugin.enqueueAlbum(collection);
+      else { this.plugin.internalPlayer.enqueuePlaylist(collection); new Notice(t("queue.playlistAdded")); }
     });
     this.renderTracks(this.body, collection.tracks || [], collection);
   }
   private renderTracks(parent: HTMLElement, tracks: AlbumTrackSnapshot[], collection?: AlbumMeta): void {
     if (!tracks.length) { this.empty(parent); return; }
     const list = parent.createDiv({ cls: "mw-cloud__tracks" });
+    list.style.setProperty("--mw-track-digits", String(Math.max(2, String(tracks.length).length)));
     tracks.forEach((track, index) => {
       const row = list.createDiv({ cls: "mw-cloud__track" });
       row.createSpan({ cls: "mw-cloud__number", text: String(index + 1).padStart(2, "0") });
-      const detail = row.createDiv({ cls: "mw-cloud__track-info" }); detail.createSpan({ cls: "mw-cloud__name", text: track.name }); detail.createSpan({ cls: "mw-cloud__creator", text: track.artists || "" });
+      const detail = row.createDiv({ cls: "mw-cloud__track-info" }); detail.createSpan({ cls: "mw-cloud__name", text: track.name }); const metadata = detail.createDiv({ cls: "mw-cloud__track-meta" });
+      if (track.albumName || collection && !collection.playlistId) this.link(metadata, track.albumName || collection!.name, () => this.trackAlbum(track, collection), "album");
+      if (track.artists) this.link(metadata, track.artists, () => this.trackArtist(track), "artist");
       row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       const actions = row.createDiv({ cls: "mw-cloud__actions" });
       svgAction(actions, "play", t("internal.playTrack", { name: track.name }), () => collection ? this.play(collection, index) : this.single(track, true)).dataset.trackAction = "play";
       svgAction(actions, "list-plus", t("library.playNext"), () => this.single(track, false)).dataset.trackAction = "next";
+      const menu = this.context(row, () => this.trackActions(track, collection, index));
+      const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
+      more.dataset.trackAction = "more";
     });
   }
   private renderArtist(content: ArtistContent): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });
     svgAction(head, "arrow-left", t("common.back"), () => this.back());
     head.createEl("img", { attr: { src: sizedCover(content.artist.cover || DEFAULT_COVER, 160), alt: "" } }); head.createEl("h3", { text: content.artist.name });
-    this.body.createEl("h3", { text: t("library.topSongs") }); this.renderTracks(this.body, content.tracks);
-    this.body.createEl("h3", { text: t("library.albums") }); this.renderAlbums(this.body, content.albums);
-    if (content.more) this.more(this.body, () => this.loadArtistAlbums());
+    const tabs = this.body.createDiv({ cls: "mw-cloud__tabs", attr: { role: "tablist", "aria-label": content.artist.name } });
+    for (const section of ["songs", "albums"] as const) {
+      const button = svgAction(tabs, section === "songs" ? "music" : "disc", t(`library.${section}`), () => { this.artistSection = section; this.render(); }, true);
+      button.dataset.artistSection = section; button.setAttr("role", "tab"); button.setAttr("aria-selected", String(this.artistSection === section));
+    }
+    if (this.artistSection === "songs") this.renderTracks(this.body, content.tracks);
+    else { this.renderAlbums(this.body, content.albums); if (content.more) this.more(this.body, () => this.loadArtistAlbums()); }
   }
   private renderSignIn(parent: HTMLElement): void {
     const empty = parent.createDiv({ cls: "mw-cloud__empty" }); empty.createEl("p", { text: t("auth.signedOutDesc") });
@@ -241,7 +341,7 @@ export class MusicLibraryView extends ItemView {
     if (await this.plugin.ensureNeteaseLogin(true)) { this.auth = this.plugin.settings.neteaseCookie; if (!this.closed) await this.navigate(desired); }
   }
   private async navigate(tab: Tab): Promise<void> {
-    this.tab = tab; this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.offset = 0;
+    this.history = []; this.albumItem = null; this.tab = tab; this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.offset = 0;
     this.lists = []; this.results = emptySearch(); this.drawer = false; await this.loadContent();
   }
   private current(token: number, cookie: string): boolean { return !this.closed && token === this.generation && cookie === this.plugin.settings.neteaseCookie; }
@@ -252,8 +352,9 @@ export class MusicLibraryView extends ItemView {
     catch { if (this.current(token, cookie)) { this.loading = false; this.retry = retry; this.render(); } }
   }
   private async reload(): Promise<void> {
-    if (this.playlistItem) return this.openPlaylist(this.playlistItem);
-    if (this.artist) return this.openArtist(this.artist.artist);
+    if (this.albumItem) return this.openAlbum(this.albumItem, false);
+    if (this.playlistItem) return this.openPlaylist(this.playlistItem, false);
+    if (this.artist) return this.openArtist(this.artist.artist, false);
     return this.loadContent();
   }
   private async loadContent(more = false): Promise<void> {
@@ -277,15 +378,18 @@ export class MusicLibraryView extends ItemView {
     const empty = this.body.createDiv({ cls: "mw-cloud__empty" }); empty.createEl("p", { text: t("library.failed") });
     svgAction(empty, "refresh-cw", t("library.retry"), () => this.retry?.(), true);
     svgAction(empty, "log-in", t("auth.signIn"), () => this.signIn(), true);
-    if (this.playlistItem || this.artistItem) svgAction(empty, "arrow-left", t("common.back"), () => this.back(), true);
+    if (this.playlistItem || this.artistItem || this.albumItem) svgAction(empty, "arrow-left", t("common.back"), () => this.back(), true);
   }
-  private async openPlaylist(item: CloudPlaylist): Promise<void> {
-    this.playlistItem = item; this.collection = null;
-    return this.request(() => this.plugin.libraryApi.detail(item, this.plugin.settings.neteaseCookie), collection => { this.collection = collection; }, () => this.openPlaylist(item));
+  private async openPlaylist(item: CloudPlaylist, remember = true): Promise<void> {
+    if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
+    this.playlistItem = item; this.collection = null; this.albumItem = null; this.artist = null; this.artistItem = null;
+    return this.request(() => this.plugin.libraryApi.detail(item, this.plugin.settings.neteaseCookie), collection => { this.collection = collection; }, () => this.openPlaylist(item, false));
   }
-  private async openArtist(artist: CloudArtist): Promise<void> {
-    this.artistItem = artist;
-    return this.request(() => this.plugin.libraryApi.artistDetail(artist, this.plugin.settings.neteaseCookie), content => { this.artist = content; this.artistOffset = 0; }, () => this.openArtist(artist));
+  async showArtist(artist: CloudArtist): Promise<void> { await this.openArtist(artist); }
+  private async openArtist(artist: CloudArtist, remember = true): Promise<void> {
+    if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
+    this.artistItem = artist; this.artist = null; this.artistSection = "songs"; this.collection = null; this.playlistItem = null; this.albumItem = null;
+    return this.request(() => this.plugin.libraryApi.artistDetail(artist, this.plugin.settings.neteaseCookie), content => { this.artist = content; this.artistOffset = 0; }, () => this.openArtist(artist, false));
   }
   private async loadArtistAlbums(): Promise<void> {
     const artist = this.artist; if (!artist) return;
@@ -293,6 +397,75 @@ export class MusicLibraryView extends ItemView {
     return this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, offset), page => {
       this.artist = { ...artist, albums: [...artist.albums, ...page.albums], more: page.more }; this.artistOffset = offset;
     }, () => this.loadArtistAlbums());
+  }
+  private clearMenus(): void { this.menuCleanups.splice(0).forEach(cleanup => cleanup()); }
+  private context(host: HTMLElement, actions: () => LibraryMenuAction[]) {
+    const menu = bindLibraryMenu(host, actions); this.menuCleanups.push(menu.dispose); return menu;
+  }
+  private link(parent: HTMLElement, label: string, action: () => Promise<void>, kind: string): void {
+    const button = parent.createEl("button", { cls: "clickable-icon mw-cloud__link", text: label, attr: { type: "button", title: label, "data-link": kind } });
+    button.addEventListener("click", event => { event.stopPropagation(); void action().catch(() => new Notice(t("library.failed"))); });
+  }
+  private async trackAlbum(track: AlbumTrackSnapshot, collection?: AlbumMeta): Promise<void> {
+    const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+    const meta = track.albumId ? track : (await this.plugin.libraryApi.songs([track.id], cookie))[0];
+    if (!this.current(token, cookie)) return;
+    const id = meta?.albumId || (!collection?.playlistId ? collection?.albumId : 0);
+    if (id) await this.openAlbum({ albumId: id, name: meta?.albumName || collection?.name || track.name, artist: track.artists || "", cover: meta?.cover || "", trackCount: 0 });
+  }
+  private async trackArtist(track: AlbumTrackSnapshot): Promise<void> {
+    const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+    const refs = track.artistRefs?.length ? track.artistRefs : (await this.plugin.libraryApi.songs([track.id], cookie))[0]?.artistRefs || [];
+    if (!this.current(token, cookie)) return;
+    const artists = [...new Map(refs.filter(a => a.id > 0).map(a => [a.id, a])).values()];
+    if (artists.length === 1) await this.openArtist({ ...artists[0], cover: "" });
+    else if (artists.length > 1) {
+      this.artistPicker?.close(); this.artistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "mic" })), index => {
+        if (this.current(token, cookie)) void this.openArtist({ ...artists[index], cover: "" });
+      }); this.artistPicker.open();
+    }
+  }
+  private copy(kind: "song" | "album" | "playlist" | "artist", id: number): Promise<void> {
+    return navigator.clipboard.writeText(`https://music.163.com/#/${kind}?id=${id}`);
+  }
+  private trackActions(track: AlbumTrackSnapshot, collection?: AlbumMeta, index = 0): LibraryMenuAction[] {
+    return [
+      { label: t("panel.play"), icon: "play", run: () => collection ? this.play(collection, index) : this.single(track, true) },
+      { label: t("library.playNext"), icon: "list-plus", run: () => this.single(track, false) },
+      { label: t("libraryDetails.viewAlbum"), icon: "disc", run: () => this.trackAlbum(track, collection) },
+      { label: t("libraryDetails.viewArtist"), icon: "mic", run: () => this.trackArtist(track) },
+      { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("song", track.id) },
+    ];
+  }
+  private albumActions(album: AlbumSummary): LibraryMenuAction[] {
+    return [
+      { label: t("libraryDetails.viewDetails"), icon: "disc", run: () => this.openAlbum(album) },
+      { label: t("search.preview"), icon: "play", run: () => this.albumAction(album, "play") },
+      { label: t("library.addToWall"), icon: "folder-plus", run: () => this.albumAction(album, "wall") },
+      { label: t("queue.add"), icon: "list-plus", run: () => this.albumAction(album, "queue") },
+      { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("album", album.albumId) },
+    ];
+  }
+  private playlistActions(item: CloudPlaylist): LibraryMenuAction[] {
+    const act = async (append: boolean) => {
+      const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+      const meta = await this.plugin.libraryApi.detail(item, cookie);
+      if (!this.current(token, cookie)) return;
+      if (append) { if (await this.authorizeInternal()) this.plugin.internalPlayer.enqueuePlaylist(meta); }
+      else await this.play(meta, 0);
+    };
+    return [
+      { label: t("libraryDetails.viewDetails"), icon: "list-music", run: () => this.openPlaylist(item) },
+      { label: t("panel.play"), icon: "play", run: () => act(false) },
+      { label: t("queue.addPlaylist"), icon: "list-plus", run: () => act(true) },
+      { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("playlist", item.id) },
+    ];
+  }
+  private artistActions(artist: CloudArtist): LibraryMenuAction[] {
+    return [
+      { label: t("libraryDetails.viewDetails"), icon: "mic", run: () => this.openArtist(artist) },
+      { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("artist", artist.id) },
+    ];
   }
   private async authorizeInternal(): Promise<boolean> {
     if (!(await this.plugin.ensureNeteaseLogin()) || this.closed) return false;
@@ -308,7 +481,8 @@ export class MusicLibraryView extends ItemView {
   private async play(collection: AlbumMeta, index: number): Promise<void> {
     const intent = ++this.playIntent;
     if (!(await this.authorizeInternal()) || intent !== this.playIntent) return;
-    await this.plugin.internalPlayer.playPlaylist(collection, index);
+    if (collection.albumId > 0 && !collection.playlistId) await this.plugin.internalPlayer.playAlbum(collection, index);
+    else await this.plugin.internalPlayer.playPlaylist(collection, index);
   }
   private async albumAction(album: AlbumSummary, mode: "play" | "wall" | "queue"): Promise<void> {
     const intent = ++this.playIntent;

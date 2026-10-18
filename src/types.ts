@@ -28,6 +28,7 @@ export interface AlbumTrackSnapshot {
   /** 时长，毫秒 */
   duration: number;
   artists?: string;
+  artistRefs?: { id: number; name: string }[];
   albumId?: number;
   albumName?: string;
   cover?: string;
@@ -37,8 +38,11 @@ export interface AlbumTrackSnapshot {
 export interface AlbumMeta {
   albumId: number;
   playlistId?: number;
+  /** Runtime playback origin; never written back to the source wall. */
+  playbackWallPath?: string;
   name: string;
   artist: string;
+  artistRefs?: { id: number; name: string }[];
   /** 原始封面 URL（网易云） */
   cover: string;
   /** 发行时间戳（毫秒） */

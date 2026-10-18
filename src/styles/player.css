@@ -233,6 +233,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mw-player .mw-player__bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); }
+.mw-player__bar > .mw-toolbtn { justify-self: end; }
+.mw-player button.mw-player__source { display: block; width: 100%; min-width: 0; height: auto; padding: 4px; border: 0; background: transparent; box-shadow: none; color: inherit; font: inherit; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mw-player button.mw-player__source:hover { text-decoration: underline; }
+.mw-player button.mw-player__source.is-hidden { visibility: hidden; }
 /* 图标钮只有图标：颜色跟随背景模式的 --text-normal/--text-muted，
    因此四种背景下都能辨认（原来只设了 border/color 没设 background，
    主题的白底盖了上来 → 白底白图标） */
@@ -691,6 +696,22 @@
 .mw-np__artist {
   color: var(--text-muted);
 }
+.mw-player button.mw-np__artist {
+  display: inline;
+  height: auto;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mw-player button.mw-np__artist:not(:disabled):hover { text-decoration: underline; cursor: pointer; }
+.mw-player button.mw-np__artist:disabled { opacity: 1; cursor: default; }
+.mw-player button.mw-np__artist:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 3px; }
 .mw-np__line {
   display: flex;
   align-items: center;

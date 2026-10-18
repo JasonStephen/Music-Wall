@@ -40,12 +40,20 @@
 .mw-cloud .mw-cloud__tabs button[aria-selected="true"] { background: var(--mw-panel-hover); border-color: var(--mw-panel-line); }
 .mw-cloud .mw-cloud__grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); }
 .mw-cloud .mw-cloud__card { padding: 10px; }
+.mw-cloud__card-stats { display: block; margin-top: 5px; color: var(--mw-panel-fg-dim); font-size: 0.82em; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
 .mw-cloud__album { min-width: 0; padding: 10px; border: 1px solid var(--mw-panel-line); background: var(--mw-panel-bg); border-radius: 9px; }
 .mw-cloud__album-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 5px; margin-bottom: 8px; }
 .mw-cloud__artist-card img { border-radius: 50%; }
 .mw-cloud__actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; flex-shrink: 0; }
 .mw-cloud__album .mw-cloud__actions { margin-top: 10px; }
-.mw-cloud .mw-cloud__track { grid-template-columns: 2ch minmax(0, 1fr) auto auto; gap: 8px; padding: 6px 4px; }
+.mw-cloud .mw-cloud__track { grid-template-columns: calc(var(--mw-track-digits, 3) * 1ch) minmax(0, 1fr) auto auto; gap: 12px; padding: 6px 4px; }
+.mw-cloud__number { text-align: right; font-variant-numeric: tabular-nums; }
+.mw-cloud__track-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 0; }
+.mw-cloud button.mw-cloud__link { display: block; min-width: 0; max-width: 100%; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--mw-panel-fg-dim); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.mw-cloud button.mw-cloud__link:hover { text-decoration: underline; }
+.mw-cloud button.mw-cloud__album-card { display: block; width: 100%; min-width: 0; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; color: inherit; text-align: left; }
+.mw-cloud__collection-info { flex: 1; min-width: 0; }
+.mw-cloud__summary { margin-top: 6px; font-size: 12px; color: var(--mw-panel-fg-dim); }
 .mw-cloud__track-info { min-width: 0; }
 .mw-cloud .mw-cloud__empty .mw-svg-action { display: inline-flex; }
 .mw-cloud .mw-cloud__collection { flex-wrap: wrap; }
@@ -70,6 +78,7 @@
   .mw-cloud .mw-cloud__body { padding-inline: 10px; }
   .mw-cloud .mw-cloud__head { padding: 10px 6px; gap: 2px; }
   .mw-cloud .mw-cloud__head h2 { font-size: 15px; }
+  .mw-cloud__collection-info { flex: 1 0 100%; order: 1; }
   .mw-cloud .mw-cloud__track { grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
   .mw-cloud__number, .mw-cloud__duration { display: none; }
   .mw-cloud .mw-cloud__tabs { gap: 3px; }
