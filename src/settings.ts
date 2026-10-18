@@ -60,7 +60,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
       });
 
     const github = new Setting(containerEl).setName(t("githubAuth.title"))
-      .setDesc(this.plugin.settings.githubAccount ? t("githubAuth.current", { name: this.plugin.settings.githubAccount }) : t("githubAuth.system"))
+      .setDesc(!Platform.isDesktopApp ? t("githubPull.hint") : this.plugin.settings.githubAccount ? t("githubAuth.current", { name: this.plugin.settings.githubAccount }) : t("githubAuth.system"))
       .addButton(button => button.setButtonText(t("githubAuth.manage")).setDisabled(!Platform.isDesktopApp).onClick(async () => {
         button.setDisabled(true);
         try { await this.plugin.loginGitHub(); if (generation === this.displayGeneration) this.display(); }
@@ -110,8 +110,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(t("gitSync.localDirectory")).setDesc(t("gitSync.localDirectoryDesc"))
       .addText(input => input.setPlaceholder(t("gitSync.vaultRoot")).setValue(this.plugin.settings.gitLocalDir ?? "")
         .onChange(async value => { this.plugin.settings.gitLocalDir = value.trim(); await this.plugin.saveData(this.plugin.settings); }));
-    const gitSync = new Setting(containerEl).setName(t("gitSync.title")).setDesc(t("gitSync.scope"))
-      .addButton(button => button.setButtonText(t("gitSync.pushCommand")).onClick(() => void this.plugin.gitSync("push")))
+    const gitSync = new Setting(containerEl).setName(t("gitSync.title")).setDesc(t("gitSync.scope") + (!Platform.isDesktopApp ? ` ${t("githubPull.hint")}` : ""))
+      .addButton(button => button.setButtonText(t("gitSync.pushCommand")).setDisabled(!Platform.isDesktopApp).onClick(() => void this.plugin.gitSync("push")))
       .addButton(button => button.setButtonText(t("gitSync.pullCommand")).onClick(() => void this.plugin.gitSync("pull")));
     gitSync.settingEl.addClass("mw-git-sync-setting");
 

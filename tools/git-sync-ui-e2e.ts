@@ -3,6 +3,7 @@ import { GitHubLoginModal } from "../src/ui/GitHubLoginModal";
 import type { GitHubAccountController } from "../src/core/githubAuth";
 import { buildSyncPlan } from "../src/core/wallSync";
 import { setLanguage } from "../src/i18n";
+import { t } from "../src/i18n";
 import { installDomHelpers } from "./obsidian-shim";
 installDomHelpers();
 const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
@@ -10,6 +11,42 @@ const wall = (name: string) => JSON.stringify({ version: 2, name, style: "vinyl"
 const local = [{ path: "MusicWall/Japan.mw", content: wall("Local") }, { path: "MusicWall/Sub/A very long album collection name · 电影配乐.mw", content: wall("Shared") }, { path: "root.mw", content: wall("Root") }, { path: "invalid.mw", content: "bad" }];
 const remote = [{ path: "MusicWall/Japan.mw", content: wall("Remote") }, { path: "MusicWall/Sub/A very long album collection name · 电影配乐.mw", content: wall("Shared") }, { path: "remote-only.mw", content: wall("Remote only") }];
 let current: GitSyncModal | null = null;
+(window as any).checkMobileGitSyncUI = async () => {
+  current?.close(); document.querySelectorAll('.modal-container').forEach(node => node.remove());
+  document.body.classList.add('is-mobile','is-tablet');
+  const failures: string[] = []; let checks = 0, applies = 0, signal: AbortSignal | undefined;
+  const check = (ok: unknown, label: string) => { checks++; if (!ok) failures.push(label); };
+  current = new GitSyncModal({} as never, {repoUrl:'https://github.com/user/walls',branch:'main',localDirectory:'',remoteDirectory:'walls'}, async (_config,direction,operation) => {
+    signal = operation; check(direction === 'pull', 'Mobile preview only reads');
+    return {plan:buildSyncPlan('pull',local,remote),branch:'main',commit:'abcdef123456789',async apply(selected,applySignal) {
+      check(applySignal === signal && !applySignal?.aborted, 'Confirmation receives the active cancellation signal');
+      check(!selected.has('root.mw'), 'Mobile confirmation excludes local-only walls'); applies++; return selected.size;
+    }};
+  }, 'pull', () => {}, undefined, true);
+  current.open(); await wait(15);
+  const modal = current.contentEl;
+  check(current.modalEl.scrollWidth <= current.modalEl.clientWidth + 1, 'Mobile sync has no horizontal overflow');
+  const bounds = current.modalEl.getBoundingClientRect();
+  check(bounds.left >= -1 && bounds.right <= innerWidth + 1, 'Mobile sync fits the viewport');
+  for (const button of modal.querySelectorAll<HTMLElement>('button')) {
+    if (!button.getClientRects().length) continue;
+    const rect = button.getBoundingClientRect();
+    check(rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1, 'Mobile buttons remain inside the sync dialog');
+  }
+  check(!modal.querySelector('[data-preview="push"]'), 'Mobile does not offer unsupported push');
+  check(!modal.querySelector('[data-action="github-manage"]'), 'Public pull does not require desktop sign-in');
+  check(modal.textContent?.includes(t('githubPull.hint')), 'Mobile public-repository support is explained');
+  const selected = [...modal.querySelectorAll<HTMLInputElement>('[data-path] input:checked')];
+  check(selected.length === 3, 'Mobile defaults select all remote wall files');
+  modal.querySelector<HTMLButtonElement>('[data-path] .mw-git-sync__filename')?.click();
+  check(modal.querySelectorAll('.mw-git-sync__diff pre').length === 2, 'Mobile can inspect both sides before applying');
+  check(applies === 0, 'Preview never writes files');
+  modal.querySelector<HTMLButtonElement>('[data-action="apply-sync"]')!.click(); await wait(15);
+  check(applies === 1, 'Mobile writes only after explicit confirmation');
+  modal.querySelector<HTMLButtonElement>('[data-preview="pull"]')!.click(); await wait(15);
+  current.close(); check(signal?.aborted, 'Closing a mobile preview cancels its operation');
+  return {checks,failures};
+};
 (window as any).checkGitSyncUI = async (config: { lang: "zh-CN" | "zh-TW" | "en"; theme: string; zoom: number; shelf: boolean }) => {
   current?.close(); document.querySelectorAll('.modal-container').forEach(node => node.remove());
   setLanguage(config.lang); document.body.className = `theme-${config.theme}`;

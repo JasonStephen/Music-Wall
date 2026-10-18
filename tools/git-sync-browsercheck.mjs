@@ -21,6 +21,8 @@ try{
   if(lang==='zh-CN'&&theme==='dark'&&zoom===1){const shot=await page('Page.captureScreenshot',{format:'png'}),dir=path.join(root,'tools/shots/git-sync');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,`sync-${width}.png`),Buffer.from(shot.data,'base64'));}
   const auth=await value('window.checkGitHubAuthUI()');checks+=auth.checks;
   if(auth.failures.length){failed++;console.log('FAIL GitHub '+JSON.stringify({...config,width,height})+' '+JSON.stringify(auth.failures));}
+  const mobile=await value('window.checkMobileGitSyncUI()');checks+=mobile.checks;
+  if(mobile.failures.length){failed++;console.log('FAIL mobile GitHub pull '+JSON.stringify({...config,width,height})+' '+JSON.stringify(mobile.failures));}
   if(lang==='zh-CN'&&theme==='dark'&&zoom===1){const shot=await page('Page.captureScreenshot',{format:'png'}),dir=path.join(root,'tools/shots/git-sync');fs.writeFileSync(path.join(dir,`github-${width}.png`),Buffer.from(shot.data,'base64'));}
  }
  console.log(`${cases} sync UI configurations, ${checks} assertions, ${failed} failures`);if(failed)process.exitCode=1;

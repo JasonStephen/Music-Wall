@@ -23,13 +23,14 @@ class Element {
     this.tag = tag; this.children = []; this.textContent = options.text || "";
     this.attrs = options.attr || {}; this.style = { setProperty() {}, removeProperty() {} };
   }
-  addClass() {} toggleClass() {} setText(value) { this.textContent = value; }
+  addClass() {} removeClass() {} toggleClass() {} setText(value) { this.textContent = value; }
   removeAttribute(name) { delete this[name]; delete this.attrs[name]; }
   setAttr(name, value) { this.attrs[name] = value; }
   addEventListener(name, fn) { this[name] = fn; }
   empty() { this.children = []; }
   createEl(tag, options) { const el = new Element(tag, options); this.children.push(el); return el; }
   createDiv(options) { return this.createEl("div", options); }
+  createSpan(options) { return this.createEl("span", options); }
   appendText(text) { this.textContent += text; }
 }
 class Component {
@@ -119,7 +120,7 @@ function plugin(request = fakeRequest()) {
 let passed = 0;
 async function test(name, run) {
   try { await run(); passed++; console.log("PASS " + name); }
-  finally { for (const modal of modals.splice(0)) modal.close(); timers.clear(); document.hidden = false; delete window.Capacitor; await flush(); }
+  finally { for (const modal of modals.splice(0)) modal.close(); timers.clear(); document.hidden = false; delete window.Capacitor; obsidian.Platform.isDesktopApp = true; await flush(); }
 }
 async function main() {
   await test("Set-Cookie merge preserves values and ignores attributes/Expires commas", async () => {
@@ -494,6 +495,21 @@ async function main() {
     assert.equal(attempts, 2); assert.deepEqual(controls, ["pause"]);
     player.now.status = "playing"; await player.control("toggle");
     assert.deepEqual(controls, ["pause", "toggle"]);
+  });
+  await test("Mobile sync command opens a pull preview without Git, basePath or desktop authentication", async () => {
+    obsidian.Platform.isDesktopApp = false;
+    const instance = plugin(); let snapshots = 0;
+    instance.app.vault = {adapter:{},configDir:'.obsidian',getFiles:()=>[],getAbstractFileByPath:()=>null};
+    instance.manifest = {id:'music-wall'};
+    instance.settings.gitRepoUrl = 'https://github.com/owner/walls';
+    instance.githubWallReader = {async snapshot(){snapshots++;return {branch:'main',commit:'a'.repeat(40),files:[{path:'MusicWall/Test.mw',content:JSON.stringify({version:2,name:'Test',style:'vinyl',items:[]})}],assertCurrent:async()=>{}};}};
+    await instance.gitSync('pull');await flush();
+    assert.ok(instance.gitSyncModal);assert.equal(instance.gitSyncModal.pullOnly,true);assert.equal(snapshots,1);
+    assert.equal(instance.gitSyncModal.account,undefined);assert.equal(instance.gitSyncModal.preview.plan.direction,'pull');
+    assert.equal(instance.gitSyncModal.selected.size,1);
+    instance.gitSyncModal.close();assert.equal(instance.gitSyncModal,null);
+    await instance.gitSync('push');assert.equal(instance.gitSyncModal,null);assert.equal(snapshots,1);
+    assert.ok(notices.includes(api.t('githubPull.pushUnavailable')));
   });
   await test("Settings show QR sign-in / logout and API privacy details in all three languages", async () => {
     for (const language of ["zh-CN", "zh-TW", "en"]) {

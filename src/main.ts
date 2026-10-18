@@ -37,6 +37,8 @@ import { qrLoginRequester } from "./core/mobileLoginRequest";
 import { GitHubAuth } from "./core/githubAuth";
 import { GitHubLoginModal } from "./ui/GitHubLoginModal";
 import { prepareVaultSync } from "./core/vaultWallSync";
+import { GitHubWallReader, checkPullCancelled } from "./core/githubWallPull";
+import { prepareMobileVaultPull } from "./core/mobileVaultWallSync";
 import { syncPath, type SyncDirection } from "./core/wallSync";
 import { GitSyncModal } from "./ui/GitSyncModal";
 import { hasLoginCookie, listUserPlaylists, LoginRequiredError, verifyCookie } from "./core/playlist";
@@ -61,7 +63,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.1";
+const BUILD_TAG = "1.2.2";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -94,6 +96,7 @@ export default class MusicWallPlugin extends Plugin {
   private loginCheck: { cookie: string; promise: Promise<boolean> } | null = null;
   private unloading = false;
   private gitSyncModal: GitSyncModal | null = null;
+  private githubWallReader: GitHubWallReader | null = null;
   private githubAuth = new GitHubAuth();
   private githubLoginModal: GitHubLoginModal | null = null;
   private githubLoginPromise: Promise<boolean> | null = null;
@@ -1097,28 +1100,41 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   async gitSync(direction: SyncDirection = "pull"): Promise<void> {
-    if (!Platform.isDesktopApp) { new Notice(t("main.git.desktopOnly")); return; }
+    const desktop = Platform.isDesktopApp;
+    if (!desktop && direction !== "pull") { new Notice(t("githubPull.pushUnavailable")); return; }
+    if (this.unloading) return;
     if (this.gitSyncModal) { new Notice(t("gitSync.alreadyOpen")); return; }
-    if (!(await checkGit())) {
+    if (desktop && !(await checkGit())) {
       new Notice(t("main.git.gitNotFound"));
       return;
     }
     if (this.gitSyncModal || this.unloading) return;
     const basePath = (this.app.vault.adapter as any).basePath as string;
-    if (!basePath) {
+    if (desktop && !basePath) {
       new Notice(t("main.git.noBasePath"));
       return;
     }
-    const cacheDir = `${basePath}/${this.app.vault.configDir}/plugins/${this.manifest.id}/wall-sync`;
+    const relativeCache = `${this.app.vault.configDir}/plugins/${this.manifest.id}/wall-sync`;
+    const cacheDir = desktop ? `${basePath}/${relativeCache}` : relativeCache;
+    if (!desktop && !this.githubWallReader) this.githubWallReader = new GitHubWallReader(async url => {
+      const response = await requestUrl({ url, method: "GET", headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }, throw: false });
+      return { status: response.status, text: response.text, headers: response.headers };
+    });
     this.gitSyncModal = new GitSyncModal(this.app, {
       repoUrl: this.settings.gitRepoUrl, branch: this.settings.gitBranch,
       localDirectory: this.settings.gitLocalDir ?? "", remoteDirectory: this.settings.gitSubdir,
-    }, async (config, mode) => {
+    }, async (config, mode, signal) => {
+      checkPullCancelled(signal);
       config.localDirectory = syncPath(config.localDirectory); config.remoteDirectory = syncPath(config.remoteDirectory);
       if (!config.repoUrl.trim()) throw new Error(t("main.git.needUrl"));
       this.settings.gitRepoUrl = config.repoUrl.trim(); this.settings.gitBranch = config.branch.trim();
       this.settings.gitLocalDir = config.localDirectory; this.settings.gitSubdir = config.remoteDirectory;
       await this.saveData(this.settings);
+      checkPullCancelled(signal);
+      if (!desktop) {
+        if (mode !== "pull") throw new Error(t("githubPull.pushUnavailable"));
+        return prepareMobileVaultPull(this.app.vault, this.githubWallReader!, config, cacheDir, signal);
+      }
       const account = this.settings.githubAccount;
       return prepareVaultSync(this.app.vault, cacheDir, config, mode, async repoUrl => {
         if (account !== this.settings.githubAccount || this.unloading) throw new Error(t("githubAuth.changed"));
@@ -1126,7 +1142,7 @@ export default class MusicWallPlugin extends Plugin {
         if (account !== this.settings.githubAccount || this.unloading) throw new Error(t("githubAuth.changed"));
         return args;
       });
-    }, direction, () => { this.gitSyncModal = null; }, { name: () => this.settings.githubAccount, open: () => this.loginGitHub() });
+    }, direction, () => { this.gitSyncModal = null; }, desktop ? { name: () => this.settings.githubAccount, open: () => this.loginGitHub() } : undefined, !desktop);
     this.gitSyncModal.open();
   }
 }

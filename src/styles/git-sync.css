@@ -5,6 +5,7 @@
   container-type: inline-size; container-name: mw-sync;
 }
 .mw-git-sync .modal-content { min-width: 0; }
+.modal.mw-git-sync .modal-content button { max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; }
 .mw-git-sync__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
 .mw-git-sync__fields label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .mw-git-sync__fields input { width: 100%; min-width: 0; }
@@ -21,6 +22,7 @@
 .mw-git-sync__count { color: var(--text-muted); font-size: .8em; }
 .mw-git-sync__file { display: flex; align-items: center; gap: 6px; min-height: 32px; padding-left: 16px; }
 .mw-git-sync .mw-git-sync__filename { flex: 1 1 auto; min-width: 0; height: auto; padding: 5px 4px; text-align: left; white-space: normal; overflow-wrap: anywhere; background: transparent; color: var(--text-normal); border: 0; box-shadow: none; }
+.mw-git-sync .mw-git-sync__file button.mw-git-sync__filename { padding: 5px 4px; }
 .mw-git-sync .mw-git-sync__filename:hover { background: var(--background-modifier-hover); }
 .mw-git-sync__badge { flex: 0 0 auto; color: var(--text-muted); font-size: .8em; }
 .mw-git-sync__file.is-new .mw-git-sync__badge { color: var(--text-success, var(--text-accent)); }

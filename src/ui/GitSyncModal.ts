@@ -4,8 +4,8 @@ import { canSelectSyncRow, changedLineSets, defaultSyncSelection, selectedSyncCh
 import { applyModalTheme } from "./modalTheme";
 
 export interface GitSyncConfig { repoUrl: string; branch: string; localDirectory: string; remoteDirectory: string; }
-export interface GitSyncPreview { plan: WallSyncPlan; branch: string; commit: string | null; apply(selected: Set<string>): Promise<number>; }
-export type PrepareSyncPreview = (config: GitSyncConfig, direction: SyncDirection) => Promise<GitSyncPreview>;
+export interface GitSyncPreview { plan: WallSyncPlan; branch: string; commit: string | null; apply(selected: Set<string>, signal?: AbortSignal): Promise<number>; }
+export type PrepareSyncPreview = (config: GitSyncConfig, direction: SyncDirection, signal?: AbortSignal) => Promise<GitSyncPreview>;
 
 /** One reviewable snapshot: folder selection, file differences, then explicit apply. */
 export class GitSyncModal extends Modal {
@@ -23,14 +23,16 @@ export class GitSyncModal extends Modal {
   private confirm: HTMLButtonElement;
   private previewButtons: HTMLButtonElement[] = [];
   private accountButton?: HTMLButtonElement;
+  private operation?: AbortController;
 
-  constructor(app: App, private config: GitSyncConfig, private prepare: PrepareSyncPreview, private direction: SyncDirection = "pull", private closed: () => void = () => {}, private account?: { name(): string; open(): Promise<boolean> }) { super(app); }
+  constructor(app: App, private config: GitSyncConfig, private prepare: PrepareSyncPreview, private direction: SyncDirection = "pull", private closed: () => void = () => {}, private account?: { name(): string; open(): Promise<boolean> }, private pullOnly = false) { super(app); }
 
   onOpen(): void {
     this.modalEl.addClass("mw-modal-zoom", "mw-git-sync"); applyModalTheme(this.modalEl);
     const root = this.contentEl; root.empty();
     root.createEl("h2", { text: t("gitSync.title") });
     root.createEl("p", { cls: "mw-git-sync__hint", text: t("gitSync.scope") });
+    if (this.pullOnly) root.createEl("p", { cls: "mw-git-sync__hint", text: t("githubPull.hint") });
     if (this.account) {
       const row = root.createDiv({ cls: "mw-git-sync__actions" });
       this.accountButton = row.createEl("button", { text: this.accountLabel(), attr: { "data-action": "github-manage" } });
@@ -51,6 +53,7 @@ export class GitSyncModal extends Modal {
     }
     const actions = root.createDiv({ cls: "mw-git-sync__actions" });
     for (const direction of ["push", "pull"] as const) {
+      if (this.pullOnly && direction === "push") continue;
       const button = actions.createEl("button", { text: t(`gitSync.preview${direction === "push" ? "Push" : "Pull"}`), cls: direction === this.direction ? "mod-cta" : "", attr: { "data-preview": direction } });
       button.addEventListener("click", () => void this.loadPreview(direction)); this.previewButtons.push(button);
     }
@@ -67,6 +70,7 @@ export class GitSyncModal extends Modal {
   }
 
   private invalidate(): void {
+    this.operation?.abort();
     this.generation++; this.preview = null; this.review?.empty(); this.details?.empty(); this.checkboxes = [];
     this.status?.setText(t("gitSync.previewNeeded")); this.updateSelection();
   }
@@ -89,12 +93,13 @@ export class GitSyncModal extends Modal {
     finally { if (!this.disposed) this.setBusy(false); }
   }
   private async loadPreview(direction: SyncDirection): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || this.disposed || (this.pullOnly && direction !== "pull")) return;
     this.invalidate(); this.direction = direction;
     const generation = this.generation;
+    this.operation = new AbortController();
     this.setBusy(true); this.status.setText(t("gitSync.loading")); this.status.removeClass("is-error");
     try {
-      const preview = await this.prepare({ ...this.config }, direction);
+      const preview = await this.prepare({ ...this.config }, direction, this.operation.signal);
       if (this.disposed || generation !== this.generation) return;
       this.preview = preview;
       this.selected = defaultSyncSelection(preview.plan, !!this.config.localDirectory.trim());
@@ -171,11 +176,12 @@ export class GitSyncModal extends Modal {
     if (this.busy || !preview || !selectedSyncChanges(preview.plan, this.selected).length) return;
     this.setBusy(true); this.status.setText(t("gitSync.applying"));
     try {
-      const count = await preview.apply(new Set(this.selected));
+      const count = await preview.apply(new Set(this.selected), this.operation?.signal);
+      if (this.disposed) return;
       const message = t(this.direction === "push" ? "gitSync.pushed" : "gitSync.pulled", { count });
       new Notice(message); this.invalidate(); if (!this.disposed) this.status.setText(message);
     } catch (error) { this.invalidate(); if (!this.disposed) { this.status.setText((error as Error).message); this.status.addClass("is-error"); } }
     finally { this.setBusy(false); }
   }
-  onClose(): void { this.disposed = true; this.generation++; this.closed(); this.contentEl.empty(); }
+  onClose(): void { this.operation?.abort(); this.disposed = true; this.generation++; this.closed(); this.contentEl.empty(); }
 }
