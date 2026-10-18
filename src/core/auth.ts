@@ -5,7 +5,7 @@ import qrcode from "qrcode-generator";
 import { encryptWeApi } from "./crypto";
 import type { HttpResponse, Requester } from "./metadata";
 import { hasLoginCookie } from "./playlist";
-import { t } from "../i18n";
+import { LoginDiagnosticError, loginApiError, parseLoginResponse, requestLogin } from "./loginDiagnostics";
 
 export interface QrLoginSession {
   key: string;
@@ -26,7 +26,8 @@ export function mergeSetCookies(cookie: string, headers: HttpResponse["headers"]
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (name.toLowerCase() !== "set-cookie") continue;
     for (const line of Array.isArray(value) ? value : [value]) {
-      for (const entry of line.split(/,(?=\s*[^;,\s=]+=)/)) {
+      // Android/native bridges may join repeated headers with CRLF instead of commas.
+      for (const entry of line.split(/[\r\n]+|,(?=\s*[^;,\s=]+=)/)) {
         const pair = entry.trim().split(";", 1)[0];
         const equal = pair.indexOf("=");
         if (equal <= 0) continue;
@@ -44,39 +45,26 @@ export function mergeSetCookies(cookie: string, headers: HttpResponse["headers"]
 async function loginPost(request: Requester, path: string, data: Record<string, unknown>, cookie: string) {
   const csrf = /(?:^|;\s*)__csrf=([^;]*)/.exec(cookie)?.[1] ?? "";
   const encrypted = encryptWeApi(JSON.stringify({ csrf_token: csrf, ...data }));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const response = await Promise.race([
-      request({
-        url: `https://music.163.com/weapi/login/qrcode/${path}`,
-        method: "POST",
-        headers: {
-          Referer: "https://music.163.com/",
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Cookie: cookie,
-        },
-        body: new URLSearchParams(encrypted).toString(),
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(t("auth.networkError"))), 15000);
-      }),
-    ]);
-    if (response.status >= 400) throw new Error(t("auth.networkError"));
-    return { body: JSON.parse(response.text), cookie: mergeSetCookies(cookie, response.headers) };
-  } catch {
-    // 不将可能含认证信息的底层网络错误展示或写入日志。
-    throw new Error(t("auth.networkError"));
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
+  const stage = path === "unikey" ? "create" : "check";
+  const response = await requestLogin(request, {
+    url: `https://music.163.com/weapi/login/qrcode/${path}`,
+    method: "POST",
+    headers: {
+      Referer: "https://music.163.com/",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Cookie: cookie,
+    },
+    body: new URLSearchParams(encrypted).toString(),
+  }, stage);
+  return { body: parseLoginResponse(response, stage), cookie: mergeSetCookies(cookie, response.headers) };
 }
 
 export async function createQrLogin(request: Requester): Promise<QrLoginSession> {
   const result = await loginPost(request, "unikey", { type: 3 }, "os=pc; appver=3.0.18");
   const key = result.body?.unikey ?? result.body?.data?.unikey;
   if (result.body?.code !== 200 || typeof key !== "string" || !/^[\w-]{1,256}$/.test(key)) {
-    throw new Error(t("auth.createFailed"));
+    throw result.body?.code !== 200 ? loginApiError("create", result.body?.code) : new LoginDiagnosticError("create", "response");
   }
   const qr = qrcode(0, "M");
   qr.addData(`https://music.163.com/login?codekey=${encodeURIComponent(key)}`);
@@ -89,7 +77,7 @@ export async function checkQrLogin(request: Requester, session: QrLoginSession):
   const result = await loginPost(request, "client/login", { key: session.key, type: 3 }, session.cookie);
   session.cookie = result.cookie;
   const code = result.body?.code;
-  if (![800, 801, 802, 803].includes(code)) throw new Error(t("auth.checkFailed"));
-  if (code === 803 && !hasLoginCookie(session.cookie)) throw new Error(t("auth.missingCredential"));
+  if (![800, 801, 802, 803].includes(code)) throw loginApiError("check", code);
+  if (code === 803 && !hasLoginCookie(session.cookie)) throw new LoginDiagnosticError("check", "credential", undefined, false);
   return code as QrLoginStatus;
 }

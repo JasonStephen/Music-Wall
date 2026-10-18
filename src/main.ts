@@ -32,6 +32,8 @@ import {
 } from "./core/metadata";
 import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { checkGit } from "./core/git";
+import { LoginDiagnosticError } from "./core/loginDiagnostics";
+import { qrLoginRequester } from "./core/mobileLoginRequest";
 import { GitHubAuth } from "./core/githubAuth";
 import { GitHubLoginModal } from "./ui/GitHubLoginModal";
 import { prepareVaultSync } from "./core/vaultWallSync";
@@ -59,7 +61,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.0";
+const BUILD_TAG = "1.2.1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -794,7 +796,7 @@ export default class MusicWallPlugin extends Plugin {
     if (this.unloading) return Promise.resolve(false);
     if (this.loginPromise) return this.loginPromise;
     const generation = this.authGeneration;
-    const modal = new NeteaseLoginModal(this.app, this.requester, async (cookie, valid) => {
+    const modal = new NeteaseLoginModal(this.app, qrLoginRequester(this.requester), async (cookie, valid) => {
       const account = await verifyCookie(this.requester, cookie);
       if (!valid() || this.unloading || generation !== this.authGeneration) return false;
       const previous = {
@@ -812,7 +814,7 @@ export default class MusicWallPlugin extends Plugin {
         await this.saveSettings();
       } catch {
         if (generation === this.authGeneration) Object.assign(this.settings, previous);
-        throw new Error(t("auth.saveFailed"));
+        throw new LoginDiagnosticError("save", "storage", undefined, false);
       }
       if (!valid() || this.unloading || generation !== this.authGeneration) return false;
       this.verifiedCookie = cookie;

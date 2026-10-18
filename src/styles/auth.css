@@ -26,6 +26,7 @@
 .mw-login__status {
   min-height: 2.8em;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .mw-login__note,
 .mw-auth-info {
@@ -40,6 +41,12 @@
   gap: 12px;
   margin-top: 16px;
 }
+.mw-login__buttons button {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+}
+.mw-login__buttons button[hidden] { display: none; }
 .mw-auth-info {
   margin: 0 0 20px;
 }

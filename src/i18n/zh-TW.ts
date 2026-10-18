@@ -161,6 +161,15 @@ export const zhTW: typeof zhCN = {
 
   mini: { open: "開啟音樂播放器", stop: "停止播放", loading: "正在載入…", paused: "已暫停" },
 
+  authDiagnostics: {
+    create: "產生 QR 碼", check: "檢查掃碼授權", verify: "驗證登入帳號", save: "儲存登入",
+    network: "網路請求失敗，請檢查網路後重試。", timeout: "請求逾時，請重試。",
+    http: "伺服器回傳 HTTP 錯誤。", response: "伺服器回應格式異常。", code: "伺服器未完成請求。",
+    credential: "授權回應缺少登入憑證，請重新整理 QR 碼並重新授權。",
+    risk: "網易雲要求安全驗證，請在官方 App 中處理提示後重新掃碼。",
+    expired: "登入憑證已失效，請重新整理 QR 碼並重新授權。",
+    storage: "登入設定儲存失敗，請檢查儲存庫是否可寫入後重試。", retry: "繼續檢查登入",
+  },
   auth: {
     account: "網易雲帳號",
     signIn: "掃碼登入",

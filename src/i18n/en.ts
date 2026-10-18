@@ -161,6 +161,15 @@ export const en: typeof zhCN = {
 
   mini: { open: "Open music player", stop: "Stop playback", loading: "Loading…", paused: "Paused" },
 
+  authDiagnostics: {
+    create: "Create QR code", check: "Check QR authorization", verify: "Verify account", save: "Save sign-in",
+    network: "Network request failed. Check your connection and retry.", timeout: "Request timed out. Please retry.",
+    http: "Server returned an HTTP error.", response: "Unexpected server response format.", code: "Server did not complete the request.",
+    credential: "Authorization returned no login credential. Refresh the QR code and authorize again.",
+    risk: "NetEase requires a security check. Follow the prompts in the official app, then scan again.",
+    expired: "Login credential has expired. Refresh the QR code and authorize again.",
+    storage: "Could not save sign-in settings. Check that your vault is writable and retry.", retry: "Check sign-in again",
+  },
   auth: {
     account: "NetEase account",
     signIn: "Sign in with QR code",

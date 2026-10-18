@@ -51,6 +51,13 @@ try {
     for(const theme of ['light','dark'])for(const cover of ['326fa8','bb3b61','eeeeee','151925'])for(const [width,height] of [[1280,800],[360,740],[640,360]])cases.push({kind:'player',theme,bg:'art',deviceCase:'art',style:'vinyl',cover,width,height,panel:'case'});
   }
   if(process.argv.includes('--compact'))cases.splice(0,cases.length,...cases.filter(item=>item.zoom===2&&item.width===360&&item.playing));
+  if(process.argv.includes('--tablet')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const [width,height] of [[1280,800],[800,1280]]) for(const zoom of [1,1.5]) {
+      cases.push({kind:'player',tablet:true,theme,bg:'dark',style:'vinyl',panel:'quality',width,height,zoom});
+      cases.push({kind:'wall',tablet:true,theme,layout:'shelf',style:'vinyl',width,height,zoom});
+    }
+  }
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
   let checks=0,failed=0;let savedFailures=0,keyboardChecked=false,playOrderChecked=false;
   for(let i=0;i<cases.length;i++) {

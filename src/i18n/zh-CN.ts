@@ -159,6 +159,15 @@ export const zhCN = {
 
   mini: { open: "打开音乐播放器", stop: "停止播放", loading: "正在加载…", paused: "已暂停" },
 
+  authDiagnostics: {
+    create: "生成二维码", check: "检查扫码授权", verify: "验证登录账号", save: "保存登录",
+    network: "网络请求失败，请检查网络后重试。", timeout: "请求超时，请重试。",
+    http: "服务器返回 HTTP 错误。", response: "服务器响应格式异常。", code: "服务器未完成请求。",
+    credential: "授权响应缺少登录凭据，请刷新二维码重新授权。",
+    risk: "网易云要求安全验证，请在官方 App 中处理提示后重新扫码。",
+    expired: "登录凭据已失效，请刷新二维码重新授权。",
+    storage: "登录设置保存失败，请检查库是否可写后重试。", retry: "继续检查登录",
+  },
   auth: {
     account: "网易云账号",
     signIn: "扫码登录",

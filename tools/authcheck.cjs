@@ -45,7 +45,7 @@ class Plugin extends Component {
 }
 const settings = [];
 class Setting {
-  constructor() { settings.push(this); }
+  constructor() { this.settingEl = new Element(); settings.push(this); }
   setName(name) { this.name = name; return this; }
   setDesc(desc) { this.desc = desc; return this; }
   addButton(cb) {
@@ -65,14 +65,21 @@ const obsidian = {
   TFile: class {}, TFolder: class {}, WorkspaceLeaf: class {},
   Platform: { isDesktopApp: true }, setIcon() {}, requestUrl() {},
 };
-global.window = { localStorage: { getItem: () => "zh-CN" } };
+global.window = new EventTarget();
+window.localStorage = { getItem: () => "zh-CN" };
+global.document = new EventTarget();
+document.hidden = false;
+document.defaultView = window;
 const built = buildSync({
   stdin: {
     contents: `export { default as MusicWallPlugin } from './src/main';
       export * from './src/core/auth'; export * from './src/core/playlist';
       export * from './src/core/playback'; export * from './src/types';
       export * from './src/i18n'; export * from './src/settings';
-      export * from './src/ui/MusicPlayerView';`,
+      export * from './src/ui/MusicPlayerView';
+      export * from './src/core/loginDiagnostics';
+      export * from './src/core/mobileLoginRequest';
+      export * from './src/ui/NeteaseLoginModal';`,
     resolveDir: path.resolve(__dirname, ".."), loader: "ts",
   },
   bundle: true, platform: "node", format: "cjs", write: false, external: ["obsidian", "electron"],
@@ -112,7 +119,7 @@ function plugin(request = fakeRequest()) {
 let passed = 0;
 async function test(name, run) {
   try { await run(); passed++; console.log("PASS " + name); }
-  finally { for (const modal of modals.splice(0)) modal.close(); timers.clear(); await flush(); }
+  finally { for (const modal of modals.splice(0)) modal.close(); timers.clear(); document.hidden = false; delete window.Capacitor; await flush(); }
 }
 async function main() {
   await test("Set-Cookie merge preserves values and ignores attributes/Expires commas", async () => {
@@ -133,6 +140,195 @@ async function main() {
     assert.match(session.cookie, /MUSIC_U=test-credential/);
     assert.match(session.cookie, /__csrf=test-csrf/);
     assert.doesNotMatch(session.cookie, /Path=|HttpOnly/);
+  });
+  await test("Native Set-Cookie newline, CRLF and mixed array formats preserve MUSIC_U", async () => {
+    for (const separator of ["\n", "\r\n", ", "]) {
+      const cookies = ["NMTID=device; Path=/; Expires=Wed, 21 Oct 2037 07:28:00 GMT", "MUSIC_U=token=tail; HttpOnly; Path=/", "__csrf=csrf; Path=/"].join(separator);
+      assert.equal(api.mergeSetCookies("os=pc", { "set-cookie": [cookies, "other=value; Path=/"] }), "os=pc; NMTID=device; MUSIC_U=token=tail; __csrf=csrf; other=value");
+    }
+  });
+  await test("Android QR transport preserves all cookies when host requestUrl drops duplicate headers", async () => {
+    const base = fakeRequest(); let nativeCalls = 0; let fallbackPolls = 0;
+    const joined = "__csrf=csrf; Path=/; Expires=Wed, 21 Oct 2037 07:28:00 GMT, MUSIC_U=android-credential; Path=/; HttpOnly, NMTID=device; Path=/";
+    window.Capacitor = {
+      getPlatform: () => "android",
+      async nativePromise(plugin, method, options) {
+        assert.equal(this, window.Capacitor); assert.equal(plugin, "CapacitorHttp"); assert.equal(method, "request");
+        assert.equal(options.method, "POST"); assert.equal(options.responseType, "text");
+        assert.equal(options.disableRedirects, true); assert.equal(options.readTimeout, 10000);
+        assert.match(options.data, /^params=.+&encSecKey=/);
+        assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded");
+        ++nativeCalls;
+        // Model Capacitor's JSON auto-parsing and combined response headers.
+        return options.url.endsWith("/unikey") ? {status:200,data:{code:200,unikey:"android-key"},headers:{"Set-Cookie":"NMTID=device; Path=/"}}
+          : {status:200,data:{code:803},headers:{"Set-Cookie":joined}};
+      },
+    };
+    const instance = plugin(req => {
+      if (req.url.endsWith("/client/login")) { ++fallbackPolls; return Promise.resolve(response({code:803},{"set-cookie":"__csrf=csrf; Path=/"})); }
+      if (req.url.endsWith("/w/nuser/account/get")) assert.match(req.headers.Cookie, /MUSIC_U=android-credential/);
+      return base(req);
+    });
+    const login = instance.loginNetease(); await flush(); await tick();
+    assert.equal(await login, true); assert.equal(nativeCalls, 2); assert.equal(fallbackPolls, 0);
+    assert.match(instance.saved.neteaseCookie, /MUSIC_U=android-credential/);
+    assert.doesNotMatch(instance.saved.neteaseCookie, /Path=|Expires=/);
+  });
+  await test("Desktop, iOS and hosts without a native bridge retain their existing requester", async () => {
+    const base = fakeRequest(); assert.equal(api.qrLoginRequester(base), base);
+    for (const platform of ["web", "ios", "electron"]) {
+      window.Capacitor = {getPlatform:()=>platform,nativePromise:()=>{throw Error("must not use native bridge");}};
+      assert.equal(api.qrLoginRequester(base), base);
+    }
+    window.Capacitor = {getPlatform:()=>"android"}; assert.equal(api.qrLoginRequester(base), base);
+  });
+  await test("Android native bridge is scoped to QR URLs and keeps the original encrypted body", async () => {
+    let received; let fallbacks = 0;
+    window.Capacitor = {getPlatform:()=>"android",nativePromise:async (_plugin,_method,options)=>{received=options;return {status:200,data:'{"code":801}',headers:{"Set-Cookie":["NMTID=x; Path=/","__csrf=y; Path=/"],ignored:42}};}};
+    const request = api.qrLoginRequester(async req=>{++fallbacks;return response({code:200});});
+    const qr = {url:"https://music.163.com/weapi/login/qrcode/client/login",method:"POST",headers:{Cookie:"os=pc","Content-Type":"application/x-www-form-urlencoded"},body:"params=unchanged%2B%3D&encSecKey=test"};
+    const result = await request(qr); assert.equal(received.data,qr.body); assert.deepEqual(received.headers,qr.headers);
+    assert.notEqual(received.headers,qr.headers); assert.equal(result.text,'{"code":801}'); assert.equal(result.headers.ignored,undefined);
+    for (const url of ["https://music.163.com/weapi/w/nuser/account/get","https://example.test/weapi/login/qrcode/client/login","http://music.163.com/weapi/login/qrcode/client/login"]) await request({...qr,url});
+    assert.equal(fallbacks,3);
+  });
+  await test("Missing CapacitorHttp falls back once; network failures never silently resend", async () => {
+    const base = fakeRequest(); let nativeCalls = 0;
+    window.Capacitor = {getPlatform:()=>"android",nativePromise:async()=>{++nativeCalls;throw {code:"UNIMPLEMENTED"};}};
+    const request = api.qrLoginRequester(base); const session = await api.createQrLogin(request); await api.checkQrLogin(request,session);
+    assert.equal(nativeCalls,1); assert.equal(base.calls.length,2);
+    for (const failure of [Error("private MUSIC_U=SECRET"),{code:"NETWORK_ERROR",message:"SECRET"}]) {
+      let fallbacks=0;
+      window.Capacitor.nativePromise=async()=>{throw failure;};
+      await assert.rejects(api.createQrLogin(api.qrLoginRequester(async()=>{++fallbacks;return response({code:200});})),error=>{
+        assert.equal(error.reason,"network"); assert.doesNotMatch(error.message,/SECRET|MUSIC_U/); return true;
+      });
+      assert.equal(fallbacks,0);
+    }
+  });
+  await test("Invalid or stalled native responses cannot save a login", async () => {
+    for (const data of [null,{status:"200",data:{code:803}},{status:200}]) {
+      window.Capacitor={getPlatform:()=>"android",nativePromise:async()=>data};
+      await assert.rejects(api.createQrLogin(api.qrLoginRequester(fakeRequest())),error=>error.reason==="network");
+    }
+    let finish;
+    window.Capacitor={getPlatform:()=>"android",nativePromise:()=>new Promise(resolve=>{finish=resolve;})};
+    const request = api.createQrLogin(api.qrLoginRequester(fakeRequest()));
+    const assertion=assert.rejects(request,error=>error.reason==="timeout"); await tick(15000); await assertion;
+    finish({status:200,data:{code:200,unikey:"late-key"}}); await flush();
+  });
+  await test("Authorized credentials survive verification retries without polling a spent QR", async () => {
+    const base = fakeRequest([803, 800]); let verifies = 0;
+    const instance = plugin(req => {
+      if (req.url.endsWith("/w/nuser/account/get") && ++verifies <= 2) throw Error("private network detail MUSIC_U=SECRET");
+      return base(req);
+    });
+    const login = instance.loginNetease(); await flush(); await tick();
+    assert.equal(instance.loginModal.phase, "verify");
+    instance.loginModal.session.expiresAt = 0;
+    assert.doesNotMatch(instance.loginModal.statusEl.textContent, /SECRET|private/);
+    await tick(3000); await tick(3000);
+    assert.equal(await login, true);
+    assert.equal(verifies, 3);
+    assert.equal(base.calls.filter(req => req.url.endsWith("/client/login")).length, 1);
+  });
+  await test("Manual verification retry reuses credentials after automatic retries stop", async () => {
+    const base = fakeRequest([803]); let offline = true;
+    const instance = plugin(req => req.url.endsWith("/w/nuser/account/get") && offline ? Promise.reject(Error("offline")) : base(req));
+    const login = instance.loginNetease(); await flush(); await tick(); await tick(3000); await tick(3000);
+    const modal = instance.loginModal;
+    assert.equal(modal.stopped, true);
+    assert.equal(modal.retryButton.hidden, false);
+    assert.equal(modal.refreshButton.disabled, false);
+    offline = false; modal.retryButton.click(); await flush();
+    assert.equal(await login, true);
+    assert.equal(base.calls.filter(req => req.url.endsWith("/client/login")).length, 1);
+  });
+  await test("Manual polling retry restores a still-valid QR image", async () => {
+    const base = fakeRequest([801]); let offline = true;
+    const instance = plugin(req => req.url.endsWith("/client/login") && offline ? Promise.reject(Error("offline")) : base(req));
+    const login = instance.loginNetease(); await flush(); await tick(); await tick(3000); await tick(3000);
+    const modal = instance.loginModal; assert.equal(modal.imageEl.hidden, true);
+    offline = false; modal.retryButton.click(); await flush();
+    assert.equal(modal.imageEl.hidden, false); assert.equal(modal.stopped, false);
+    modal.close(); assert.equal(await login, false);
+  });
+  await test("Authorization received while hidden is verified on return without polling again", async () => {
+    const base = fakeRequest([803]); let finish;
+    const instance = plugin(req => req.url.endsWith("/client/login") ? new Promise(resolve => { finish = () => resolve(base(req)); }) : base(req));
+    const login = instance.loginNetease(); await flush(); await tick();
+    const modal = instance.loginModal;
+    document.hidden = true; document.dispatchEvent(new Event("visibilitychange"));
+    finish(); await flush(); assert.equal(modal.phase, "verify"); assert.equal(instance.saved, undefined);
+    document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); await flush();
+    assert.equal(await login, true);
+    assert.equal(base.calls.filter(req => req.url.endsWith("/client/login")).length, 1);
+  });
+  await test("Returning from background resumes one request; duplicate lifecycle events cannot overlap", async () => {
+    const base = fakeRequest([801, 803]); let finish; let polls = 0; let active = 0; let maxActive = 0;
+    const instance = plugin(async req => {
+      if (!req.url.endsWith("/client/login")) return base(req);
+      ++polls; ++active; maxActive = Math.max(maxActive, active);
+      if (polls === 1) await new Promise(resolve => { finish = resolve; });
+      try { return await base(req); } finally { --active; }
+    });
+    const login = instance.loginNetease(); await flush();
+    document.hidden = true; document.dispatchEvent(new Event("visibilitychange"));
+    await tick(); assert.equal(polls, 0);
+    document.hidden = false; document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus")); window.dispatchEvent(new Event("pageshow"));
+    assert.equal(polls, 1);
+    finish(); await flush();
+    assert.equal(await login, true); assert.equal(maxActive, 1); assert.equal(polls, 2);
+    const before = polls; window.dispatchEvent(new Event("focus")); await tick(); assert.equal(polls, before);
+  });
+  await test("Background request failures do not consume foreground retry budget", async () => {
+    const base = fakeRequest([803]); let fail;
+    const instance = plugin(req => req.url.endsWith("/client/login") ? new Promise((_, reject) => { fail = reject; }) : base(req));
+    const login = instance.loginNetease(); await flush(); await tick();
+    const modal = instance.loginModal;
+    document.hidden = true; document.dispatchEvent(new Event("visibilitychange"));
+    fail(Error("suspended")); await flush();
+    assert.equal(modal.failures, 0); assert.equal(modal.stopped, false);
+    document.hidden = false; document.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(modal.inFlight.size, 1);
+    modal.close(); fail(Error("cancelled")); await flush(); assert.equal(await login, false);
+  });
+  await test("Refresh invalidates a late QR response and its credential", async () => {
+    const base = fakeRequest(); let finish;
+    const instance = plugin(req => req.url.endsWith("/client/login") ? new Promise(resolve => { finish = resolve; }) : base(req));
+    const login = instance.loginNetease(); await flush(); await tick();
+    const modal = instance.loginModal; modal.refreshButton.click(); await flush();
+    finish(response({code:803}, {"set-cookie":"MUSIC_U=stale; Path=/"})); await flush();
+    assert.equal(modal.phase, "check"); assert.equal(instance.saved, undefined);
+    assert.doesNotMatch(modal.session.cookie, /stale/);
+    modal.close(); assert.equal(await login, false);
+  });
+  await test("HTTP, malformed, timeout, expired credential and risk diagnostics omit raw server data", async () => {
+    for (const [request, reason] of [
+      [async () => ({status:503,text:"SECRET body",headers:{}}), "http"],
+      [async () => ({status:200,text:"SECRET body",headers:{}}), "response"],
+      [async () => response({code:8821,message:"SECRET",cookie:"MUSIC_U=SECRET"}), "risk"],
+      [async () => response({code:301}), "expired"],
+    ]) {
+      await assert.rejects(api.verifyCookie(request, "MUSIC_U=test"), error => {
+        assert.equal(error.reason, reason); assert.doesNotMatch(error.message, /SECRET|MUSIC_U/);
+        if (reason === "risk") { assert.equal(error.retryable, false); assert.match(error.message, /8821/); }
+        return true;
+      });
+    }
+    const checking = api.verifyCookie(() => new Promise(() => {}), "MUSIC_U=test");
+    const assertion = assert.rejects(checking, error => error.reason === "timeout" && error.stage === "verify");
+    await tick(15000); await assertion;
+  });
+  await test("Explicit risk and missing credentials stop retries and require a new QR", async () => {
+    for (const code of [8821,803]) {
+      const base = fakeRequest(); const instance = plugin(req => req.url.endsWith("/client/login") ? Promise.resolve(response({code})) : base(req));
+      const login = instance.loginNetease(); await flush(); await tick();
+      assert.equal(instance.loginModal.stopped, true); assert.equal(instance.loginModal.retryButton.hidden, true);
+      await tick(3000); assert.equal(instance.saved, undefined);
+      instance.loginModal.close(); assert.equal(await login, false);
+    }
   });
   await test("Expired or malformed QR responses cannot become a saved login", async () => {
     const request = fakeRequest([803]);
@@ -269,7 +465,12 @@ async function main() {
     instance.saveData = async () => { throw Error("read-only"); };
     const login = instance.loginNetease(); await flush(); await tick();
     assert.equal(instance.settings.neteaseCookie, "");
-    instance.loginModal.close(); assert.equal(await login, false);
+    assert.equal(instance.loginModal.stopped, true);
+    assert.equal(instance.loginModal.retryButton.hidden, false);
+    assert.match(instance.loginModal.statusEl.textContent, new RegExp(api.t("authDiagnostics.save")));
+    instance.saveData = Plugin.prototype.saveData;
+    instance.loginModal.retryButton.click(); await flush();
+    assert.equal(await login, true);
   });
   await test("Failed sign-out persistence leaves the credential available for retry", async () => {
     const instance = plugin();

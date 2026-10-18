@@ -46,6 +46,9 @@
 .mw-np__timeline > span:last-child { text-align: right; }
 .mw-np__controls { gap: 8px; flex-wrap: nowrap; }
 .mw-np__ctrl { flex: 0 0 auto; }
+/* Tablet button padding otherwise consumes the entire icon's content box. */
+.mw-player .mw-np__controls button.mw-np__ctrl { padding: 0; }
+.mw-player .mw-np__ctrl > svg { flex-shrink: 0; }
 .mw-np__line { flex-wrap: wrap; row-gap: 5px; }
 .mw-np__title { overflow-wrap: anywhere; line-height: 1.35; }
 .mw-np__popover-anchor { position: relative; flex: 0 0 auto; }

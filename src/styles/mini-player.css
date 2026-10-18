@@ -31,6 +31,10 @@
   box-shadow: none; color: var(--mw-panel-fg);
 }
 .mw-mini .mw-mini__button[data-action="quality"] { width: auto; min-width: 68px; padding: 0 5px; gap: 4px; font-size: 11px; white-space: nowrap; }
+/* Keep icon-only controls clear of Obsidian's tablet text-button padding. */
+.mw-mini button.mw-mini__button:not([data-action="quality"]),
+.mw-view .mw-mini button.mw-mini__open { padding: 0; }
+.mw-mini .mw-mini__button > svg { flex-shrink: 0; }
 .mw-mini .mw-mini__button:hover, .mw-mini .mw-mini__button.is-active { background: var(--mw-panel-hover); }
 .mw-mini button:focus-visible { outline: 1px solid var(--mw-panel-fg-dim); outline-offset: -1px; }
 .mw-mini button:disabled { opacity: .4; cursor: default; }

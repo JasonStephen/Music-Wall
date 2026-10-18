@@ -3,6 +3,7 @@
 
 import { weapiPost, type Requester } from "./metadata";
 import { t } from "../i18n";
+import { LoginDiagnosticError, loginApiError, parseLoginResponse, requestLogin } from "./loginDiagnostics";
 
 export interface UserPlaylistBrief {
   id: number;
@@ -16,7 +17,9 @@ export function hasLoginCookie(cookie?: string): boolean {
 }
 
 /** 仅明确失效的登录触发重新扫码，网络故障不应清除已有凭据。 */
-export class LoginRequiredError extends Error {}
+export class LoginRequiredError extends LoginDiagnosticError {
+  constructor(_message?: string) { super("verify", "expired", undefined, false); }
+}
 
 /** 验证 Cookie：返回账号 uid 与昵称 */
 export async function verifyCookie(
@@ -26,11 +29,15 @@ export async function verifyCookie(
   if (!hasLoginCookie(cookie)) {
     throw new LoginRequiredError(t("playlistErr.noMusicU"));
   }
-  const r = await weapiPost(request, "/api/w/nuser/account/get", {}, cookie);
+  const r = await weapiPost(async req => {
+    const response = await requestLogin(request, req, "verify");
+    parseLoginResponse(response, "verify");
+    return response;
+  }, "/api/w/nuser/account/get", {}, cookie);
   if (r?.code === 301 || r?.code === 401) {
     throw new LoginRequiredError(t("playlistErr.cookieInvalid"));
   }
-  if (r?.code !== 200) throw new Error(t("auth.verifyFailed"));
+  if (r?.code !== 200) throw loginApiError("verify", r?.code);
   const uid = r?.account?.id ?? r?.profile?.userId;
   if (!uid) throw new LoginRequiredError(t("playlistErr.cookieInvalid"));
   return { uid, nickname: r?.account?.nickname ?? r?.profile?.nickname ?? "" };

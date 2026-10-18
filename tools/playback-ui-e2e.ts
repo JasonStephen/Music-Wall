@@ -25,7 +25,7 @@ let close = async()=>{};
 (window as any).setupPlaybackUI = async (config: any) => {
   await close();
   setLanguage(config.lang || 'zh-CN');
-  document.body.className = `theme-${config.theme}`;
+  document.body.className = `theme-${config.theme}${config.tablet ? " is-mobile is-tablet" : ""}`;
   document.body.style.setProperty("--mw-zoom",String(config.zoom??1));
   const mount=document.getElementById("mount")!;mount.empty();
   const hostBar=document.querySelector<HTMLElement>(".status-bar")!;
@@ -400,5 +400,11 @@ let close = async()=>{};
     return {checks,fail};
   };
   close=async()=>{for(const view of views)await view.onClose();provider.dispose();};
+  for (const button of mount.querySelectorAll<HTMLElement>(".mw-np__ctrl, .mw-mini__button:not([data-action='quality'])")) {
+    if (!button.getClientRects().length) continue;
+    const svg = button.querySelector("svg"), style = getComputedStyle(button);
+    check(!!svg && svg.getBoundingClientRect().width >= 12 * (config.zoom ?? 1), "Playback icon keeps a visible width");
+    check(parseFloat(style.paddingLeft) === 0 && parseFloat(style.paddingRight) === 0, "Icon control excludes tablet text-button padding");
+  }
   return {checks,fail, colors:config.kind==="wall"?null:{title:getComputedStyle(mount.querySelector(".mw-np__title")!).color,track:getComputedStyle(mount.querySelector(".mw-np__trackName")!).color}};
 };

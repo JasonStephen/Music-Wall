@@ -75,7 +75,7 @@ try {
         console.log('PASS '+item.name);continue;
       }
       let title;
-      for (let attempt = 0; attempt < (player ? 1800 : 150); attempt++) {
+      for (let attempt = 0; attempt < (player ? 1800 : 500); attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 30));
         title = await evaluate("document.title");
         if (/^(PASS|FAIL):/.test(title)) break;

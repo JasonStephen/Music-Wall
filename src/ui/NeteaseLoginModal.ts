@@ -2,6 +2,7 @@ import { App, Modal } from "obsidian";
 import { createQrLogin, checkQrLogin, type QrLoginSession } from "../core/auth";
 import type { Requester } from "../core/metadata";
 import { t } from "../i18n";
+import { LoginDiagnosticError, loginErrorMessage, type LoginStage } from "../core/loginDiagnostics";
 import { applyModalTheme } from "./modalTheme";
 
 /** 关闭、刷新、登出及卸载均作废旧请求；一次只轮询一个二维码。 */
@@ -15,6 +16,27 @@ export class NeteaseLoginModal extends Modal {
   private statusEl: HTMLElement;
   private imageEl: HTMLImageElement;
   private refreshButton: HTMLButtonElement;
+  private retryButton: HTMLButtonElement;
+  private session?: QrLoginSession;
+  private phase: "check" | "verify" = "check";
+  private failures = 0;
+  private stopped = false;
+  private inFlight = new Set<number>();
+  private suspension = 0;
+  private resumeRequested = false;
+  private doc: Document;
+  private win: Window;
+  private readonly resume = () => {
+    if (this.doc.hidden) {
+      ++this.suspension;
+      this.clearTimer();
+      return;
+    }
+    if (this.closed || this.stopped || !this.session) return;
+    this.clearTimer();
+    if (this.inFlight.has(this.generation)) this.resumeRequested = true;
+    else void this.poll(this.generation);
+  };
 
   constructor(
     app: App,
@@ -39,14 +61,34 @@ export class NeteaseLoginModal extends Modal {
     const buttons = this.contentEl.createDiv({ cls: "mw-login__buttons" });
     this.refreshButton = buttons.createEl("button", { text: t("auth.refresh"), attr: { type: "button" } });
     this.refreshButton.addEventListener("click", () => void this.generate());
+    this.retryButton = buttons.createEl("button", { text: t("authDiagnostics.retry"), attr: { type: "button" } });
+    this.retryButton.hidden = true;
+    this.retryButton.addEventListener("click", () => {
+      if (!this.session || this.inFlight.has(this.generation)) return;
+      this.failures = 0;
+      this.stopped = false;
+      this.retryButton.hidden = true;
+      void this.poll(this.generation);
+    });
     buttons.createEl("button", { text: t("common.cancel"), attr: { type: "button" } })
       .addEventListener("click", () => this.close());
+    this.doc = this.contentEl.ownerDocument ?? document;
+    this.win = this.doc.defaultView ?? window;
+    this.doc.addEventListener("visibilitychange", this.resume);
+    this.win.addEventListener("focus", this.resume);
+    this.win.addEventListener("pageshow", this.resume);
     void this.generate();
   }
 
   private async generate(): Promise<void> {
     const generation = ++this.generation;
-    if (this.timer !== undefined) clearTimeout(this.timer);
+    this.clearTimer();
+    this.session = undefined;
+    this.phase = "check";
+    this.failures = 0;
+    this.stopped = false;
+    this.resumeRequested = false;
+    this.retryButton.hidden = true;
     this.imageEl.hidden = true;
     this.imageEl.removeAttribute("src");
     this.statusEl.setText(t("auth.preparing"));
@@ -54,13 +96,14 @@ export class NeteaseLoginModal extends Modal {
     try {
       const session = await createQrLogin(this.request);
       if (!this.alive(generation)) return;
+      this.session = session;
       this.imageEl.src = session.image;
       this.imageEl.hidden = false;
       this.statusEl.setText(t("auth.waiting"));
       this.refreshButton.disabled = false;
-      this.schedule(session, generation);
+      this.schedule(generation);
     } catch (error) {
-      this.fail(error, generation);
+      this.fail(error, generation, "create");
     }
   }
 
@@ -68,55 +111,94 @@ export class NeteaseLoginModal extends Modal {
     return !this.closed && this.generation === generation;
   }
 
-  private schedule(session: QrLoginSession, generation: number, failures = 0): void {
-    this.timer = setTimeout(() => void this.poll(session, generation, failures), failures ? 3000 : 1500);
+  private clearTimer(): void {
+    if (this.timer !== undefined) clearTimeout(this.timer);
+    this.timer = undefined;
   }
 
-  private async poll(session: QrLoginSession, generation: number, failures: number): Promise<void> {
-    if (!this.alive(generation)) return;
+  private schedule(generation: number): void {
+    this.clearTimer();
+    if (!this.alive(generation) || this.doc.hidden || this.stopped) return;
+    this.timer = setTimeout(() => void this.poll(generation), this.failures ? 3000 : 1500);
+  }
+
+  private async poll(generation: number): Promise<void> {
+    if (!this.alive(generation) || !this.session || this.doc.hidden || this.inFlight.has(generation)) return;
+    this.clearTimer();
+    this.inFlight.add(generation);
+    const session = this.session;
+    const suspension = this.suspension;
+    this.retryButton.hidden = true;
     try {
-      const code = await checkQrLogin(this.request, session);
-      if (!this.alive(generation)) return;
-      if (code === 800) {
-        this.imageEl.hidden = true;
-        this.statusEl.setText(t("auth.expired"));
-        return;
+      if (this.phase === "check") {
+        const code = await checkQrLogin(this.request, session);
+        if (!this.alive(generation)) return;
+        if (code === 800) {
+          this.stopped = true;
+          this.imageEl.hidden = true;
+          this.statusEl.setText(t("auth.expired"));
+          return;
+        }
+        this.failures = 0;
+        if (code !== 803) {
+          this.imageEl.hidden = false;
+          this.statusEl.setText(t(code === 802 ? "auth.confirm" : "auth.waiting"));
+          this.schedule(generation);
+          return;
+        }
+        // Once authorized, retain the credential and never poll the spent QR again.
+        this.phase = "verify";
       }
-      if (code === 803) {
+      if (!this.doc.hidden) {
         this.refreshButton.disabled = true;
         this.imageEl.hidden = true;
         this.statusEl.setText(t("auth.verifying"));
         const accepted = await this.acceptLogin(session.cookie, () => this.alive(generation));
         if (!this.alive(generation)) return;
-        if (!accepted) throw new Error(t("auth.verifyFailed"));
+        if (!accepted) throw new LoginDiagnosticError("verify", "credential", undefined, false);
         this.completed = true;
         this.close();
         return;
       }
-      this.statusEl.setText(t(code === 802 ? "auth.confirm" : "auth.waiting"));
-      this.schedule(session, generation);
     } catch (error) {
       if (!this.alive(generation)) return;
-      if (failures < 2 && Date.now() < session.expiresAt) {
-        this.statusEl.setText(t("auth.retrying"));
-        this.schedule(session, generation, failures + 1);
+      const retryable = !(error instanceof LoginDiagnosticError) || error.retryable;
+      if (retryable && (this.doc.hidden || suspension !== this.suspension)) {
+        // App suspension is not a failed foreground attempt.
+        this.schedule(generation);
+      } else if (retryable && this.failures < 2 && (this.phase === "verify" || Date.now() < session.expiresAt)) {
+        ++this.failures;
+        this.statusEl.setText(`${t("auth.retrying")} ${loginErrorMessage(error, this.phase)}`);
+        this.schedule(generation);
       } else {
-        this.fail(error, generation);
+        this.fail(error, generation, this.phase);
+      }
+    } finally {
+      this.inFlight.delete(generation);
+      if (this.alive(generation) && this.resumeRequested) {
+        this.resumeRequested = false;
+        if (!this.stopped && !this.doc.hidden) { this.clearTimer(); void this.poll(generation); }
       }
     }
   }
 
-  private fail(error: unknown, generation: number): void {
+  private fail(error: unknown, generation: number, stage: LoginStage): void {
     if (!this.alive(generation)) return;
+    this.stopped = true;
     this.imageEl.hidden = true;
-    this.statusEl.setText(error instanceof Error ? error.message : t("auth.networkError"));
+    this.statusEl.setText(loginErrorMessage(error, stage));
     this.refreshButton.disabled = false;
+    this.retryButton.hidden = !this.session || (error instanceof LoginDiagnosticError && !error.retryable && error.reason !== "storage");
   }
 
   onClose(): void {
     this.closed = true;
     ++this.generation;
-    if (this.timer !== undefined) clearTimeout(this.timer);
+    this.clearTimer();
+    this.session = undefined;
+    this.doc?.removeEventListener("visibilitychange", this.resume);
+    this.win?.removeEventListener("focus", this.resume);
+    this.win?.removeEventListener("pageshow", this.resume);
     this.imageEl?.removeAttribute("src");
     this.contentEl.empty();
     this.settle(this.completed);
