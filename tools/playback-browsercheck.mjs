@@ -37,6 +37,10 @@ try {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[768,1024,1],[360,740,1],[240,600,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',panel:'lyrics',theme,bg:theme==='dark'?'dark':'white',style:'cover',width,height,zoom});
   }
+  if(process.argv.includes('--bare')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const style of ['vinyl','cd']) for(const [width,height] of [[1280,800],[360,740],[640,360]]) cases.push({kind:'player',panel:'bare',theme,bg:theme==='dark'?'dark':'white',style,width,height});
+  }
   if(process.argv.includes('--quick')) {
     const selected=cases.filter(item=>item.width===1280&&item.kind==='player'&&item.panel==='playlist'||item.kind==='wall'&&item.width===360&&item.style==='cover');
     cases.splice(0,cases.length,...selected);
@@ -73,6 +77,13 @@ try {
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.panel==='bare') {
+      await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+      const bare=await value('window.verifyStandaloneDiscs()');checks+=bare.checks;if(bare.fail.length){failed++;console.log('FAIL bare disc '+JSON.stringify({item,errors:bare.fail}));}
+      await new Promise(resolve=>setTimeout(resolve,350));
+      const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`bare-${item.style}-${item.theme}-${item.width}.png`),Buffer.from(shot.data,'base64'));
+      await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    }
     if(item.panel==='lyrics') {
       const test=await value('window.verifyLyricsUI()');checks+=test.checks;if(test.fail.length){failed++;console.log('FAIL lyrics '+JSON.stringify({item,errors:test.fail}));}
       if(item.width===1280&&item.theme==='dark'){

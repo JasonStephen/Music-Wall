@@ -417,14 +417,15 @@ export class MusicPlayerView extends ItemView {
       });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
       let caseSection: HTMLElement | null = null;
+      let refreshMachine = () => {};
       for (const s of PLAYER_STYLES) {
         grid.appendChild(
           buildStyleTile(s, styleLabel(s), cover, this.discStyle === s, (picked) => {
             this.discStyle = picked;
             // 清空 albumKey 让 updateNow 立即重建设备与曲目列表
-            this.albumKey = "";
+            this.albumKey = "\0";
             this.updateNow();
-            caseSection?.toggleClass("is-hidden", picked === "cover");
+            refreshMachine();
             grid
               .querySelectorAll<HTMLElement>(".mw-preset")
               .forEach((el) =>
@@ -433,6 +434,27 @@ export class MusicPlayerView extends ItemView {
           })
         );
       }
+
+      const machineSection = panel.createDiv({ cls: "mw-panel__section mw-machine-options" });
+      const machineButton = machineSection.createEl("button", { cls: "clickable-icon mw-machine-toggle", attr: { type: "button", role: "switch" } });
+      const machineLabel = machineButton.createSpan();
+      const machineIcon = machineButton.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } });
+      refreshMachine = () => {
+        machineSection.toggleClass("is-hidden", this.discStyle === "cover");
+        const enabled = this.showMachine();
+        const label = t(this.discStyle === "cd" ? "playerMachine.cd" : "playerMachine.vinyl");
+        machineLabel.setText(label); machineButton.setAttr("aria-label", label);
+        machineButton.setAttr("aria-checked", String(enabled)); machineButton.toggleClass("is-active", enabled);
+        setIcon(machineIcon, enabled ? "toggle-right" : "toggle-left");
+        caseSection?.toggleClass("is-hidden", this.discStyle === "cover" || !enabled);
+      };
+      machineButton.addEventListener("click", () => {
+        if (this.discStyle === "cover") return;
+        const key = this.discStyle === "cd" ? "playerCdMachine" : "playerVinylMachine";
+        this.plugin.settings[key] = !this.showMachine();
+        this.albumKey = "\0"; this.updateNow(); refreshMachine();
+        void this.plugin.saveData(this.plugin.settings);
+      });
 
       caseSection = panel.createDiv({ cls: "mw-panel__section mw-case-options" });
       caseSection.toggleClass("is-hidden", this.discStyle === "cover");
@@ -452,6 +474,7 @@ export class MusicPlayerView extends ItemView {
           void this.plugin.saveData(this.plugin.settings);
         });
       }
+      refreshMachine();
       const secBg = panel.createDiv({ cls: "mw-panel__section" });
       secBg.createDiv({
         cls: "mw-panel__label",
@@ -853,7 +876,7 @@ export class MusicPlayerView extends ItemView {
       meta,
       addedAt: new Date().toISOString(),
     };
-    const device = buildDevice(pseudo, this.discStyle, 500);
+    const device = buildDevice(pseudo, this.discStyle, 500, this.showMachine());
     this.readoutEl = device.readout;
     host.appendChild(device.root);
   }
@@ -871,6 +894,9 @@ export class MusicPlayerView extends ItemView {
       if (this.caseToneKey !== key) return;
       root.style.setProperty("--mw-case-accent", tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#b4b6b8" : "#51555b"));
     });
+  }
+  private showMachine(): boolean {
+    return (this.discStyle === "cd" ? this.plugin.settings.playerCdMachine : this.plugin.settings.playerVinylMachine) !== false;
   }
 
   private syncLayout(): void {

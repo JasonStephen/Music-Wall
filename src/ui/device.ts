@@ -89,8 +89,14 @@ function buildCoverStage(item: WallItem, coverSize: number): DeviceParts {
 export function buildDevice(
   item: WallItem,
   style: DiscStyle,
-  coverSize = 500
+  coverSize = 500,
+  showMachine = true
 ): DeviceParts {
+  if (!showMachine && (style === "vinyl" || style === "cd")) {
+    const root = box(`mw-player-disc-only mw-player-disc-only--${style}`);
+    root.appendChild(buildDiscElement(item, style, { coverSize }));
+    return { root, readout: null };
+  }
   const parts =
     style === "vinyl"
       ? buildTurntable(item, coverSize)

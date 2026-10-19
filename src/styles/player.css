@@ -373,6 +373,15 @@
 .mw-np__disc.is-paused .mw-record__plate {
   animation-play-state: paused;
 }
+.mw-player-disc-only { position: relative; width: 100%; aspect-ratio: 1; }
+.mw-player .mw-player-disc-only .mw-record { transform: none; }
+.mw-player .mw-machine-toggle { display: flex; justify-content: space-between; gap: 12px; width: 100%; height: auto; min-height: 36px; padding: 8px; border: 1px solid var(--mw-panel-line); border-radius: 7px; color: var(--mw-panel-fg); background: transparent; box-shadow: none; font: inherit; }
+.mw-machine-toggle .mw-control-icon { display: inline-flex; flex: 0 0 auto; }
+.mw-machine-toggle svg { width: 24px; height: 24px; }
+.mw-machine-toggle[aria-checked="true"] svg { color: var(--mw-accent); }
+@media (prefers-reduced-motion: reduce) {
+  .mw-player-disc-only .mw-record__plate { animation-play-state: paused; }
+}
 
 /* ---- 黑胶：唱片机（参考实物：深色盘座 + 银唱臂 + 调速旋钮） ---- */
 .mw-dev--vinyl .mw-dev__chassis {

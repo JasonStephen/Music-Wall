@@ -173,6 +173,8 @@ export interface MusicWallSettings {
   /** 播放器页背景模式 */
   playerBackground: PlayerBackground;
   playerCase: DeviceCase;
+  playerVinylMachine: boolean;
+  playerCdMachine: boolean;
   pauseFadeSeconds: number;
   crossFadeSeconds: number;
   audioCacheMB: number;
@@ -204,6 +206,8 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   smtcEnabled: true,
   playerBackground: "dark",
   playerCase: "black",
+  playerVinylMachine: true,
+  playerCdMachine: true,
   pauseFadeSeconds: 0.3,
   crossFadeSeconds: 2,
   audioCacheMB: 1024,
