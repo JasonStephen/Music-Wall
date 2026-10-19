@@ -74,6 +74,10 @@ try {
       cases.push({kind:'wall',tablet:true,theme,layout:'shelf',style:'vinyl',width,height,zoom});
     }
   }
+  if(process.argv.includes('--mouse-back')) {
+    cases.splice(0,cases.length);
+    for(const kind of ['wall','player'])for(const [width,height] of [[1280,800],[360,740]])cases.push({kind,width,height,theme:'dark',style:'vinyl',layout:'grid',panel:'playlist'});
+  }
   if(process.argv.includes('--hidden-zoom')) {
     cases.splice(0,cases.length);
     for(const [width,height] of [[1280,800],[360,740]])for(const kind of ['wall','player','library'])cases.push({kind,width,height,theme:'dark',style:'vinyl',layout:'grid',panel:'playlist',page:'created',lang:'zh-CN'});
@@ -90,6 +94,9 @@ try {
     if(process.argv.includes('--hidden-zoom')) {
       const hidden=await value('window.verifyHiddenZoom()');checks+=hidden.checks;
       if(hidden.fail.length){failed++;console.log('FAIL hidden zoom '+item.kind+' '+item.width+' '+JSON.stringify(hidden.fail));}
+    }
+    if(process.argv.includes('--mouse-back')) {
+      const back=await value('window.verifyMouseBack()');checks+=back.checks;if(back.fail.length){failed++;console.log('FAIL mouse back '+JSON.stringify(item)+' '+JSON.stringify(back.fail));}
     }
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
     if(item.panel==='bare') {

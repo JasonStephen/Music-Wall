@@ -1,3 +1,4 @@
+import { bindMouseBack } from "./mouseBack";
 // 音乐墙 FileView：点开 .mw 文件即渲染唱片墙。
 // FileView 基类负责 file 绑定/切换/重命名刷标题/导航历史，本类只管加载与渲染。
 //
@@ -323,6 +324,12 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onOpen(): Promise<void> {
+    this.register(bindMouseBack(this.contentEl, () => {
+      if (this.miniPlayer?.closeForBack()) return;
+      if (this.drawer?.isOpen()) { this.drawer.close(); return; }
+      if (this.detailOpen) { this.closeShelfDetail(); return; }
+      if (this.editMode) this.exitEditMode();
+    }));
     this.registerEvent(
       this.app.vault.on("modify", (f) => {
         if (this.suppressSelf) return;

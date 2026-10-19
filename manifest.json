@@ -1,7 +1,7 @@
 {
   "id": "music-wall",
   "name": "Music Wall",
-  "version": "1.2.8-exp-4",
+  "version": "1.2.8-exp-5",
   "minAppVersion": "1.5.0",
   "description": "网易云专辑唱片墙：四种唱片样式、收藏整理、评分筛选、展示架与播放器页，扫码登录并在插件内播放专辑。 NetEase album wall for Obsidian — collect, rate and sort records; QR sign-in and in-plugin album playback. Files stay local (.mw).",
   "author": "Jason",

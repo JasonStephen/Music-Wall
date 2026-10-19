@@ -1,3 +1,4 @@
+import { bindMouseBack } from "./mouseBack";
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
@@ -66,6 +67,7 @@ export class MusicLibraryView extends ItemView {
   getDisplayText(): string { return this.tab === "likes" && !this.albumItem && !this.artistItem && !this.playlistItem ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.albumItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
   getIcon(): string { return "list-music"; }
   async onOpen(): Promise<void> {
+    this.register(bindMouseBack(this.contentEl, () => this.mouseBack()));
     this.closed = false; this.auth = this.plugin.settings.neteaseCookie;
     const root = this.contentEl; root.empty(); root.addClass("mw-view", "mw-cloud");
     const win = root.ownerDocument.defaultView;
@@ -145,7 +147,7 @@ export class MusicLibraryView extends ItemView {
     heading.createEl("h2", { text: this.getDisplayText() });
     svgAction(this.head, "home", t("library.home"), () => this.navigate("home"));
     svgAction(this.head, "refresh-cw", t("library.refresh"), () => { this.statsCache.clear(); this.plugin.libraryApi.clear(); return this.reload(); });
-    svgAction(this.head, "disc", t("cmd.openPlayer"), () => this.plugin.openPlayerView());
+    svgAction(this.head, "disc", t("cmd.openPlayer"), () => this.plugin.openPlayerView(this.leaf));
     this.appearanceButton = svgAction(this.head, "sun-moon", t("libraryAppearance.title"), () => this.cycleAppearance());
     this.appearanceButton.addClass("mw-cloud__appearance");
     this.updateAppearance();
@@ -310,6 +312,24 @@ export class MusicLibraryView extends ItemView {
     const snapshot = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset };
     const scroll = this.body.scrollTop;
     this.history.push(() => { Object.assign(this, snapshot); this.render(); this.body.scrollTop = scroll; });
+  }
+  private mouseBack(): void {
+    if (this.closed) return;
+    if (this.miniPlayer?.closeForBack()) return;
+    if (this.drawer) { this.closeDrawer(); return; }
+    if (this.history.length || this.collection || this.artist || this.playlistItem || this.albumItem || this.artistItem) this.back();
+  }
+  /** Runtime snapshot used only if the source tab was closed while playing. */
+  captureReturnState(): (target: MusicLibraryView) => Promise<void> {
+    const state = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset, keyword: this.keyword, searchKind: this.searchKind, offset: this.offset, results: this.results, lists: this.lists };
+    const scroll = this.body.scrollTop, auth = this.auth;
+    return async target => {
+      if (target.closed || target.plugin.settings.neteaseCookie !== auth) return;
+      ++target.generation; Object.assign(target, state); target.loading = false; target.retry = null; target.history = [];
+      if (!state.collection && !state.artist && (state.playlistItem || state.albumItem || state.artistItem)) await target.reload();
+      else target.render();
+      target.body.scrollTop = scroll;
+    };
   }
   private back(): void {
     ++this.generation; this.loading = false; this.retry = null;

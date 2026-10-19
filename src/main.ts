@@ -1,3 +1,4 @@
+import type { WorkspaceLeaf } from "obsidian";
 // Music Wall 插件主入口：注册扩展名/视图/命令/设置，并实现
 // 网络请求适配、创建/导入/导出/Git 导入等服务。
 
@@ -66,7 +67,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.8-exp-4";
+const BUILD_TAG = "1.2.8-exp-5";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -85,6 +86,8 @@ export default class MusicWallPlugin extends Plugin {
   collectionStatsCache: CollectionStatsCache;
   lyrics: LyricsService;
   private openingLibrary: Promise<void> | null = null;
+  private playerReturn: { leaf: WorkspaceLeaf; view: unknown; restore: () => Promise<void> } | null = null;
+  private returningPlayer = false;
   private openingPlayer: Promise<void> | null = null;
   private statusEl: HTMLElement | null = null;
   /** 库内全部 .mw 条目缓存（播放器匹配用），vault 变动时失效 */
@@ -271,6 +274,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.playerReturn = null;
     void this.collectionStatsCache?.flush();
     this.unloading = true;
     ++this.authGeneration;
@@ -448,10 +452,34 @@ export default class MusicWallPlugin extends Plugin {
     this.nowPlaying.start();
   }
 
-  async openPlayerView(): Promise<void> {
+  async openPlayerView(source = this.app.workspace.activeLeaf): Promise<void> {
+    if (source?.view instanceof MusicLibraryView) {
+      const snapshot = source.view.captureReturnState();
+      this.playerReturn = { leaf: source, view: source.view, restore: async () => {
+        await this.openLibraryView();
+        const target = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
+        if (target instanceof MusicLibraryView) await snapshot(target);
+      } };
+    } else if (source?.view instanceof MusicWallView && source.view.getFile()) {
+      const path = source.view.getFile()!.path;
+      this.playerReturn = { leaf: source, view: source.view, restore: async () => {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) await this.openWall(file);
+      } };
+    } else if (!source || !(source.view instanceof MusicPlayerView)) this.playerReturn = null;
     if (this.openingPlayer) return this.openingPlayer;
     this.openingPlayer = this.openStandaloneView(PLAYER_VIEW_TYPE);
     try { await this.openingPlayer; } finally { this.openingPlayer = null; }
+  }
+  async returnFromPlayer(): Promise<void> {
+    if (this.returningPlayer || !this.playerReturn || this.unloading) return;
+    const source = this.playerReturn; this.returningPlayer = true;
+    try {
+      const leaves = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE).concat(this.app.workspace.getLeavesOfType(WALL_VIEW_TYPE));
+      if (leaves.includes(source.leaf) && source.leaf.view === source.view) await this.app.workspace.revealLeaf(source.leaf);
+      else await source.restore();
+      if (this.playerReturn === source) this.playerReturn = null;
+    } finally { this.returningPlayer = false; }
   }
   async openLibraryView(): Promise<void> {
     if (this.openingLibrary) return this.openingLibrary;
@@ -476,9 +504,9 @@ export default class MusicWallPlugin extends Plugin {
   }
   private async openStandaloneView(type: string): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(type)[0];
-    if (existing) { this.app.workspace.revealLeaf(existing); return; }
+    if (existing) { await this.app.workspace.revealLeaf(existing); return; }
     const leaf = this.app.workspace.getLeaf("tab");
-    await leaf.setViewState({ type, active: true }); this.app.workspace.revealLeaf(leaf);
+    await leaf.setViewState({ type, active: true }); await this.app.workspace.revealLeaf(leaf);
   }
   async enqueueAlbum(meta: AlbumMeta): Promise<void> {
     if (!(await this.ensureNeteaseLogin())) return;

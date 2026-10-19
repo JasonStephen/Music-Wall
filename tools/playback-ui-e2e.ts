@@ -67,6 +67,7 @@ let close = async()=>{};
   let artistLookup = async () => [{ id: 11, artistRefs: [{ id: 91, name: "Resolved artist" }] }];
   const plugin={
     settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,playerVinylMachine:config.machine!==false,playerCdMachine:config.machine!==false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
+    async returnFromPlayer(){sourceCalls.push({kind:"back"});},
     async openLibraryCollection(meta:any){sourceCalls.push({kind:"library",meta});},async revealWallAlbum(path:string,id:number){sourceCalls.push({kind:"wall",path,id});},
     async openLibraryArtist(artist:any){sourceCalls.push({kind:"artist",artist});},libraryApi:{songs:()=>artistLookup()},
     lyrics:{async get(id:number){return {instrumental:false,lines:Array.from({length:60},(_,index)=>({time:index*5000,text:`Song ${id} · Line ${index+1} 夜色中的微光`,translation:`歌曲 ${id} · 翻译 ${index+1}`}))};}},
@@ -698,6 +699,23 @@ let close = async()=>{};
     await second.onClose();second.contentEl.remove();check(engine.state.status==="playing","Closing a wall preserves playback");
     engine.stop();check(views[0].contentEl.querySelector(".mw-mini")!.classList.contains("is-hidden"),"Stop hides remaining footer");
     return {checks,fail};
+  };
+  (window as any).verifyMouseBack=async()=>{
+    const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
+    const view:any=views[0],root=view.contentEl as HTMLElement;
+    const gesture=async(button=3)=>{root.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button,pointerType:'mouse'}));for(const type of ['mousedown','mouseup','auxclick'])root.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,button}));await wait(30);};
+    const song=engine.state.songId,position=engine.state.positionMs;
+    if(config.kind==='player') {
+      view.togglePlaylist(false);view.togglePopover(null);view.drawer.open('settings');await gesture();expect(!view.drawer.isOpen()&&!sourceCalls.some(c=>c.kind==='back'),'back first closes player drawer');
+      view.togglePlaylist(true);await gesture();expect(!view.playlistOpen&&!sourceCalls.some(c=>c.kind==='back'),'one back closes song list without crossing tabs');
+      view.togglePopover('volume');await gesture();expect(view.popover===null&&!sourceCalls.some(c=>c.kind==='back'),'one back closes popover without crossing tabs');
+      await gesture();expect(sourceCalls.filter(c=>c.kind==='back').length===1,'release and auxclick produce one cross-tab return');
+      await gesture(4);await gesture(0);expect(sourceCalls.filter(c=>c.kind==='back').length===1,'forward and primary mouse buttons do not go back');
+    } else {
+      view.drawer.open('style');await gesture();expect(!view.drawer.isOpen(),'wall side key closes active drawer');
+    }
+    expect(engine.state.songId===song&&engine.state.positionMs===position,'mouse back never changes playback');
+    return {checks:count,fail:errors};
   };
   (window as any).verifyHiddenZoom=()=>verifyHiddenZoom(views[0].contentEl,scale=>{plugin.settings.zoomScale=scale;for(const view of views)view.syncZoomBox();});
   close=async()=>{for(const view of views)await view.onClose();provider.dispose();};

@@ -114,6 +114,7 @@ export class MiniPlayer {
     return button;
   }
   private outside = (event: Event) => {
+    if ("button" in event && (event as MouseEvent).button !== 0) return;
     const target = event.target as Element;
     if (this.openPanel && !(this.root.contains(target) && target.closest(".mw-mini__panel, .mw-mini__tools"))) this.showPanel(null);
   };
@@ -225,6 +226,10 @@ export class MiniPlayer {
       }
       if (!player.availableQualities.length) this.panels.quality.createSpan({ text: "…", attr: { "aria-label": t("quality.loading") } });
     }
+  }
+  closeForBack(): boolean {
+    if (!this.openPanel) return false;
+    this.showPanel(null); return true;
   }
   dispose(): void {
     this.queueControls.dispose(); this.off(); this.observer?.disconnect(); this.parent.removeClass("has-mini");

@@ -1,3 +1,4 @@
+import { bindMouseBack } from "./mouseBack";
 // 独立音乐播放器页面。
 // 页面本身不落盘任何播放数据：只保留「最近一次拖入的专辑」为运行时状态。
 // 结构：当前播放区（SMTC 或最近一次拖入的专辑）+ 曲目列表（可点单曲播放）。
@@ -124,6 +125,7 @@ export class MusicPlayerView extends ItemView {
   getIcon(): string { return "disc"; }
 
   async onOpen(): Promise<void> {
+    this.register(bindMouseBack(this.contentEl, () => this.mouseBack()));
     this.plugin.ensureNowPlayingStarted();
     // 订阅之前先同步一次当前状态，避免「打开时正在播放却显示未在播放」
     this.now = this.currentNow();
@@ -161,6 +163,7 @@ export class MusicPlayerView extends ItemView {
       if (e.key === "Escape" && this.playlistOpen) this.togglePlaylist(false);
     });
     this.registerDomEvent(this.contentEl, "pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0) return;
       const target = event.target as Element;
       if (!target.closest(".mw-np__popover-anchor")) this.togglePopover(null);
       if (!target.closest(".mw-player__playlist, .mw-np__ctrl--list")) this.togglePlaylist(false);
@@ -177,6 +180,12 @@ export class MusicPlayerView extends ItemView {
     this.stopHostInset = watchHostInset(this.contentEl);
   }
 
+  private async mouseBack(): Promise<void> {
+    if (this.popover) { this.togglePopover(null); return; }
+    if (this.playlistOpen) { this.togglePlaylist(false); return; }
+    if (this.drawer?.isOpen()) { this.drawer.close(); return; }
+    await this.plugin.returnFromPlayer();
+  }
   async onClose(): Promise<void> {
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
