@@ -99,6 +99,7 @@ export const en: typeof zhCN = {
   },
   case: { title: "Case", white: "White", black: "Black", wood: "Wood", art: "Cover color" },
   buffering: { pauseFade: "Pause / resume fade (seconds)", crossFade: "Track crossfade (seconds)", cacheLimit: "Audio cache limit (MB, 0 disables)", cacheUsed: "Audio cache used", clearCache: "Clear cache", cacheError: "Unable to clear the cache. Try again later." },
+  libraryAppearance: {"title": "Appearance", "current": "Appearance: {mode}", "light": "Day", "dark": "Night", "system": "Follow system"},
   vinylFinish: {"title": "Vinyl finish", "black": "Black", "white": "White", "color": "Color", "blackGlass": "Black glass", "whiteGlass": "White glass", "colorGlass": "Colored glass"},
   playerMachine: {"vinyl": "Show turntable", "cd": "Show CD player"},
   lyrics: {"title": "Lyrics", "translation": "Translation", "noTranslation": "No translation available", "follow": "Follow lyrics", "idle": "Play a song to show lyrics", "external": "Synced lyrics are unavailable for external playback", "loading": "Loading lyrics…", "failed": "Could not load lyrics. Please retry.", "empty": "No lyrics available", "instrumental": "Instrumental"},

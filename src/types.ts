@@ -180,6 +180,7 @@ export interface MusicWallSettings {
   crossFadeSeconds: number;
   audioCacheMB: number;
   lyricsTranslation: boolean;
+  libraryAppearance: "system" | "light" | "dark";
   /**
    * 界面缩放（1 = 100%）。对音乐墙与播放器页全局生效，
    * 含侧边抽屉与模态框；可在设置里调，也可在视图内 Ctrl/Alt + 滚轮调。
@@ -214,6 +215,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   crossFadeSeconds: 2,
   audioCacheMB: 1024,
   lyricsTranslation: false,
+  libraryAppearance: "system",
   zoomScale: 1,
 };
 

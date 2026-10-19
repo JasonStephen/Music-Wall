@@ -142,6 +142,7 @@ export interface ShimMenuItem {
   title: string;
   icon?: string;
   disabled?: boolean;
+  checked?: boolean;
   submenu?: ShimMenuItem[];
   run?: () => void;
 }
@@ -167,7 +168,7 @@ export class Menu {
         entry.disabled = d;
         return chain;
       },
-      setChecked: () => chain,
+      setChecked: (value: boolean) => { entry.checked = value; return chain; },
       onClick: (fn: () => void) => {
         entry.run = fn;
         return chain;

@@ -38,6 +38,7 @@ let dispose=async()=>{};
  const leaf:any=new WorkspaceLeaf({});const view=new MusicLibraryView(leaf,plugin);leaf.updateHeader=()=>{tabTitle=view.getDisplayText();};
  mount.appendChild(view.contentEl);await view.onOpen();const v=view as any;
  check(apiCalls===0&&view.getDisplayText()===t('library.home'),'Opening goes home without fetching private playlists');
+ check(plugin.settings.libraryAppearance==='system'&&view.contentEl.dataset.libraryTheme===(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),'library defaults to actual system appearance');
  check(!!view.contentEl.querySelector('.mw-cloud__home h1')&&!!view.contentEl.querySelector('form input'),'Home includes welcome and search');
  if(['created','collected','likes'].includes(config.page))await v.navigate(config.page);
  if(['error','empty'].includes(config.page))await v.navigate('created');
@@ -90,6 +91,16 @@ let dispose=async()=>{};
  narrowPanel.dispose();probe.remove();
  (window as any).verifyLibraryDetails=async()=>{
   const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
+  const themeButton=root.querySelector<HTMLButtonElement>('.mw-cloud__appearance')!,footerBefore=root.querySelector('.mw-mini'),bodyBefore=body.firstElementChild;
+  const callsBefore=apiCalls,songBefore=engine.state.songId;
+  themeButton.click();await wait();const modes=MENU_LOG.at(-1)!.items;
+  expect(modes.map(mode=>mode.icon).join(',')==='sun,moon,sun-moon'&&modes[2].checked,'appearance menu has three SVG modes with system selected');
+  await modes[0].run?.();await wait();
+  expect(root.dataset.libraryTheme==='light'&&themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='sun'&&getComputedStyle(themeButton).color==='rgb(0, 0, 0)','day mode uses black sun');
+  await modes[1].run?.();await wait();
+  expect(root.dataset.libraryTheme==='dark'&&themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='moon'&&getComputedStyle(themeButton).color==='rgb(255, 255, 255)','night mode uses white moon');
+  expect(plugin.settings.libraryAppearance==='dark'&&apiCalls===callsBefore&&engine.state.songId===songBefore&&root.querySelector('.mw-mini')===footerBefore&&body.firstElementChild===bodyBefore,'appearance changes persist preference without refetching, rerendering or affecting audio');
+  await modes[2].run?.();await wait();expect(themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='sun-moon','system mode uses combined sun and moon icon');
   for(const tab of ['created','collected']) {
    await v.navigate(tab);await wait(100);
    expect(root.querySelector('.mw-cloud__card-stats')?.textContent===statsSummary({count:24,duration:6240000}),tab+' card shows actual count and hours');
@@ -198,6 +209,11 @@ let dispose=async()=>{};
   v.resetCardStats();statsHost.remove();
   return {checks:count,fail:errors};
  };
+ (window as any).setLibraryAppearance=async(mode:string)=>{
+  root.querySelector<HTMLButtonElement>('.mw-cloud__appearance')!.click();await wait();
+  await MENU_LOG.at(-1)!.items[['light','dark','system'].indexOf(mode)].run?.();await wait();
+ };
+ (window as any).libraryAppearanceState=()=>({theme:root.dataset.libraryTheme,mode:plugin.settings.libraryAppearance,color:getComputedStyle(root.querySelector('.mw-cloud__appearance')!).color});
  let nativeMenuCount=0,nativeSong:number|undefined;
  (window as any).prepareLibraryNativeHold=async()=>{
   await v.navigate('created');nativeMenuCount=MENU_LOG.length;nativeSong=engine.state.songId;

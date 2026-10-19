@@ -66,7 +66,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.7";
+const BUILD_TAG = "1.2.8-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -289,6 +289,7 @@ export default class MusicWallPlugin extends Plugin {
     if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
     if (!isAudioQuality(this.settings.defaultAudioQuality)) this.settings.defaultAudioQuality = "standard";
     if (!["white", "black", "wood", "art"].includes(this.settings.playerCase)) this.settings.playerCase = "black";
+    if (!["system", "light", "dark"].includes(this.settings.libraryAppearance)) this.settings.libraryAppearance = "system";
     const savedVinylFinish = this.settings.playerVinylFinish as string;
     if (savedVinylFinish === "glass") this.settings.playerVinylFinish = "whiteGlass";
     else if (!["black", "white", "color", "blackGlass", "whiteGlass", "colorGlass"].includes(savedVinylFinish)) this.settings.playerVinylFinish = "black";

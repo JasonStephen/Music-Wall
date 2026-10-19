@@ -1,4 +1,4 @@
-import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
 import { LIBRARY_VIEW_TYPE } from "../types";
@@ -58,6 +58,10 @@ export class MusicLibraryView extends ItemView {
   private drawer = false;
   private narrow = false;
   private playIntent = 0;
+  private appearanceMedia: MediaQueryList | null = null;
+  private appearanceButton: HTMLButtonElement | null = null;
+  private appearanceMenu: Menu | null = null;
+  private onAppearanceChange = () => this.updateAppearance();
   constructor(leaf: WorkspaceLeaf, private plugin: MusicWallPlugin) { super(leaf); }
   getViewType(): string { return LIBRARY_VIEW_TYPE; }
   getDisplayText(): string { return this.tab === "likes" && !this.albumItem && !this.artistItem && !this.playlistItem ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.albumItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
@@ -65,6 +69,9 @@ export class MusicLibraryView extends ItemView {
   async onOpen(): Promise<void> {
     this.closed = false; this.auth = this.plugin.settings.neteaseCookie;
     const root = this.contentEl; root.empty(); root.addClass("mw-view", "mw-cloud");
+    const win = root.ownerDocument.defaultView;
+    this.appearanceMedia = typeof win?.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
+    this.appearanceMedia?.addEventListener("change", this.onAppearanceChange);
     const box = root.createDiv({ cls: "mw-zoombox" });
     this.layout = box.createDiv({ cls: "mw-cloud__layout" });
     this.overlay = svgAction(this.layout, "x", t("library.closeNav"), () => this.closeDrawer()); this.overlay.addClass("mw-cloud__overlay");
@@ -79,6 +86,8 @@ export class MusicLibraryView extends ItemView {
     this.render(); this.stopInset = watchHostInset(root);
   }
   async onClose(): Promise<void> {
+    this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null;
+    this.appearanceMenu?.hide(); this.appearanceMenu = null; this.appearanceButton = null;
     this.resetCardStats(); this.statsCache.clear();
     this.closed = true; ++this.generation; ++this.playIntent;
     this.clearMenus(); this.artistPicker?.close(); this.stopInset?.(); this.resize?.disconnect(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl);
@@ -128,12 +137,16 @@ export class MusicLibraryView extends ItemView {
   private render(): void {
     if (this.closed || !this.body) return;
     this.resetCardStats();
+    this.appearanceMenu?.hide(); this.appearanceMenu = null;
     this.clearMenus(); this.renderNav(); this.head.empty(); this.body.empty();
     const nav = svgAction(this.head, "menu", t("library.expandNav"), () => this.toggleNav()); nav.dataset.navToggle = "true"; nav.addClass("mw-cloud__menu");
     this.head.createEl("h2", { text: this.getDisplayText() });
     svgAction(this.head, "home", t("library.home"), () => this.navigate("home"));
     svgAction(this.head, "refresh-cw", t("library.refresh"), () => { this.statsCache.clear(); this.plugin.libraryApi.clear(); return this.reload(); });
     svgAction(this.head, "disc", t("cmd.openPlayer"), () => this.plugin.openPlayerView());
+    this.appearanceButton = svgAction(this.head, "sun-moon", t("libraryAppearance.title"), () => this.openAppearanceMenu());
+    this.appearanceButton.addClass("mw-cloud__appearance"); this.appearanceButton.setAttr("aria-haspopup", "menu");
+    this.updateAppearance();
     const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void; tabHeaderInnerTitleEl?: HTMLElement };
     leaf.updateHeader?.(); leaf.tabHeaderInnerTitleEl?.setText(this.getDisplayText());
     (this as unknown as { containerEl?: HTMLElement }).containerEl?.querySelector<HTMLElement>(".view-header-title")?.setText(this.getDisplayText());
@@ -223,6 +236,31 @@ export class MusicLibraryView extends ItemView {
       svgAction(actions, "folder-plus", t("library.addToWall"), () => this.albumAction(album, "wall"));
       svgAction(actions, "list-plus", t("queue.add"), () => this.albumAction(album, "queue"));
     }
+  }
+  private updateAppearance(): void {
+    if (this.closed) return;
+    const mode = this.plugin.settings.libraryAppearance || "system";
+    const dark = mode === "dark" || mode === "system" && (this.appearanceMedia?.matches ?? this.contentEl.ownerDocument.body.classList.contains("theme-dark"));
+    this.contentEl.dataset.libraryTheme = dark ? "dark" : "light";
+    const button = this.appearanceButton; if (!button) return;
+    button.dataset.appearance = mode;
+    const label = t("libraryAppearance.current", { mode: t(`libraryAppearance.${mode}`) });
+    button.title = label; button.setAttr("aria-label", label);
+    const glyph = button.querySelector<HTMLElement>(".mw-control-icon");
+    if (glyph) setIcon(glyph, mode === "light" ? "sun" : mode === "dark" ? "moon" : "sun-moon");
+  }
+  private openAppearanceMenu(): void {
+    if (!this.appearanceButton) return;
+    this.appearanceMenu?.hide();
+    const menu = new Menu(); this.appearanceMenu = menu;
+    const modes = ["light", "dark", "system"] as const;
+    for (const mode of modes) menu.addItem(item => item.setTitle(t(`libraryAppearance.${mode}`)).setIcon(mode === "light" ? "sun" : mode === "dark" ? "moon" : "sun-moon")
+      .setChecked((this.plugin.settings.libraryAppearance || "system") === mode).onClick(async () => {
+        if (this.closed) return;
+        this.plugin.settings.libraryAppearance = mode; this.updateAppearance();
+        try { await this.plugin.saveData(this.plugin.settings); } catch { new Notice(t("library.failed")); }
+      }));
+    const bounds = this.appearanceButton.getBoundingClientRect(); menu.showAtPosition({ x: bounds.left, y: bounds.bottom + 4 });
   }
   private resetCardStats(): void {
     ++this.statsEpoch; this.statsObserver?.disconnect(); this.statsObserver = null;

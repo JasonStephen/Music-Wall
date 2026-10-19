@@ -99,6 +99,7 @@ export const zhTW: typeof zhCN = {
   },
   case: { title: "外殼", white: "白色", black: "黑色", wood: "原木", art: "跟隨封面" },
   buffering: { pauseFade: "暫停與繼續漸變（秒）", crossFade: "切歌交叉漸變（秒）", cacheLimit: "歌曲快取上限（MB，0 為關閉）", cacheUsed: "歌曲快取已用空間", clearCache: "清除快取", cacheError: "快取清理失敗，請稍後重試" },
+  libraryAppearance: {"title": "外觀模式", "current": "外觀：{mode}", "light": "白天", "dark": "黑夜", "system": "跟隨系統"},
   vinylFinish: {"title": "黑膠盤面", "black": "黑色", "white": "白色", "color": "彩色", "blackGlass": "黑色玻璃", "whiteGlass": "白色玻璃", "colorGlass": "彩色玻璃"},
   playerMachine: {"vinyl": "顯示黑膠播放機", "cd": "顯示 CD 播放機"},
   lyrics: {"title": "歌詞", "translation": "翻譯", "noTranslation": "暫無翻譯", "follow": "返回目前歌詞", "idle": "播放歌曲後顯示歌詞", "external": "外部用戶端暫不支援同步歌詞", "loading": "正在載入歌詞…", "failed": "歌詞載入失敗，請重試", "empty": "暫無歌詞", "instrumental": "純音樂，請欣賞"},

@@ -72,6 +72,7 @@ try {
   let checks=0,failed=0;let savedFailures=0,keyboardChecked=false,playOrderChecked=false;
   for(let i=0;i<cases.length;i++) {
     const item=cases[i];
+    if(item.kind==='library')await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:item.theme}]});
     await page('Emulation.setDeviceMetricsOverride',{width:item.width,height:item.height,deviceScaleFactor:1,mobile:false});
     await page('Page.navigate',{url:pathToFileURL(path.join(root,item.kind==='library'?'tools/library-ui-e2e.html':'tools/playback-ui-e2e.html')).href});
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
@@ -134,6 +135,16 @@ try {
       if(!navigation.search||!navigation.more||!navigation.detail||!navigation.queued||!navigation.played){failed++;console.log('FAIL library navigation '+JSON.stringify(navigation));}
       if(navigation.fail?.length){failed++;console.log('FAIL new library actions '+JSON.stringify(navigation.fail));}
       const features=await value('window.verifyLibraryDetails()');checks+=features.checks;if(features.fail.length){failed++;console.log('FAIL library detail features '+JSON.stringify(features.fail));}
+      await value("window.setLibraryAppearance('system')");
+      for(const theme of ['light','dark']){
+        await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:theme}]});
+        const appearance=await value('new Promise(resolve=>setTimeout(()=>resolve(window.libraryAppearanceState()),60))');checks++;
+        if(appearance.theme!==theme||appearance.color!==(theme==='dark'?'rgb(255, 255, 255)':'rgb(0, 0, 0)')){failed++;console.log('FAIL system appearance '+JSON.stringify(appearance));}
+      }
+      await value("window.setLibraryAppearance('light')");
+      await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:'dark'}]});
+      checks++;if((await value('window.libraryAppearanceState()')).theme!=='light'){failed++;console.log('FAIL explicit appearance changed with OS');}
+      await value("window.setLibraryAppearance('system')");
       await page('Emulation.setTouchEmulationEnabled',{enabled:true});
       const hold=await value('window.prepareLibraryNativeHold()');await page('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[hold]});await new Promise(r=>setTimeout(r,550));await page('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await new Promise(r=>setTimeout(r,50));
       const held=await value('window.libraryNativeHoldResult()');checks++;if(held.menus!==1||held.detail||!held.unchanged){failed++;console.log('FAIL native library hold '+JSON.stringify(held));}
