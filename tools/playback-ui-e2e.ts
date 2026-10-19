@@ -44,6 +44,9 @@ let close = async()=>{};
   const fail:string[]=[];let checks=0;
   const check=(ok:unknown,label:string)=>{checks++;if(!ok)fail.push(label);};
   const checkScrollbar=(element:HTMLElement)=>{
+    if(element.closest('.mw-player')) {
+      check(getComputedStyle(element).scrollbarWidth==='none'&&getComputedStyle(element,'::-webkit-scrollbar').display==='none','Player hides scrollbars without changing overflow');return;
+    }
     const thumb=getComputedStyle(element,'::-webkit-scrollbar-thumb');
     check(getComputedStyle(element,'::-webkit-scrollbar').width==='8px'&&thumb.borderRadius==='999px',"Scrollbar uses compact rounded styling");
     check(thumb.backgroundColor!=='rgba(0, 0, 0, 0)',"Scrollbar thumb has a surface-specific color");
@@ -225,6 +228,10 @@ let close = async()=>{};
       expect(right.width>0&&right.height>0&&right.right<=innerWidth+1&&right.bottom<=innerHeight+1,'lyrics fit pane');
       expect(['auto','hidden'].includes(getComputedStyle(root.querySelector('.mw-player__now')!).overflowY),'player content cannot overflow into lyrics');
       expect(lyrics.querySelectorAll('.mw-svg-action svg').length===3,'all lyric controls use SVG');
+      expect(getComputedStyle(viewport).overflowY==='auto'&&getComputedStyle(viewport).scrollbarWidth==='none'&&getComputedStyle(viewport,'::-webkit-scrollbar').display==='none','lyrics scrollbar hidden while scroll remains enabled');
+      const scrollBefore=viewport.scrollTop;viewport.scrollTop+=35;expect(viewport.scrollTop>scrollBefore,'hidden scrollbar retains scrolling');
+      const chassis=root.querySelector('.mw-dev--cover .mw-dev__chassis');
+      expect(!chassis||getComputedStyle(chassis,'::before').content==='none','cover has no local blurred trail');
       const translate=lyrics.querySelector<HTMLButtonElement>('[aria-pressed]')!;
       translate.click();await wait();expect(lyrics.classList.contains('show-translation')&&translate.getAttribute('aria-pressed')==='true','translation toggle enables translations');
       expect(getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!).display!=='none','translation is visible');
@@ -248,6 +255,20 @@ let close = async()=>{};
       (plugin.lyrics as any).get=async()=>({instrumental:true,lines:[]});await engine.select(0);await wait();
       expect(lyrics.querySelector('.mw-lyrics__message')?.textContent==='纯音乐，请欣赏','instrumental state');
       (plugin.lyrics as any).get=original;return {checks:count,fail:errors};
+    };
+    (window as any).verifyLyricMotion=async()=>{
+      const errors:string[]=[];let checks=0;const expect=(ok:unknown,label:string)=>{checks++;if(!ok)errors.push(label);};
+      (view as any).togglePlaylist(false);await engine.select(1);await engine.seek(15000);await wait(70);
+      await engine.seek(20000);await wait(35);
+      const lines=[...root.querySelectorAll<HTMLElement>('.mw-lyrics__line')];
+      const moving=lines.flatMap(line=>line.getAnimations().filter(animation=>animation.effect?.getKeyframes().some(frame=>String(frame.transform).includes('translateY'))));
+      expect(moving.length>=3,'multiple lyric rows move independently');
+      const delays=moving.map(animation=>Number(animation.effect!.getTiming().delay));
+      expect(delays.every((delay,index)=>delay===index*50),'each lower visible row starts exactly 50ms later');
+      expect(moving.every(animation=>animation.effect!.getTiming().duration===650),'row motion uses consistent smooth duration');
+      await wait(Math.max(0,...delays)+750);
+      expect(lines.every(line=>!line.getAnimations().some(animation=>animation.effect?.getKeyframes().some(frame=>String(frame.transform).includes('translateY')))),'finished motion releases animation layers');
+      return {checks,fail:errors};
     };
     (window as any).prepareLyricsScreenshot=async()=>{(view as any).togglePlaylist(false);(view as any).togglePopover(null);await engine.select(1);await engine.seek(25000);await wait(60);};
     (window as any).verifyKeyboardPlayback=async()=>{

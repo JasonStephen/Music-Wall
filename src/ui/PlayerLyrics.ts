@@ -21,6 +21,7 @@ export class PlayerLyrics {
   private disposed = false;
   private resize: ResizeObserver | null = null;
   private frame = 0;
+  private motions: Animation[] = [];
   constructor(private root: HTMLElement, private plugin: MusicWallPlugin) {
     root.addClass("mw-lyrics"); root.setAttr("aria-label", t("lyrics.title"));
     const bar = root.createDiv({ cls: "mw-lyrics__bar" });
@@ -34,7 +35,7 @@ export class PlayerLyrics {
     this.viewport = root.createDiv({ cls: "mw-lyrics__viewport", attr: { tabindex: "0" } });
     this.track = this.viewport.createDiv({ cls: "mw-lyrics__track" });
     this.retry = svgAction(root, "refresh-cw", t("library.retry"), () => this.load(true), true); this.retry.addClass("is-hidden");
-    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.follow.removeClass("is-hidden"); } };
+    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.cancelMotion(); this.follow.removeClass("is-hidden"); } };
     this.viewport.addEventListener("wheel", event => { if (!event.ctrlKey && !event.altKey) browse(); }, { passive: true });
     this.viewport.addEventListener("touchstart", browse, { passive: true });
     this.viewport.addEventListener("keydown", event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) browse(); });
@@ -51,6 +52,8 @@ export class PlayerLyrics {
   private message(text: string): void { this.rows = []; this.track.empty(); this.track.createDiv({ cls: "mw-lyrics__message", text }); }
   private async load(refresh = false): Promise<void> {
     const token = ++this.generation, key = this.key;
+    this.cancelMotion();
+    if (this.frame) cancelAnimationFrame(this.frame);
     this.lyrics = null; this.active = -2; this.manual = false;
     this.retry.addClass("is-hidden"); this.follow.addClass("is-hidden"); this.updateTranslation();
     this.viewport.scrollTop = 0;
@@ -67,8 +70,9 @@ export class PlayerLyrics {
       for (const line of lyrics.lines) {
         const timed = line.time !== null;
         const row = this.track.createEl(timed ? "button" : "div", { cls: "mw-lyrics__line", ...(timed ? { attr: { type: "button" } } : {}) });
-        row.createSpan({ cls: "mw-lyrics__original", text: line.text || "♪" });
-        if (line.translation) row.createSpan({ cls: "mw-lyrics__translation", text: line.translation });
+        const text = row.createSpan({ cls: "mw-lyrics__text" });
+        text.createSpan({ cls: "mw-lyrics__original", text: line.text || "♪" });
+        if (line.translation) text.createSpan({ cls: "mw-lyrics__translation", text: line.translation });
         if (timed) row.addEventListener("click", () => {
           if (this.state?.source !== "internal" || String(this.state.songId) !== key || !this.state.seekable) return;
           this.manual = false; this.follow.addClass("is-hidden"); void this.plugin.internalPlayer.seek(line.time!);
@@ -100,7 +104,6 @@ export class PlayerLyrics {
       row.toggleClass("is-active", active); row.toggleClass("is-near", Math.abs(i - index) <= 1);
       row.toggleClass("is-past", index >= 0 && i < first);
       if (active) row.setAttr("aria-current", "true"); else row.removeAttribute("aria-current");
-      row.style.setProperty("--mw-lyric-delay", `${previous < 0 || force ? 0 : Math.min(180, Math.max(0, i - index) * 30)}ms`);
     });
     if (this.manual || lines[0].time === null) return;
     this.follow.addClass("is-hidden");
@@ -109,8 +112,27 @@ export class PlayerLyrics {
       if (this.disposed || this.manual) return;
       const row = this.rows[Math.max(0, first)]; if (!row) return;
       const reduced = this.root.ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this.viewport.scrollTo({ top: Math.max(0, row.offsetTop - this.viewport.clientHeight * .26), behavior: force || reduced || index < previous ? "instant" : "smooth" });
+      // Capture the current visual positions before cancelling interrupted motion.
+      // Native scrolling sets the final layout; individual rows animate the visual
+      // difference, so each visible lower row can start exactly 50ms later.
+      const before = this.rows.map(line => line.getBoundingClientRect());
+      this.cancelMotion();
+      this.viewport.scrollTo({ top: Math.max(0, row.offsetTop - this.viewport.clientHeight * .26), behavior: "instant" });
+      if (force || reduced || previous < 0 || index < previous) return;
+      const bounds = this.viewport.getBoundingClientRect(); let order = 0;
+      this.rows.forEach((line, i) => {
+        const after = line.getBoundingClientRect(), old = before[i];
+        const visible = old.bottom > bounds.top && old.top < bounds.bottom || after.bottom > bounds.top && after.top < bounds.bottom;
+        const delta = old.top - after.top;
+        if (!visible || Math.abs(delta) < .5 || typeof line.animate !== "function") return;
+        const animation = line.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
+          duration: 650, delay: order++ * 50, easing: "cubic-bezier(.2,.8,.2,1)", fill: "both",
+        });
+        this.motions.push(animation);
+        void animation.finished.then(() => animation.cancel(), () => {});
+      });
     });
   }
-  dispose(): void { this.disposed = true; ++this.generation; this.resize?.disconnect(); if (this.frame) cancelAnimationFrame(this.frame); }
+  private cancelMotion(): void { this.motions.splice(0).forEach(animation => animation.cancel()); }
+  dispose(): void { this.disposed = true; ++this.generation; this.resize?.disconnect(); this.cancelMotion(); if (this.frame) cancelAnimationFrame(this.frame); }
 }

@@ -593,15 +593,9 @@
   box-shadow: none;
 }
 .mw-dev--cover .mw-dev__chassis::before {
-  content: "";
-  position: absolute;
-  inset: -10%;
-  border-radius: 28px;
-  background-image: var(--mw-np-art, none);
-  background-size: cover;
-  background-position: center;
-  filter: blur(34px) saturate(1.5);
-  opacity: 0.5;
+  /* The full-page cover background supplies ambient color. A second local
+     blurred image caused top/bottom trails and hard edges in the scroll pane. */
+  content: none;
 }
 .mw-dev__coverstage {
   position: absolute;

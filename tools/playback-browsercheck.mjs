@@ -75,6 +75,11 @@ try {
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
     if(item.panel==='lyrics') {
       const test=await value('window.verifyLyricsUI()');checks+=test.checks;if(test.fail.length){failed++;console.log('FAIL lyrics '+JSON.stringify({item,errors:test.fail}));}
+      if(item.width===1280&&item.theme==='dark'){
+        await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+        const motion=await value('window.verifyLyricMotion()');checks+=motion.checks;if(motion.fail.length){failed++;console.log('FAIL lyric motion '+JSON.stringify(motion.fail));}
+        await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+      }
       await value('window.prepareLyricsScreenshot()');
       const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`lyrics-${item.theme}-${item.width}-${item.zoom}.png`),Buffer.from(shot.data,'base64'));
     }
