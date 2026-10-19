@@ -6,6 +6,7 @@
   --mw-case-edge: rgba(255, 255, 255, .12);
   --mw-case-bottom: rgba(0, 0, 0, .48);
   --mw-case-contact: rgba(0, 0, 0, .55);
+  --mw-case-well: radial-gradient(circle at 50% 46%, #131417, #090a0c 70%, #040506);
 }
 .mw-player { --mw-case-detail: url("./textures/fine-grain.svg"); }
 :is(.mw-player, .mw-case-sample)[data-mw-case="white"] {
@@ -24,6 +25,7 @@
   --mw-case-contact: rgba(48, 30, 14, .4);
 }
 :is(.mw-player, .mw-case-sample)[data-mw-case="art"] {
+  --mw-case-well: radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--mw-case-accent, #596773) 58%, #28313a), color-mix(in srgb, var(--mw-case-accent, #596773) 48%, #171e25) 70%, color-mix(in srgb, var(--mw-case-accent, #596773) 38%, #0e151d));
   --mw-case-fill: linear-gradient(165deg, color-mix(in srgb, var(--mw-case-accent, #596773) 54%, #bec4c8), color-mix(in srgb, var(--mw-case-accent, #596773) 50%, #3b434b) 55%, color-mix(in srgb, var(--mw-case-accent, #596773) 38%, #171c22));
   --mw-case-fill-cd: var(--mw-case-fill);
   --mw-case-bottom: rgba(0, 0, 0, .28);
@@ -31,29 +33,29 @@
 }
 .mw-player :is(.mw-dev--vinyl, .mw-dev--cd) .mw-dev__chassis {
   background-image: var(--mw-case-detail), var(--mw-case-pattern), radial-gradient(120% 80% at 24% 0%, #ffffff18, transparent 60%), var(--mw-case-fill);
-  background-size: 128px 128px, 240px 400px, auto, auto;
+  background-size: 37.6471cqw 37.6471cqw, 70.5882cqw 117.647cqw, auto, auto;
   background-repeat: repeat, repeat, no-repeat, no-repeat;
-  box-shadow: inset 0 0 0 1px var(--mw-case-edge), inset 0 -18px 30px var(--mw-case-bottom);
+  box-shadow: inset 0 0 0 0.294118cqw var(--mw-case-edge), inset 0 -5.29412cqw 8.82353cqw var(--mw-case-bottom);
 }
 .mw-player .mw-dev--cd .mw-dev__chassis {
   background-image: var(--mw-case-detail), var(--mw-case-pattern), radial-gradient(120% 100% at 22% 0%, #ffffff20, transparent 55%), var(--mw-case-fill-cd);
 }
 .mw-player :is(.mw-dev--vinyl, .mw-dev--cd) .mw-dev__chassis::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  box-shadow: inset 0 1px 1px #ffffff50, inset 1px 0 0 #ffffff15, inset -1px -2px 2px var(--mw-case-contact), inset 0 0 0 3px #ffffff05;
+  box-shadow: inset 0 0.294118cqw 0.294118cqw #ffffff50, inset 0.294118cqw 0 0 #ffffff15, inset -0.294118cqw -0.588235cqw 0.588235cqw var(--mw-case-contact), inset 0 0 0 0.882353cqw #ffffff05;
 }
 .mw-player .mw-dev__hinge {
-  background-image: repeating-linear-gradient(0deg, #ffffff0a 0 1px, transparent 1px 3px), linear-gradient(#60646b, #272c33);
-  box-shadow: 0 2px 4px var(--mw-case-contact), inset 0 1px 0 #ffffff45, inset 0 -1px 0 #0008;
+  background-image: repeating-linear-gradient(0deg, #ffffff0a 0 0.294118cqw, transparent 0.294118cqw 0.882353cqw), linear-gradient(#60646b, #272c33);
+  box-shadow: 0 0.588235cqw 1.17647cqw var(--mw-case-contact), inset 0 0.294118cqw 0 #ffffff45, inset 0 -0.294118cqw 0 #0008;
 }
 .mw-player .mw-dev__speedknob {
-  box-shadow: 0 5px 10px var(--mw-case-contact), inset 0 -6px 12px #0006, inset 0 4px 8px #ffffff59, 0 0 0 2px var(--mw-case-contact);
+  box-shadow: 0 1.47059cqw 2.94118cqw var(--mw-case-contact), inset 0 -1.76471cqw 3.52941cqw #0006, inset 0 1.17647cqw 2.35294cqw #ffffff59, 0 0 0 0.588235cqw var(--mw-case-contact);
 }
 .mw-player :is(.mw-dev__deckbtn, .mw-dev__btn) {
-  background-image: repeating-linear-gradient(90deg, #ffffff09 0 1px, transparent 1px 3px), linear-gradient(#5e6269, #272b32);
-  box-shadow: inset 0 1px 0 #ffffff45, inset 1px 0 0 #ffffff12, 0 2px 3px var(--mw-case-contact);
+  background-image: repeating-linear-gradient(90deg, #ffffff09 0 0.294118cqw, transparent 0.294118cqw 0.882353cqw), linear-gradient(#5e6269, #272b32);
+  box-shadow: inset 0 0.294118cqw 0 #ffffff45, inset 0.294118cqw 0 0 #ffffff12, 0 0.588235cqw 0.882353cqw var(--mw-case-contact);
 }
-.mw-player[data-mw-case="white"] .mw-dev__led { outline: 1px solid #0003; }
+.mw-player[data-mw-case="white"] .mw-dev__led { outline: 0.294118cqw solid #0003; }
 .mw-case-options.is-hidden { display: none; }
 .mw-case-sample {
   width: 100%; aspect-ratio: 16 / 9; border-radius: 6px;
@@ -65,15 +67,12 @@
 /* Colored vinyl and its recessed well share the cover hue, with different depths. */
 .mw-player[data-mw-case="art"] .mw-dev__platter .mw-disc--vinyl {
   --mw-groove: repeating-radial-gradient(circle at 50% 50%,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #30363d) 0px,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #59636d) 1.5px,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #151b22) 2.6px,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #414a52) 3.4px);
+    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #30363d) 0cqw,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #59636d) 0.441176cqw,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 70%, #151b22) 0.764706cqw,
+    color-mix(in srgb, var(--mw-case-accent, #596773) 64%, #414a52) 1cqw);
 }
-.mw-player[data-mw-case="art"] .mw-dev--vinyl .mw-dev__chassis::before {
-  background: radial-gradient(circle at 50% 46%,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 58%, #28313a),
-    color-mix(in srgb, var(--mw-case-accent, #596773) 48%, #171e25) 70%,
-    color-mix(in srgb, var(--mw-case-accent, #596773) 38%, #0e151d));
-  box-shadow: inset 0 2px 3px #0008, inset 0 10px 22px #0007, 0 1px 0 #ffffff20;
+.mw-player .mw-dev--vinyl .mw-dev__chassis::before {
+  background: var(--mw-case-well);
+  box-shadow: inset 0 0.588235cqw 0.882353cqw #0008, inset 0 2.94118cqw 6.47059cqw #0007, 0 0.294118cqw 0 #ffffff20;
 }

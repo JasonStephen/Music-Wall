@@ -38,6 +38,7 @@
 .mw-full-cover { display:none; position:absolute; left:0; top:0; width:50%; height:100%; background-position:center; background-size:cover; pointer-events:none; }
 .mw-player--full-cover .mw-full-cover { display:block; }
 .mw-full-cover::after { content:""; position:absolute; inset:0; background:linear-gradient(transparent 35%,rgba(0,0,0,.75)); }
+.workspace-split.mod-root .view-content.mw-player.mw-player--full-cover,
 .mw-player.mw-player--full-cover { background:var(--mw-full-tone,#303742); }
 .mw-player.mw-player--full-cover::before, .mw-player--full-cover > .mw-player__backdrop { display:none; }
 .mw-player.mw-player--full-cover .mw-player__body { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr); padding:0; gap:0; }
@@ -104,13 +105,8 @@
   color:var(--mw-panel-fg) !important;
   box-shadow:none !important;
 }
-/* Device controls scale with their own chassis, including small previews. */
+/* One machine-relative unit system for every component, without size clamps. */
 .mw-player .mw-dev { container-type:inline-size; }
-.mw-player .mw-dev__readout { font-size:clamp(3px,3.2cqw,11px); padding:.3cqw 2cqw; border-radius:1.2cqw; }
-.mw-player .mw-dev__led { width:2cqw; height:2cqw; flex:0 0 2cqw; }
-.mw-player .mw-dev__panel--cd { gap:3%; }
-.mw-player .mw-dev__panel--cd .mw-dev__btnrow { flex:0 1 45%; min-width:0; max-width:80px; gap:5%; }
-.mw-player .mw-dev__panel--cd .mw-dev__btn { flex:1 1 15px; min-width:0; width:auto; max-width:15px; height:3cqw; max-height:10px; border-radius:.7cqw; }
 
 .mw-player.mw-view { --mw-panel-hover:color-mix(in srgb,var(--mw-case-accent,#70757f) 14%,transparent); --background-modifier-hover:var(--mw-panel-hover); }
 .mw-player.mw-bg--wood :is(.mw-slider,.mw-range) { --mw-range-fill:var(--mw-np-accent,#70757f); }
@@ -118,3 +114,155 @@
 .mw-player .mw-drawer__body > :is(.mw-style-section,.mw-panel__section) { flex:0 0 auto; }
 
 .mw-player.mw-view { --mw-np-accent:var(--mw-case-accent,#70757f); --mw-np-accent-fg:var(--mw-style-tag-fg,#fff); }
+
+/* Region colors are computed from the cropped backdrop under each surface. */
+.mw-player.mw-bg--art:not(.mw-player--full-cover) :is(.mw-player__now,.mw-lyrics,.mw-player__bar) {
+  --text-normal:var(--mw-region-fg,#f2f4f8);
+  --text-muted:color-mix(in srgb,var(--mw-region-fg,#f2f4f8) 78%,transparent);
+  color:var(--mw-region-fg,#f2f4f8);
+}
+.mw-player.mw-bg--art:not(.mw-player--full-cover) :is(.mw-lyrics__line,.mw-np__title,.mw-np__artist,.mw-np__status) {
+  text-shadow:var(--mw-region-shadow);
+}
+
+.mw-player .mw-dev .mw-disc--vinyl {
+
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  --mw-groove: repeating-radial-gradient(
+    circle at 50% 50%,
+    #141414 0cqw,
+    #1f1f1f 0.441176cqw,
+    #0b0b0b 0.764706cqw,
+    #1a1a1a 1cqw
+  );
+}
+
+.mw-player .mw-dev .mw-disc--vinyl .mw-record__plate {
+
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from 210deg,
+      rgba(255, 255, 255, 0.16) 0deg,
+      transparent 26deg 152deg,
+      rgba(255, 255, 255, 0.12) 180deg,
+      transparent 208deg 332deg,
+      rgba(255, 255, 255, 0.16) 360deg
+    ),
+    var(--mw-groove);
+  box-shadow: 0 2.94118cqw 7.64706cqw rgba(0, 0, 0, 0.55),
+    inset 0 0 0 0.588235cqw rgba(255, 255, 255, 0.07),
+    inset 0 0 11.7647cqw rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mw-player .mw-dev .mw-disc--vinyl .mw-record__label {
+
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.882353cqw rgba(0, 0, 0, 0.55),
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.08);
+}
+
+.mw-player .mw-dev .mw-disc--vinyl .mw-record__center {
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4.5%;
+  height: 4.5%;
+  border-radius: 50%;
+  background: var(--background-primary, #0e0e0e);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 0.588235cqw rgba(255, 255, 255, 0.12),
+    inset 0 0 1.17647cqw rgba(0, 0, 0, 0.9);
+}
+
+.mw-player .mw-dev .mw-disc--cd .mw-record__plate {
+
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    /* 彩虹衍射 */
+    conic-gradient(
+      from 40deg,
+      rgba(255, 130, 170, 0.5),
+      rgba(150, 190, 255, 0.5),
+      rgba(150, 255, 200, 0.5),
+      rgba(255, 235, 150, 0.5),
+      rgba(255, 130, 170, 0.5)
+    ),
+    /* 数据区细密轨道纹 */
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.28) 0 0.294118cqw,
+      rgba(120, 125, 140, 0.16) 0.294118cqw 0.764706cqw
+    ),
+    /* 银色镜面底 */
+    radial-gradient(
+      circle at 50% 50%,
+      #fbfbfd 0 30%,
+      #d6d9df 44%,
+      #eef0f4 58%,
+      #c3c7d1 74%,
+      #dfe2e8 88%,
+      #a9adba 100%
+    );
+  box-shadow: 0 2.94118cqw 7.05882cqw rgba(0, 0, 0, 0.5),
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.65),
+    inset 0 0 8.82353cqw rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mw-player .mw-dev .mw-disc--cd .mw-record__plate::before {
+
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(250, 250, 252, 0.9) 0 36%,
+    rgba(224, 228, 236, 0.92) 36% 70%,
+    rgba(190, 196, 208, 0.9) 70% 96%,
+    rgba(150, 156, 170, 0.95) 96% 100%
+  );
+  box-shadow: inset 0 0 1.76471cqw rgba(0, 0, 0, 0.2),
+    0 0 0 0.294118cqw rgba(255, 255, 255, 0.35);
+}
+
+.mw-player .mw-dev .mw-disc--cd .mw-record__center {
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12%;
+  height: 12%;
+  border-radius: 50%;
+  background: var(--background-primary, #141418);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 0.882353cqw rgba(255, 255, 255, 0.75),
+    inset 0 0 1.17647cqw rgba(0, 0, 0, 0.85);
+}
+
+.mw-player .mw-dev .mw-disc--vinyl .mw-record__plate {
+
+  background: conic-gradient(from 210deg, var(--mw-vinyl-reflection), transparent 35deg 150deg, var(--mw-vinyl-reflection) 180deg, transparent 220deg 330deg, var(--mw-vinyl-reflection)), repeating-radial-gradient(circle, transparent 0 0.441176cqw, var(--mw-vinyl-groove) 0.441176cqw 0.735294cqw, transparent 0.735294cqw 1.02941cqw), var(--mw-vinyl-fill);
+  border: 0.294118cqw solid var(--mw-vinyl-edge);
+  box-shadow: 0 1.76471cqw 5.29412cqw #0004, inset 0 0 0 0.294118cqw var(--mw-vinyl-edge);
+}

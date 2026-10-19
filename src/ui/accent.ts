@@ -41,12 +41,14 @@ export interface AccentColors {
 
 /** 一次封面采样的结果 */
 export interface CoverTone {
+  /** Small source sample retained for region-aware backdrop contrast; no extra requests. */
+  sample?: { width: number; height: number; rgb: number[] };
   /** 强调色（按钮底色）；null = 取不到合适的颜色 */
   accent: string | null;
   /**
    * 封面整体亮度 0..1（**感知亮度**，见 perceived()）。
-   * 播放器的封面背景 = 这张图放大模糊后的结果，模糊不改变平均值，
-   * 所以它就是「背景是浅色还是深色」的良好近似，用来决定文字用深色还是浅色。
+   * 用于初始整体配色和没有区域采样时的回退；混合明暗背景的文字
+   * 必须另用 backdropForeground 按实际裁切和文字所在区域判断。
    * null = 取不到（调用方按深色背景处理）。
    */
   luma: number | null;
@@ -195,7 +197,43 @@ function sampleImage(img: HTMLImageElement): CoverTone {
   if (!ctx) return EMPTY_TONE;
   ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
   const data = ctx.getImageData(0, 0, SAMPLE, SAMPLE).data;
-  return { accent: pickDominant(data), luma: averageLuma(data) };
+  return { accent: pickDominant(data), luma: averageLuma(data),
+    sample: { width: img.naturalWidth, height: img.naturalHeight, rgb: Array.from(data) } };
+}
+
+/** Estimate the rendered blurred backdrop under a normalized pane region.
+ * Matches centered background-size:cover and the backdrop's -12% overscan.
+ * Prefer the foreground with the better lower-quartile contrast, so a bright
+ * border cannot conceal a dark patch behind the actual text.
+ */
+export function backdropForeground(tone: CoverTone, width: number, height: number,
+  region: { x: number; y: number; width: number; height: number }): string {
+  const sample = tone.sample;
+  if (!sample || width <= 0 || height <= 0) return tone.luma !== null && tone.luma >= .5 ? "#1b1e23" : "#f2f4f8";
+  const scale = Math.max(width * 1.24 / sample.width, height * 1.24 / sample.height);
+  const iw = sample.width * scale, ih = sample.height * scale;
+  const values: number[] = [];
+  for (let row = 0; row < 9; row++) for (let col = 0; col < 7; col++) {
+    const px = (region.x + region.width * (col + .5) / 7) * width;
+    const py = (region.y + region.height * (row + .5) / 9) * height;
+    let r = 0, g = 0, b = 0;
+    // Approximate the blur kernel in pane pixels before evaluating contrast.
+    for (const dx of [-52, 0, 52]) for (const dy of [-52, 0, 52]) {
+      const sx = Math.max(0, Math.min(SAMPLE - 1, Math.floor(((px + dx - width / 2) / iw + .5) * SAMPLE)));
+      const sy = Math.max(0, Math.min(SAMPLE - 1, Math.floor(((py + dy - height / 2) / ih + .5) * SAMPLE)));
+      const i = (sy * SAMPLE + sx) * 4;
+      r += sample.rgb[i]; g += sample.rgb[i + 1]; b += sample.rgb[i + 2];
+    }
+    r /= 9; g /= 9; b /= 9;
+    // Match the backdrop's saturation and brightness rather than the raw cover.
+    const gray = .213 * r + .715 * g + .072 * b;
+    values.push(luminance(...[r, g, b].map(v => Math.max(0, Math.min(255, (gray + (v - gray) * 2.05) * 1.04))) as [number, number, number]));
+  }
+  const lower = (v: number[]) => v.sort((a, b) => a - b)[Math.floor(v.length * .25)];
+  const dark = luminance(27, 30, 35);
+  const blackContrast = lower(values.map(v => (Math.max(v, dark) + .05) / (Math.min(v, dark) + .05)));
+  const whiteContrast = lower(values.map(v => (1.05 / (v + .05))));
+  return blackContrast >= whiteContrast ? "#1b1e23" : "#f2f4f8";
 }
 
 /** 整幅封面的平均亮度（只统计不透明像素）；全是透明像素时返回 null */

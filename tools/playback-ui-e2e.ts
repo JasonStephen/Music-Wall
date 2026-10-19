@@ -2,6 +2,7 @@ import { verifyHiddenZoom } from "./hidden-zoom-ui";
 import { InternalPlayer, CombinedNowPlayingProvider } from "../src/core/internalPlayer";
 import { EMPTY_NOW_PLAYING } from "../src/core/nowPlaying";
 import { PlayerLyrics } from "../src/ui/PlayerLyrics";
+import { backdropForeground, type CoverTone } from "../src/ui/accent";
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
 import { MusicWallView } from "../src/ui/MusicWallView";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -224,6 +225,11 @@ let close = async()=>{};
     activePlayer=view;
     (window as any).verifyPlayerPresets=async()=>{
       const errors:string[]=[];let assertions=0;const expect=(ok:unknown,label:string)=>{assertions++;if(!ok)errors.push(label);};
+      const rgb:number[]=[];
+      for(let y=0;y<24;y++)for(let x=0;x<24;x++)rgb.push(...(x>=12&&x<20?[12,12,12,255]:[245,245,245,255]));
+      const mixed:CoverTone={accent:'#cc8899',luma:.7,sample:{width:240,height:240,rgb}};
+      expect(backdropForeground(mixed,1000,1000,{x:.58,y:.15,width:.15,height:.7})==='#f2f4f8','dark lyric region uses white despite bright whole-cover average');
+      expect(backdropForeground(mixed,1000,1000,{x:.05,y:.15,width:.2,height:.7})==='#1b1e23','bright player region independently uses dark text');
       const customBefore=JSON.stringify([plugin.settings.playerBackground,plugin.settings.playerCase,plugin.settings.playerVinylFinish,plugin.settings.playerVinylMachine,plugin.settings.playerCdMachine]);
       const audioBefore=[engine.state.songId,engine.state.positionMs,engine.state.status].join('|');
       let currentGroup='vinyl';
@@ -256,7 +262,19 @@ let close = async()=>{};
       expect([...root.querySelectorAll('.mw-preset-tones button')].every(e=>e.querySelector('svg')&&!e.textContent?.trim()),'appearance controls are icon buttons');
       await group('cd');expect(!!root.querySelector('.mw-player-disc-only--cd')&&root.classList.contains('mw-bg--dark'),'classic CD is standalone and follows library dark');
       await pick('color');expect(root.classList.contains('mw-bg--art')&&!!root.querySelector('.mw-player-disc-only--cd'),'color CD retains standard disc with cover background');
-      await group('machine');for(const key of ['vinyl','colorVinyl','cd','colorCd']){await pick(key);expect(!!root.querySelector(key.toLowerCase().includes('cd')?'.mw-dev--cd':'.mw-dev--vinyl'),'machine preset renders chassis '+key);expect(root.classList.contains(key.startsWith('color')?'mw-bg--art':'mw-bg--dark'),'machine background '+key);}
+      await group('machine');for(const key of ['vinyl','colorVinyl','cd','colorCd']){
+        await pick(key);expect(!!root.querySelector(key.toLowerCase().includes('cd')?'.mw-dev--cd':'.mw-dev--vinyl'),'machine preset renders chassis '+key);expect(root.classList.contains(key.startsWith('color')?'mw-bg--art':'mw-bg--dark'),'machine background '+key);
+        const main=root.querySelector<HTMLElement>('.mw-np__disc .mw-dev')!;
+        const preview=root.querySelector<HTMLElement>(`[data-style-kind="machine-${key}"] .mw-dev`)!;
+        for(const selector of ['.mw-dev__led','.mw-dev__readout','.mw-dev__deckbtn','.mw-dev__btn','.mw-dev__speedknob']){
+          const a=main.querySelector<HTMLElement>(selector),b=preview.querySelector<HTMLElement>(selector);if(!a||!b)continue;
+          const aw=main.getBoundingClientRect().width,bw=preview.getBoundingClientRect().width;
+          expect(Math.abs(a.getBoundingClientRect().height/aw-b.getBoundingClientRect().height/bw)<.003,`machine component height scales ${key} ${selector}: ${a.getBoundingClientRect().height}/${aw} vs ${b.getBoundingClientRect().height}/${bw}; fonts ${getComputedStyle(a).fontSize}/${getComputedStyle(b).fontSize}`);
+          expect(Math.abs(a.getBoundingClientRect().width/aw-b.getBoundingClientRect().width/bw)<.003,`machine component width scales ${key} ${selector}: ${a.getBoundingClientRect().width}/${aw} vs ${b.getBoundingClientRect().width}/${bw}`);
+        }
+        const black=root.querySelector<HTMLElement>('[data-style-kind="machine-vinyl"] .mw-dev__chassis')!;
+        expect(!getComputedStyle(black,'::before').backgroundImage.includes('color(srgb'),'black preview well never inherits active colored chassis');
+      }
       await group('vinyl');expect(root.dataset.mwVinyl==='colorGlass','vinyl selection is remembered independently');
       await group('cd');expect(root.classList.contains('mw-bg--art'),'CD selection is remembered independently');
       await group('cover');await pick('record');expect(!!root.querySelector('.mw-dev--cover')&&!root.classList.contains('mw-player--full-cover'),'record cover retains ordinary player layout');
@@ -264,6 +282,10 @@ let close = async()=>{};
       const art=root.querySelector<HTMLElement>('.mw-full-cover')!,box=root.querySelector<HTMLElement>('.mw-zoombox')!,a=art.getBoundingClientRect(),b=box.getBoundingClientRect();
       const backdrop=(view as any).backdrop,oldSet=backdrop.set;backdrop.set=()=>{};root.style.removeProperty('--mw-full-tone');
       (view as any).applyBackground();expect(root.style.getPropertyValue('--mw-full-tone')===root.style.getPropertyValue('--mw-case-accent'),'full cover solid color updates even when large backdrop does not load');expect(getComputedStyle(root).backgroundColor===sampledRgb,'full cover actually paints the sampled solid background');backdrop.set=oldSet;
+      const host=root.parentElement!,hostClass=host.className;host.classList.add('workspace-split','mod-root');
+      const hostRule=document.createElement('style');hostRule.textContent='.workspace-split.mod-root .view-content {background-color:var(--background-primary)}';document.head.append(hostRule);
+      expect(getComputedStyle(root).backgroundColor===sampledRgb,'sampled full-cover background survives actual Obsidian host specificity');
+      hostRule.remove();host.className=hostClass;
 
       expect(getComputedStyle(art).backgroundSize==='cover','full cover crops to fill');
       expect(getComputedStyle(art).maskImage.includes('linear-gradient')&&getComputedStyle(art).maskImage.includes('rgba(0, 0, 0, 0)'),'cover blends into solid background using alpha gradient');

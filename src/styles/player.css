@@ -363,7 +363,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 16px;
+  border-radius: 4.70588cqw;
 }
 
 /* 盘片转动：播放时转，暂停时停（各设备内部零件共用） */
@@ -392,11 +392,11 @@
   background:
     radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.1), transparent 55%),
     linear-gradient(168deg, #3d4046, #26282d 48%, #16181b);
-  /* 底部投影（0 26px 48px）已按要求移除：它落在标题那一条上、把标题压暗
+  /* 底部投影（0 7.64706cqw 14.1176cqw）已按要求移除：它落在标题那一条上、把标题压暗
      （原因见下面 .mw-np__meta 的绘制顺序说明）。设备厚度由两条 inset 阴影承担。 */
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
-    inset 0 -22px 36px rgba(0, 0, 0, 0.55);
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.09),
+    inset 0 -6.47059cqw 10.5882cqw rgba(0, 0, 0, 0.55);
 }
 /* 转盘凹槽 */
 .mw-dev--vinyl .mw-dev__chassis::before {
@@ -409,8 +409,8 @@
   border-radius: 50%;
   background: radial-gradient(circle at 50% 46%, #131417, #090a0c 70%, #040506);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 14px 34px rgba(0, 0, 0, 0.85);
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.05),
+    inset 0 4.11765cqw 10cqw rgba(0, 0, 0, 0.85);
 }
 /* 防尘盖铰链（左上） */
 .mw-dev__hinge {
@@ -419,11 +419,11 @@
   top: 2.5%;
   width: 24%;
   height: 2.6%;
-  border-radius: 2px;
+  border-radius: 0.588235cqw;
   background: linear-gradient(#4a4f57, #22252a);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 0.294118cqw 0.588235cqw rgba(0, 0, 0, 0.6),
+    inset 0 0.294118cqw 0 rgba(255, 255, 255, 0.18);
 }
 .mw-dev__platter {
   position: absolute;
@@ -450,7 +450,7 @@
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(circle at 40% 32%, #ffffff, #b9bec7 55%, #5d626b);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.75);
+  box-shadow: 0 0.588235cqw 1.17647cqw rgba(0, 0, 0, 0.75);
   z-index: 2;
 }
 /* 唱臂组：枢轴在区域右上角；臂管左下伸向唱片，配重向右上翘 */
@@ -469,9 +469,9 @@
   height: 7%;
   transform-origin: 100% 50%;
   transform: translateY(-50%) rotate(122deg);
-  border-radius: 3px;
+  border-radius: 0.882353cqw;
   background: linear-gradient(180deg, #ccd1d9, #7d838c 58%, #3d424a);
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 0.882353cqw 2.05882cqw rgba(0, 0, 0, 0.65);
 }
 .mw-dev__arm-tube {
   position: absolute;
@@ -481,9 +481,9 @@
   height: 3.4%;
   transform-origin: 100% 50%;
   transform: translateY(-50%) rotate(-56deg);
-  border-radius: 999px;
+  border-radius: 293.824cqw;
   background: linear-gradient(180deg, #eef1f5, #b3b9c2 55%, #6a707a);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0.588235cqw 1.76471cqw rgba(0, 0, 0, 0.6);
   transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .mw-dev__arm-head {
@@ -493,9 +493,9 @@
   width: 26%;
   height: 320%;
   transform: translate(-30%, -50%) rotate(12deg);
-  border-radius: 2px;
+  border-radius: 0.588235cqw;
   background: linear-gradient(#33383f, #0f1114);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0.588235cqw 1.47059cqw rgba(0, 0, 0, 0.7);
 }
 /* 暂停 = 唱臂摆到臂枕侧，离开唱片 */
 .mw-np__disc.is-paused .mw-dev__arm-tube {
@@ -508,11 +508,11 @@
   top: 44%;
   width: 5%;
   height: 7%;
-  border-radius: 2px;
+  border-radius: 0.588235cqw;
   background: linear-gradient(#2b2e34, #101215);
   box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    0 0.588235cqw 1.17647cqw rgba(0, 0, 0, 0.6),
+    inset 0 0.294118cqw 0 rgba(255, 255, 255, 0.12);
 }
 /* 调速旋钮 */
 .mw-dev__speedknob {
@@ -530,26 +530,26 @@
     #2c2f34 100%
   );
   box-shadow:
-    0 8px 16px rgba(0, 0, 0, 0.7),
-    inset 0 -6px 12px rgba(0, 0, 0, 0.45),
-    inset 0 4px 8px rgba(255, 255, 255, 0.35),
-    0 0 0 3px #1b1d21;
+    0 2.35294cqw 4.70588cqw rgba(0, 0, 0, 0.7),
+    inset 0 -1.76471cqw 3.52941cqw rgba(0, 0, 0, 0.45),
+    inset 0 1.17647cqw 2.35294cqw rgba(255, 255, 255, 0.35),
+    0 0 0 0.882353cqw #1b1d21;
 }
 .mw-dev__deckbtns {
   position: absolute;
   right: 28%;
   bottom: 10%;
   display: flex;
-  gap: 6px;
+  gap: 1.76471cqw;
 }
 .mw-dev__deckbtn {
-  width: 16px;
-  height: 12px;
-  border-radius: 2px;
+  width: 4.70588cqw;
+  height: 3.52941cqw;
+  border-radius: 0.588235cqw;
   background: linear-gradient(#4b5058, #23262b);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 2px 4px rgba(0, 0, 0, 0.6);
+    inset 0 0.294118cqw 0 rgba(255, 255, 255, 0.2),
+    0 0.588235cqw 1.17647cqw rgba(0, 0, 0, 0.6);
 }
 .mw-dev__panel--deck {
   position: absolute;
@@ -557,7 +557,7 @@
   bottom: 8%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2.35294cqw;
 }
 
 /* ---- CD：CD 播放器 ---- */
@@ -565,10 +565,10 @@
   background:
     radial-gradient(120% 100% at 22% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
     linear-gradient(165deg, #444b54, #272c32 55%, #16191d);
-  /* 底部投影（0 24px 46px）同样移除，理由见黑胶那台 */
+  /* 底部投影（0 7.05882cqw 13.5294cqw）同样移除，理由见黑胶那台 */
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
-    inset 0 -18px 30px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.12),
+    inset 0 -5.29412cqw 8.82353cqw rgba(0, 0, 0, 0.5);
 }
 .mw-dev__cdwell {
   position: absolute;
@@ -582,8 +582,8 @@
   justify-content: center;
   background: radial-gradient(circle at 50% 44%, #101317, #04050a 72%);
   box-shadow:
-    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
-    inset 0 14px 30px rgba(0, 0, 0, 0.9);
+    inset 0 0 0 0.588235cqw rgba(255, 255, 255, 0.1),
+    inset 0 4.11765cqw 8.82353cqw rgba(0, 0, 0, 0.9);
 }
 .mw-dev__cdwell .mw-disc--cd {
   width: 94%;
@@ -597,7 +597,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 2.94118cqw;
 }
 
 /* ---- 封面：大封面 + 模糊环境底 ---- */
@@ -619,8 +619,8 @@
   inset: 0;
 }
 .mw-dev--cover .mw-cover--standalone {
-  /* 底部投影（0 28px 54px）同样移除：大封面的投影最重，标题被压暗得最明显 */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* 底部投影（0 8.23529cqw 15.8824cqw）同样移除：大封面的投影最重，标题被压暗得最明显 */
+  box-shadow: 0 0 0 0.294118cqw rgba(255, 255, 255, 0.08);
 }
 /* 播放器里的唱片只是设备上的「盘片本体」，不需要音乐墙那套悬停交互：
    黑胶缩放 + 盘片自转、CD 盘片自转、封面抬升 + 扫光。
@@ -635,29 +635,38 @@
 
 /* ---- 设备共用零件 ---- */
 .mw-dev__readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14cqw;
+  height: 5.2cqw;
+  overflow: hidden;
   font-family: var(--font-monospace);
-  font-size: 11px;
+  font-size: 3.23529cqw;
+  line-height: 1.2;
   letter-spacing: 0.06em;
   white-space: nowrap;
   /* 只显示转速 / 曲目号：给个统一的最小宽度，避免显示屏被压扁 */
-  min-width: 3.4em;
+  min-width: 0;
   text-align: center;
   color: #f2c97d;
   background: #140f06;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  padding: 1px 7px;
+  border: 0;
+  border-radius: 1.17647cqw;
+  padding: 0.294118cqw 2.05882cqw;
   box-shadow:
-    inset 0 0 8px rgba(0, 0, 0, 0.9),
-    0 0 10px rgba(242, 201, 125, 0.12);
+    inset 0 0 0 0.294118cqw rgba(255, 255, 255, 0.12),
+    inset 0 0 2.35294cqw rgba(0, 0, 0, 0.9),
+    0 0 2.94118cqw rgba(242, 201, 125, 0.12);
 }
 .mw-dev__led {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
+  width: 2.05882cqw;
+  height: 2.05882cqw;
+  flex: 0 0 2.05882cqw;
   border-radius: 50%;
   background: #4ade80;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.9);
+  box-shadow: 0 0 2.35294cqw rgba(74, 222, 128, 0.9);
   transition: background 0.3s, box-shadow 0.3s;
 }
 .mw-np__disc.is-paused .mw-dev__led {
@@ -666,16 +675,16 @@
 }
 .mw-dev__btnrow {
   display: flex;
-  gap: 4px;
+  gap: 1.17647cqw;
 }
 .mw-dev__btn {
-  width: 15px;
-  height: 10px;
-  border-radius: 2px;
+  width: 4.41176cqw;
+  height: 2.94118cqw;
+  border-radius: 0.588235cqw;
   background: linear-gradient(#3d424a, #22252a);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 1px 2px rgba(0, 0, 0, 0.6);
+    inset 0 0.294118cqw 0 rgba(255, 255, 255, 0.18),
+    0 0.294118cqw 0.588235cqw rgba(0, 0, 0, 0.6);
 }
 
 /* 文字与控制键必须画在**设备层之上**（第八轮）：

@@ -26,7 +26,7 @@ import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
-import { coverTone, type CoverTone } from "./accent";
+import { coverTone, backdropForeground, type CoverTone } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
@@ -483,7 +483,11 @@ export class MusicPlayerView extends ItemView {
         if (config.fullCover) {
           preview.addClass("mw-style-preview--full");
           preview.createDiv({ cls: "mw-style-preview__cover" }).style.backgroundImage = `url("${sizedCover(cover, 300)}")`;
-        } else preview.appendChild(buildDevice(item, config.style, 200, config.machine).root);
+        } else {
+          const device = buildDevice(item, config.style, 200, config.machine);
+          if (device.readout) device.readout.textContent = "TR01";
+          preview.appendChild(device.root);
+        }
         button.createSpan({ cls: "mw-style-card__name", text: t(`playerPresets.${key}`) });
         const glass = group === "vinyl" && choice === "color";
         if (config.tone || glass) button.createSpan({ cls: "mw-style-custom-label", text: t("playerPresets.custom") });
@@ -1062,6 +1066,26 @@ export class MusicPlayerView extends ItemView {
     root.style.setProperty("--mw-full-tone", accent);
     root.style.setProperty("--mw-full-foreground", foreground);
     if (this.bg === "art") this.setArtTone(tone.luma);
+    this.applyRegionContrast();
+  }
+
+  private applyRegionContrast(): void {
+    const root = this.contentEl, bounds = root.getBoundingClientRect();
+    for (const region of Array.from(root.querySelectorAll<HTMLElement>(".mw-player__now, .mw-lyrics, .mw-player__bar"))) {
+      if (this.bg !== "art" || this.preset()?.fullCover || !this.coverPalette || !bounds.width || !bounds.height) {
+        region.style.removeProperty("--mw-region-fg");
+        region.style.removeProperty("--mw-region-shadow");
+        continue;
+      }
+      const rect = region.getBoundingClientRect();
+      const color = backdropForeground(this.coverPalette, bounds.width, bounds.height, {
+        x: (rect.left - bounds.left) / bounds.width, y: (rect.top - bounds.top) / bounds.height,
+        width: rect.width / bounds.width, height: rect.height / bounds.height,
+      });
+      region.style.setProperty("--mw-region-fg", color);
+      region.style.setProperty("--mw-region-shadow", color === "#f2f4f8"
+        ? "0 1px 3px #0009, 0 0 12px #0005" : "0 1px 3px #ffffff80, 0 0 10px #ffffff40");
+    }
   }
 
   private showMachine(): boolean {
@@ -1085,6 +1109,7 @@ export class MusicPlayerView extends ItemView {
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);
+    this.applyRegionContrast();
   }
 
   /**
