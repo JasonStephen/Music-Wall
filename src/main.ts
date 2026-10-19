@@ -1,3 +1,4 @@
+import { normalizePlayerPresets } from "./ui/playerPresets";
 import type { WorkspaceLeaf } from "obsidian";
 // Music Wall 插件主入口：注册扩展名/视图/命令/设置，并实现
 // 网络请求适配、创建/导入/导出/Git 导入等服务。
@@ -67,7 +68,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.8-exp-5";
+const BUILD_TAG = "1.2.9-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -289,7 +290,11 @@ export default class MusicWallPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    normalizePlayerPresets(this.settings);
     this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
+    this.settings.minColumnWidth = 180;
+    if (!["system", "light", "dark"].includes(this.settings.wallAppearance)) this.settings.wallAppearance = "system";
+    this.settings.showGitSyncActions = this.settings.showGitSyncActions === true;
     if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
     if (!isAudioQuality(this.settings.defaultAudioQuality)) this.settings.defaultAudioQuality = "standard";
     if (!["white", "black", "wood", "art"].includes(this.settings.playerCase)) this.settings.playerCase = "black";
@@ -346,6 +351,9 @@ export default class MusicWallPlugin extends Plugin {
       .map((l) => l.view as MusicWallView);
   }
 
+  refreshWallAppearance(): void {
+    for (const view of this.allWallViews()) view.refreshAppearance();
+  }
   allPlayerViews(): MusicPlayerView[] {
     return this.app.workspace
       .getLeavesOfType(PLAYER_VIEW_TYPE)

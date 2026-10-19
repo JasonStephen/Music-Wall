@@ -259,6 +259,7 @@ export class MusicLibraryView extends ItemView {
     const current = modes.indexOf(this.plugin.settings.libraryAppearance || "system");
     this.plugin.settings.libraryAppearance = modes[(current + 1) % modes.length];
     this.updateAppearance();
+    for (const view of this.plugin.allPlayerViews?.() || []) view.refreshPresetAppearance();
     try { await this.plugin.saveData(this.plugin.settings); } catch { new Notice(t("library.failed")); }
   }
   private resetCardStats(): void {

@@ -5,7 +5,7 @@ import { PlayerLyrics } from "../src/ui/PlayerLyrics";
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
 import { MusicWallView } from "../src/ui/MusicWallView";
 import { DEFAULT_SETTINGS } from "../src/types";
-import { setLanguage } from "../src/i18n";
+import { setLanguage, t } from "../src/i18n";
 import { installDomHelpers, WorkspaceLeaf, TFile, probeCoverUri } from "./obsidian-shim";
 installDomHelpers(); setLanguage("zh-CN");
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -66,7 +66,8 @@ let close = async()=>{};
   let opens=0; const sourceCalls:any[]=[];
   let artistLookup = async () => [{ id: 11, artistRefs: [{ id: 91, name: "Resolved artist" }] }];
   const plugin={
-    settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,playerVinylMachine:config.machine!==false,playerCdMachine:config.machine!==false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
+    manifest:{id:"music-wall"},
+    settings:{...DEFAULT_SETTINGS,playerPresetGroup:config.presets?"vinyl":"custom",playerExperimental:!config.presets,playerPresetChoices:{...DEFAULT_SETTINGS.playerPresetChoices},playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,playerVinylMachine:config.machine!==false,playerCdMachine:config.machine!==false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
     async returnFromPlayer(){sourceCalls.push({kind:"back"});},
     async openLibraryCollection(meta:any){sourceCalls.push({kind:"library",meta});},async revealWallAlbum(path:string,id:number){sourceCalls.push({kind:"wall",path,id});},
     async openLibraryArtist(artist:any){sourceCalls.push({kind:"artist",artist});},libraryApi:{songs:()=>artistLookup()},
@@ -76,7 +77,8 @@ let close = async()=>{};
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},wallFiles:()=>[],firstPlayerView:()=>null,
   };
   let activePlayer:MusicPlayerView|null=null;
-  const app={vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{on:()=>({}),getLeavesOfType:()=>[],getActiveViewOfType:()=>activePlayer}};
+  let settingsOpened=0;
+  const app={setting:{open(){settingsOpened++;},openTabById(id:string){if(id!=="music-wall")throw Error("Wrong settings tab");}},vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{on:()=>({}),getLeavesOfType:()=>[],getActiveViewOfType:()=>activePlayer}};
   const views:(MusicWallView|MusicPlayerView)[]=[];
   const createWall=async()=>{
     const view=new MusicWallView(new WorkspaceLeaf(app),plugin as never);
@@ -220,6 +222,63 @@ let close = async()=>{};
     check(!view.contentEl.querySelector(".mw-mini"),"Full player has no duplicate footer");
     const root=view.contentEl;
     activePlayer=view;
+    (window as any).verifyPlayerPresets=async()=>{
+      const errors:string[]=[];let assertions=0;const expect=(ok:unknown,label:string)=>{assertions++;if(!ok)errors.push(label);};
+      const customBefore=JSON.stringify([plugin.settings.playerBackground,plugin.settings.playerCase,plugin.settings.playerVinylFinish,plugin.settings.playerVinylMachine,plugin.settings.playerCdMachine]);
+      const audioBefore=[engine.state.songId,engine.state.positionMs,engine.state.status].join('|');
+      let currentGroup='vinyl';
+      const ensure=async()=>{if(!(view as any).drawer.isOpen()){root.querySelector<HTMLButtonElement>('.mw-toolbtn')!.click();await wait();}};
+      const pick=async(key:string)=>{await ensure();root.querySelector<HTMLButtonElement>(`[data-choice-group="${currentGroup}"][data-preset-choice="${key}"]`)!.click();await wait();};
+      const group=async(key:string)=>{
+        await ensure();
+        if(key==='custom'){root.querySelector<HTMLButtonElement>('[data-style-tab="custom"]')!.click();await wait();return;}
+        root.querySelector<HTMLButtonElement>('[data-style-tab="presets"]')!.click();await wait();currentGroup=key;await pick((plugin.settings.playerPresetChoices as any)[key]);
+      };
+      expect(root.querySelectorAll('.mw-player__bar .mw-toolbtn').length===1&&!root.querySelector('[data-preset-group]'),'original single style icon remains in player header');
+      await ensure();
+      expect(root.querySelectorAll('.mw-style-tabs [role="tab"]').length===2&&!!root.querySelector('[data-style-tab="custom"] svg path'),'preset and persistent wrench tabs live inside drawer');
+      expect(root.querySelectorAll('[data-style-section]').length===4&&root.querySelectorAll('.mw-preset-option').length===11,'all four categories share one preset page');
+      expect([...root.querySelectorAll('.mw-preset-options')].every(e=>getComputedStyle(e).gridTemplateColumns.split(' ').length===2),'preset effects use two-column grids');
+      expect([...root.querySelectorAll('.mw-style-preview')].every(e=>e.querySelector('.mw-dev,.mw-player-disc-only,.mw-style-preview__cover')),'previews render actual devices or full covers against backgrounds');
+      const badge=root.querySelector<HTMLElement>('.mw-style-custom-label')!,oldAccent=root.style.getPropertyValue('--mw-case-accent');root.style.setProperty('--mw-case-accent','#336699');expect(getComputedStyle(badge).backgroundColor==='rgb(51, 102, 153)','custom badge follows sampled cover accent');root.style.setProperty('--mw-case-accent',oldAccent);
+      expect(!!root.querySelector('.mw-np__disc .mw-player-disc-only--vinyl')&&root.dataset.mwVinyl==='black','default preset is a standalone classic black record');
+      await group('vinyl');plugin.settings.libraryAppearance='light';view.refreshPresetAppearance();expect(root.classList.contains('mw-bg--white'),'classic follows library day override');
+      plugin.settings.libraryAppearance='dark';view.refreshPresetAppearance();expect(root.classList.contains('mw-bg--dark'),'classic follows library night override');
+      root.querySelector<HTMLButtonElement>('[data-preset-tone="light"]')!.click();await wait();expect(root.classList.contains('mw-bg--white'),'explicit light overrides library night');
+      root.querySelector<HTMLButtonElement>('[data-preset-tone="system"]')!.click();await wait();
+      await pick('white');expect(root.dataset.mwVinyl==='white'&&root.classList.contains('mw-bg--white'),'white vinyl stays on white background');
+      await pick('color');expect(root.dataset.mwVinyl==='color'&&root.classList.contains('mw-bg--art'),'color vinyl uses cover colors');
+      root.querySelector<HTMLButtonElement>('.mw-preset-glass')!.click();await wait();expect(root.dataset.mwVinyl==='colorGlass'&&!!root.querySelector('.mw-preset-glass svg'),'glass switch uses an icon and changes colored vinyl material');
+      expect([...root.querySelectorAll('.mw-preset-tones button')].every(e=>e.querySelector('svg')&&!e.textContent?.trim()),'appearance controls are icon buttons');
+      await group('cd');expect(!!root.querySelector('.mw-player-disc-only--cd')&&root.classList.contains('mw-bg--dark'),'classic CD is standalone and follows library dark');
+      await pick('color');expect(root.classList.contains('mw-bg--art')&&!!root.querySelector('.mw-player-disc-only--cd'),'color CD retains standard disc with cover background');
+      await group('machine');for(const key of ['vinyl','colorVinyl','cd','colorCd']){await pick(key);expect(!!root.querySelector(key.toLowerCase().includes('cd')?'.mw-dev--cd':'.mw-dev--vinyl'),'machine preset renders chassis '+key);expect(root.classList.contains(key.startsWith('color')?'mw-bg--art':'mw-bg--dark'),'machine background '+key);}
+      await group('vinyl');expect(root.dataset.mwVinyl==='colorGlass','vinyl selection is remembered independently');
+      await group('cd');expect(root.classList.contains('mw-bg--art'),'CD selection is remembered independently');
+      await group('cover');await pick('record');expect(!!root.querySelector('.mw-dev--cover')&&!root.classList.contains('mw-player--full-cover'),'record cover retains ordinary player layout');
+      await pick('full');(view as any).drawer.close();await wait();
+      const art=root.querySelector<HTMLElement>('.mw-full-cover')!,box=root.querySelector<HTMLElement>('.mw-zoombox')!,a=art.getBoundingClientRect(),b=box.getBoundingClientRect();
+      expect(getComputedStyle(art).backgroundSize==='cover','full cover crops to fill');
+      expect(getComputedStyle(art).maskImage.includes('linear-gradient')&&getComputedStyle(art).maskImage.includes('rgba(0, 0, 0, 0)'),'cover blends into solid background using alpha gradient');
+      if(root.classList.contains('mw-player--portrait')){
+        expect(Math.abs(a.height/b.height-.75)<.01&&Math.abs((a.top-b.top)/b.height-.125)<.01,'portrait cover occupies centered 75 percent');
+        const toggle=root.querySelector<HTMLButtonElement>('.mw-cover-toggle')!;expect(!toggle.classList.contains('is-hidden')&&getComputedStyle(root.querySelector('.mw-lyrics')!).display==='none','portrait defaults to cover with lyric toggle');
+        toggle.click();await wait();expect(getComputedStyle(root.querySelector('.mw-lyrics')!).display==='flex'&&getComputedStyle(root.querySelector('.mw-player__now')!).display==='none','portrait can show lyrics');toggle.click();
+      }else expect(Math.abs(a.width/b.width-.5)<.01,'landscape cover uses left half');
+      expect(JSON.stringify([plugin.settings.playerBackground,plugin.settings.playerCase,plugin.settings.playerVinylFinish,plugin.settings.playerVinylMachine,plugin.settings.playerCdMachine])===customBefore,'presets preserve all custom choices');
+      expect([engine.state.songId,engine.state.positionMs,engine.state.status].join('|')===audioBefore,'preset switching never changes playback');
+      const nav=root.querySelector('.mw-player-presets')!.getBoundingClientRect();expect(nav.left>=-1&&nav.right<=innerWidth+1,'preset toolbar stays inside pane');
+      await group('custom');expect(!!root.querySelector('[data-mw-style]')&&!!root.querySelector('.mw-case-options'),'persistent custom tab exposes legacy controls');
+      plugin.settings.playerExperimental=false;view.refresh();await wait(80);await ensure();expect(!!root.querySelector('[data-style-tab="custom"]')&&!!root.querySelector('[data-mw-style]'),'custom remains available with experimental flag disabled');
+      await group('cover');await pick('full');(view as any).drawer.close();
+      (window as any).prepareStylePanelScreenshot=async()=>{await group('vinyl');await pick('classic');(view as any).drawer.open('settings');await wait(50);};
+      await (window as any).prepareStylePanelScreenshot();
+      const panel=root.querySelector<HTMLElement>('.mw-drawer__body')!;
+      expect(panel.scrollWidth<=panel.clientWidth+1,'style panel has no horizontal overflow at narrow widths');
+      expect(root.querySelector('.mw-drawer__title')?.textContent===t('playerPresets.title'),'drawer title is player styles');
+      return {checks:assertions,fail:errors};
+    };
+    if(config.presets) { close=async()=>{for(const view of views)await view.onClose();provider.dispose();};return {checks,fail}; }
     if(config.panel==='height') {
       const left=root.querySelector<HTMLElement>('.mw-player__now')!,stack=root.querySelector<HTMLElement>('.mw-np__stack')!,disc=root.querySelector<HTMLElement>('.mw-np__disc')!,controls=root.querySelector<HTMLElement>('.mw-np__controls')!,quality=root.querySelector<HTMLElement>('.mw-np__quality')!;
       const area=left.getBoundingClientRect(),record=disc.getBoundingClientRect(),buttons=[...controls.querySelectorAll('button')].map(e=>e.getBoundingClientRect());
@@ -699,6 +758,28 @@ let close = async()=>{};
     await second.onClose();second.contentEl.remove();check(engine.state.status==="playing","Closing a wall preserves playback");
     engine.stop();check(views[0].contentEl.querySelector(".mw-mini")!.classList.contains("is-hidden"),"Stop hides remaining footer");
     return {checks,fail};
+  };
+  (window as any).verifyWallAppearance=async()=>{
+    const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
+    const view:any=views[0],root=view.contentEl as HTMLElement,button=root.querySelector<HTMLButtonElement>('.mw-wall-appearance')!;
+    const before={background:getComputedStyle(root).backgroundImage,color:getComputedStyle(root).color};
+    expect(!!button?.querySelector('svg')&&button.nextElementSibling?.querySelector('svg')?.dataset.icon==='more-horizontal','appearance SVG sits immediately before more menu');
+    const pane=root.getBoundingClientRect();expect([...root.querySelectorAll('.mw-toolbar .mw-toolbtn')].every(e=>{const r=e.getBoundingClientRect();return r.left>=pane.left-1&&r.right<=pane.right+1;}),'all toolbar actions stay reachable in narrow panes');
+    expect(root.querySelector<HTMLElement>('.mw-grid,.mw-list,.mw-shelf')?.style.getPropertyValue('--mw-min-col')==='180px','wall column width is locked to 180px');
+    for(const mode of ['light','dark','system']) {
+      button.click();await wait();expect(plugin.settings.wallAppearance===mode,'theme button cycles to '+mode);
+      expect(button.querySelector<SVGElement>('svg')?.dataset.icon===(mode==='light'?'sun':mode==='dark'?'moon':'sun-moon'),'correct mode icon '+mode);
+      if(config.layout==='shelf')expect(getComputedStyle(root).backgroundImage===before.background&&getComputedStyle(root).color===before.color,'shelf retains wooden appearance '+mode);
+      else if(mode!=='system')expect(getComputedStyle(root).backgroundColor===(mode==='light'?'rgb(250, 250, 250)':'rgb(27, 29, 34)'),'local wall palette '+mode);
+    }
+    const original=view.showCtxMenu;let menu:any[]=[];view.showCtxMenu=(_event:any,items:any[])=>{menu=items;};
+    try {
+      view.openMoreMenu({x:20,y:20});expect(!menu.some(i=>i.icon==='download-cloud'||i.icon==='upload-cloud'),'Git actions hidden by default');
+      plugin.settings.showGitSyncActions=true;view.openMoreMenu({x:20,y:20});expect(menu.filter(i=>i.icon==='download-cloud'||i.icon==='upload-cloud').length===2,'Git switch reveals both actions');plugin.settings.showGitSyncActions=false;
+      view.openWallMenu({x:20,y:20});const settingsItem=menu.find(i=>i.icon==='settings');expect(!!settingsItem,'wall context menu links to plugin settings');settingsItem?.onPick();expect(settingsOpened===1,'settings item opens plugin settings');
+      button.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));expect(menu.length===1&&menu[0].icon==='settings','appearance context menu offers settings');
+    } finally {view.showCtxMenu=original;}
+    return {checks:count,fail:errors};
   };
   (window as any).verifyMouseBack=async()=>{
     const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};

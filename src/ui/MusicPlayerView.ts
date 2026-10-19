@@ -1,3 +1,4 @@
+import { PRESET_CHOICES, presetForeground, presetIcon, resolvePlayerPreset, type PresetGroup } from "./playerPresets";
 import { bindMouseBack } from "./mouseBack";
 // 独立音乐播放器页面。
 // 页面本身不落盘任何播放数据：只保留「最近一次拖入的专辑」为运行时状态。
@@ -96,6 +97,10 @@ export class MusicPlayerView extends ItemView {
   /** 右上角样式图标打开的抽屉（样式 / 背景） */
   private drawer: SideDrawer | null = null;
   private styleBtn: HTMLButtonElement | null = null;
+  private presetMedia: MediaQueryList | null = null;
+  private fullLyrics = false;
+  private lastPresetGroup: Exclude<PresetGroup, "custom"> = "vinyl";
+  private onPresetTheme = () => this.refreshPresetAppearance();
   /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
   private paneObserver: ResizeObserver | null = null;
 
@@ -104,6 +109,7 @@ export class MusicPlayerView extends ItemView {
     this.plugin = plugin;
     this.now = this.currentNow();
     this.bg = plugin.settings.playerBackground ?? "dark";
+    this.discStyle = plugin.settings.playerCustomStyle || "vinyl";
   }
 
   /**
@@ -126,6 +132,8 @@ export class MusicPlayerView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.register(bindMouseBack(this.contentEl, () => this.mouseBack()));
+    this.presetMedia = this.contentEl.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)") || null;
+    this.presetMedia?.addEventListener("change", this.onPresetTheme);
     this.plugin.ensureNowPlayingStarted();
     // 订阅之前先同步一次当前状态，避免「打开时正在播放却显示未在播放」
     this.now = this.currentNow();
@@ -187,6 +195,7 @@ export class MusicPlayerView extends ItemView {
     await this.plugin.returnFromPlayer();
   }
   async onClose(): Promise<void> {
+    this.presetMedia?.removeEventListener("change", this.onPresetTheme); this.presetMedia = null;
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
     this.backdrop?.dispose(); this.backdrop = null;
@@ -315,6 +324,8 @@ export class MusicPlayerView extends ItemView {
     // 所有内容放进缩放盒（zoom 必须作用在没有 overflow 裁剪的中间层，见 base.css）
     const box = root.createDiv({ cls: "mw-zoombox" });
 
+    this.syncPreset();
+    this.el.fullCover = box.createDiv({ cls: "mw-full-cover", attr: { "aria-hidden": "true" } });
     this.applyBackground();
     const bar = this.buildBar(box);
     this.syncTopbarHeight(bar);
@@ -361,6 +372,8 @@ export class MusicPlayerView extends ItemView {
     }
     this.backdrop?.set(art, tone => {
       if (this.bg !== "art") return;
+      root.style.setProperty("--mw-full-tone", tone.accent || "#303742");
+      root.style.setProperty("--mw-full-foreground", presetForeground(tone.accent || "#303742"));
       if (tone.accent) { root.style.setProperty("--mw-np-accent", tone.accent); root.style.setProperty("--mw-np-accent-fg", onAccentFor(tone.accent)); }
       else { root.style.removeProperty("--mw-np-accent"); root.style.removeProperty("--mw-np-accent-fg"); }
       this.setArtTone(tone.luma);
@@ -398,14 +411,113 @@ export class MusicPlayerView extends ItemView {
     });
     this.el.source = bar.createEl("button", { cls: "clickable-icon mw-player__source", attr: { type: "button" } });
     this.el.source.addEventListener("click", () => void this.openSource());
-    const btn = bar.createEl("button", { cls: "clickable-icon mw-toolbtn" });
-    btn.setAttr("type", "button");
-    btn.setAttr("aria-label", t("player.styleBg"));
-    btn.setAttr("title", t("player.styleBg"));
-    setIcon(btn, "palette");
-    btn.addEventListener("click", () => this.drawer?.toggle("settings"));
-    this.styleBtn = btn;
+    const tools = bar.createDiv({ cls: "mw-player-presets", attr: { role: "group", "aria-label": t("playerPresets.title") } });
+    this.el.coverToggle = tools.createEl("button", { cls: "clickable-icon mw-cover-toggle", attr: { type: "button" } });
+    setIcon(this.el.coverToggle, "list-music");
+    this.el.coverToggle.addEventListener("click", () => { this.fullLyrics = !this.fullLyrics; this.syncLayout(); });
+    const button = tools.createEl("button", { cls: "clickable-icon mw-toolbtn", attr: { type: "button", title: t("playerPresets.title"), "aria-label": t("playerPresets.title") } });
+    setIcon(button, "palette"); button.addEventListener("click", () => this.drawer?.toggle("settings"));
+    this.styleBtn = button;
     return bar;
+  }
+
+  private presetGroup(): PresetGroup { return this.preset()?.group || "custom"; }
+  private preset() { return resolvePlayerPreset(this.plugin.settings, this.presetMedia?.matches ?? this.contentEl.ownerDocument.body.classList.contains("theme-dark")); }
+  private syncPreset(): void {
+    const preset = this.preset();
+    if (preset) { this.discStyle = preset.style; this.bg = preset.background; this.lastPresetGroup = preset.group; }
+    else this.bg = this.plugin.settings.playerBackground || "dark";
+    this.contentEl.toggleClass("mw-player--full-cover", !!preset?.fullCover);
+    this.contentEl.dataset.playerPreset = preset ? `${preset.group}-${preset.choice}` : "custom";
+  }
+  refreshPresetAppearance(refreshDrawer = true): void {
+    if (!this.shell) return;
+    this.syncPreset(); this.applyBackground(); this.updateNow(); this.syncLayout();
+    if (refreshDrawer && this.drawer?.isOpen()) {
+      const body = this.contentEl.querySelector<HTMLElement>(".mw-drawer__body"), scroll = body?.scrollTop || 0;
+      this.drawer.refresh(); if (body) body.scrollTop = scroll;
+    }
+  }
+  private buildStyleTabs(panel: HTMLElement): void {
+    const tabs = panel.createDiv({ cls: "mw-style-tabs", attr: { role: "tablist", "aria-label": t("playerPresets.title") } });
+    for (const tab of ["presets", "custom"] as const) {
+      const custom = tab === "custom", label = t(`playerPresets.${tab}`);
+      const selected = custom === (this.presetGroup() === "custom");
+      const button = tabs.createEl("button", { cls: "clickable-icon mw-style-tab", attr: { type: "button", role: "tab", title: label, "aria-label": label, "data-style-tab": tab, "aria-selected": String(selected), tabindex: selected ? "0" : "-1" } });
+      if (custom) presetIcon(button, "custom"); else setIcon(button, "layout-grid");
+      button.createSpan({ text: label });
+      const select = () => {
+        if (selected) return;
+        this.plugin.settings.playerPresetGroup = custom ? "custom" : this.lastPresetGroup;
+        if (custom) this.discStyle = this.plugin.settings.playerCustomStyle || "vinyl";
+        this.refreshPresetAppearance();
+        void this.plugin.saveData(this.plugin.settings).catch(() => new Notice(t("library.failed")));
+      };
+      button.addEventListener("click", select);
+      button.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? "presets" : event.key === "End" ? "custom" : custom ? "presets" : "custom";
+        this.contentEl.querySelector<HTMLButtonElement>(`[data-style-tab="${next}"]`)?.click();
+        this.contentEl.querySelector<HTMLButtonElement>(`[data-style-tab="${next}"]`)?.focus();
+      });
+    }
+  }
+  private buildPresetOptions(panel: HTMLElement): void {
+    const cover = this.displayAlbum()?.cover || DEFAULT_COVER;
+    const item: WallItem = { albumId: 0, source: "manual", locked: true, addedAt: "", meta: { albumId: 0, name: "", artist: "", cover, trackCount: 0, tracks: [] } };
+    for (const group of Object.keys(PRESET_CHOICES) as Exclude<PresetGroup, "custom">[]) {
+      const section = panel.createEl("section", { cls: "mw-style-section", attr: { "data-style-section": group } });
+      section.createEl("h3", { text: t(`playerPresets.${group}`) });
+      const grid = section.createDiv({ cls: "mw-preset-options" });
+      for (const choice of PRESET_CHOICES[group]) {
+        const config = resolvePlayerPreset({ ...this.plugin.settings, playerPresetGroup: group, playerPresetChoices: { ...this.plugin.settings.playerPresetChoices, [group]: choice } }, this.presetMedia?.matches || false)!;
+        const selected = this.presetGroup() === group && this.preset()?.choice === choice;
+        const key = `${group}${choice[0].toUpperCase()}${choice.slice(1)}` as "vinylClassic";
+        const card = grid.createDiv({ cls: "mw-style-card", attr: { "data-style-kind": `${group}-${choice}` } });
+        const button = card.createEl("button", { cls: "mw-preset-option", attr: { type: "button", "data-preset-choice": choice, "data-choice-group": group, "aria-pressed": String(selected) } });
+        const preview = button.createDiv({ cls: "mw-style-preview mw-vinyl-swatch mw-case-sample", attr: { "aria-hidden": "true" } });
+        preview.dataset.mwCase = config.deviceCase;
+        preview.dataset.mwVinyl = config.machine ? config.deviceCase === "art" ? "color" : "black" : config.finish;
+        preview.dataset.previewBackground = config.background;
+        if (config.background === "art" && !config.fullCover) preview.createDiv({ cls: "mw-style-preview__background" }).style.backgroundImage = `url("${sizedCover(cover, 300)}")`;
+        if (config.fullCover) {
+          preview.addClass("mw-style-preview--full");
+          preview.createDiv({ cls: "mw-style-preview__cover" }).style.backgroundImage = `url("${sizedCover(cover, 300)}")`;
+        } else preview.appendChild(buildDevice(item, config.style, 200, config.machine).root);
+        button.createSpan({ cls: "mw-style-card__name", text: t(`playerPresets.${key}`) });
+        const glass = group === "vinyl" && choice === "color";
+        if (config.tone || glass) button.createSpan({ cls: "mw-style-custom-label", text: t("playerPresets.custom") });
+        const choose = () => {
+          this.plugin.settings.playerPresetGroup = group;
+          this.plugin.settings.playerPresetChoices = { ...this.plugin.settings.playerPresetChoices, [group]: choice };
+        };
+        button.addEventListener("click", () => {
+          choose(); this.refreshPresetAppearance();
+          void this.plugin.saveData(this.plugin.settings).catch(() => new Notice(t("library.failed")));
+        });
+        if (selected && config.tone) {
+          const tones = card.createDiv({ cls: "mw-preset-tones", attr: { role: "group", "aria-label": t("playerPresets.tone") } });
+          for (const mode of ["system", "light", "dark"] as const) {
+            const label = t(`playerPresets.${mode}`);
+            const tone = tones.createEl("button", { cls: "clickable-icon", attr: { type: "button", title: label, "aria-label": label, "data-preset-tone": mode, "aria-pressed": String((this.plugin.settings.playerPresetTone || "system") === mode) } });
+            setIcon(tone, mode === "system" ? "sun-moon" : mode === "light" ? "sun" : "moon");
+            tone.addEventListener("click", () => { this.plugin.settings.playerPresetTone = mode; this.refreshPresetAppearance(); void this.plugin.saveData(this.plugin.settings).catch(() => new Notice(t("library.failed"))); });
+          }
+        }
+        if (selected && glass) {
+          const label = t("playerPresets.glass"), toggle = card.createEl("button", { cls: "mw-preset-glass", attr: { type: "button", role: "switch", title: label, "aria-label": label, "aria-checked": String(!!this.plugin.settings.playerColorGlass) } });
+          setIcon(toggle.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "blend");
+          toggle.createSpan({ cls: "mw-preset-switch", attr: { "aria-hidden": "true" } });
+          toggle.addEventListener("click", () => {
+            this.plugin.settings.playerColorGlass = !this.plugin.settings.playerColorGlass;
+            toggle.setAttr("aria-checked", String(this.plugin.settings.playerColorGlass));
+            this.refreshPresetAppearance(false); preview.dataset.mwVinyl = this.plugin.settings.playerColorGlass ? "colorGlass" : "color";
+            void this.plugin.saveData(this.plugin.settings).catch(() => new Notice(t("library.failed")));
+          });
+        }
+      }
+    }
   }
 
   private buildDrawer(body: HTMLElement): SideDrawer {
@@ -416,7 +528,9 @@ export class MusicPlayerView extends ItemView {
       if (open) { this.togglePlaylist(false); this.togglePopover(null); }
       if (open) this.applyCaseAppearance();
     });
-    drawer.register("settings", t("player.styleBg"), (panel) => {
+    drawer.register("settings", t("playerPresets.title"), (panel) => {
+      this.buildStyleTabs(panel);
+      if (this.presetGroup() !== "custom") { this.buildPresetOptions(panel); return; }
       // 样式：与音乐墙上四种样式同一套缩略预览（无专辑时给默认封面，别再空砖）
       const cover = (this.displayAlbum()?.cover ?? "") || DEFAULT_COVER;
       const secStyle = panel.createDiv({ cls: "mw-panel__section" });
@@ -431,7 +545,8 @@ export class MusicPlayerView extends ItemView {
       for (const s of PLAYER_STYLES) {
         grid.appendChild(
           buildStyleTile(s, styleLabel(s), cover, this.discStyle === s, (picked) => {
-            this.discStyle = picked;
+            this.discStyle = picked; this.plugin.settings.playerCustomStyle = picked as "vinyl" | "cd" | "cover";
+            void this.plugin.saveData(this.plugin.settings);
             // 清空 albumKey 让 updateNow 立即重建设备与曲目列表
             this.albumKey = "\0";
             this.updateNow();
@@ -755,10 +870,14 @@ export class MusicPlayerView extends ItemView {
     }
     this.applyCaseAppearance();
     const album = this.displayAlbum();
-    const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}` : "";
+    if (this.el.fullCover) this.el.fullCover.style.backgroundImage = `url("${sizedCover(album?.cover || DEFAULT_COVER, 1200)}")`;
+    const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}|${this.showMachine()}` : "";
     if (albumKey !== this.albumKey) {
       this.albumKey = albumKey;
       this.renderDisc(album);
+      const previewCover = sizedCover(album?.cover || DEFAULT_COVER, 300);
+      for (const image of Array.from(this.contentEl.querySelectorAll<HTMLImageElement>(".mw-style-preview img"))) image.src = previewCover;
+      for (const background of Array.from(this.contentEl.querySelectorAll<HTMLElement>(".mw-style-preview__background, .mw-style-preview__cover"))) background.style.backgroundImage = `url("${previewCover}")`;
       this.updateTrackList();
       // 「封面」背景下专辑变化时需要重新取色
       this.applyBackground();
@@ -918,10 +1037,11 @@ export class MusicPlayerView extends ItemView {
   }
 
   private applyCaseAppearance(): void {
-    const root = this.contentEl, choice = this.plugin.settings.playerCase || "black";
+    const preset = this.preset();
+    const root = this.contentEl, choice = preset?.deviceCase || this.plugin.settings.playerCase || "black";
     root.dataset.mwVinyl = this.discStyle === "vinyl" && this.showMachine()
       ? choice === "art" ? "color" : "black"
-      : this.plugin.settings.playerVinylFinish || "black";
+      : preset?.finish || this.plugin.settings.playerVinylFinish || "black";
     if (root.dataset.mwCase !== choice) root.dataset.mwCase = choice;
     if (choice !== "art" && !["color", "colorGlass"].includes(root.dataset.mwVinyl) && !this.drawer?.isOpen()) return;
     const cover = this.displayAlbum()?.cover || DEFAULT_COVER;
@@ -929,18 +1049,30 @@ export class MusicPlayerView extends ItemView {
     if (this.caseToneKey === key) return;
     this.caseToneKey = key;
     root.style.setProperty("--mw-case-accent", "#596773");
+    root.style.setProperty("--mw-style-tag-fg", presetForeground("#596773"));
     void coverTone(key).then(tone => {
       if (this.caseToneKey !== key) return;
-      root.style.setProperty("--mw-case-accent", tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#b4b6b8" : "#51555b"));
+      const accent = tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#b4b6b8" : "#51555b");
+      root.style.setProperty("--mw-case-accent", accent); root.style.setProperty("--mw-style-tag-fg", presetForeground(accent));
     });
   }
   private showMachine(): boolean {
+    if (this.preset()) return this.preset()!.machine;
     return (this.discStyle === "cd" ? this.plugin.settings.playerCdMachine : this.plugin.settings.playerVinylMachine) !== false;
   }
 
   private syncLayout(): void {
     if (!this.shell) return;
     const w = this.contentEl.clientWidth || 0;
+    const portrait = w > 0 && w < this.contentEl.clientHeight;
+    this.contentEl.toggleClass("mw-player--portrait", portrait);
+    this.contentEl.toggleClass("mw-player--cover-lyrics", this.fullLyrics);
+    if (this.el.coverToggle) {
+      this.el.coverToggle.toggleClass("is-hidden", !this.preset()?.fullCover || !portrait);
+      this.el.coverToggle.setAttr("aria-pressed", String(this.fullLyrics));
+      this.el.coverToggle.setAttr("aria-label", t(this.fullLyrics ? "playerPresets.showCover" : "playerPresets.showLyrics"));
+      this.el.coverToggle.title = t(this.fullLyrics ? "playerPresets.showCover" : "playerPresets.showLyrics");
+    }
     this.contentEl.toggleClass("mw-player--lyrics-stacked", w > 0 && w / (this.plugin.settings.zoomScale || 1) < 620);
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");

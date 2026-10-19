@@ -241,6 +241,9 @@ export class MusicWallView extends FileView implements WallHost {
   private suppressSelf = false;
   /** SMTC 订阅取消函数 */
   private offNow: (() => void) | null = null;
+  private appearanceMedia: MediaQueryList | null = null;
+  private appearanceButton: HTMLButtonElement | null = null;
+  private onAppearanceChange = () => this.refreshAppearance();
   private miniPlayer: MiniPlayer | null = null;
   private stopHostInset: (() => void) | null = null;
 
@@ -324,6 +327,8 @@ export class MusicWallView extends FileView implements WallHost {
   }
 
   async onOpen(): Promise<void> {
+    this.appearanceMedia = this.contentEl.ownerDocument.defaultView?.matchMedia("(prefers-color-scheme: dark)") || null;
+    this.appearanceMedia?.addEventListener("change", this.onAppearanceChange);
     this.register(bindMouseBack(this.contentEl, () => {
       if (this.miniPlayer?.closeForBack()) return;
       if (this.drawer?.isOpen()) { this.drawer.close(); return; }
@@ -422,12 +427,27 @@ export class MusicWallView extends FileView implements WallHost {
     card?.addClass("is-now-playing");
   }
 
+  refreshAppearance(): void {
+    const mode = this.plugin.settings.wallAppearance || "system";
+    const dark = mode === "dark" || mode === "system" && (this.appearanceMedia?.matches ?? this.contentEl.ownerDocument.body.classList.contains("theme-dark"));
+    this.contentEl.dataset.wallTheme = dark ? "dark" : "light";
+    if (this.appearanceButton) {
+      setIcon(this.appearanceButton, mode === "light" ? "sun" : mode === "dark" ? "moon" : "sun-moon");
+      const label = t("libraryAppearance.current", { mode: t(`libraryAppearance.${mode}`) });
+      this.appearanceButton.title = label; this.appearanceButton.setAttr("aria-label", label);
+    }
+  }
+  private openPluginSettings(): void {
+    const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
+    setting?.open(); setting?.openTabById(this.plugin.manifest.id);
+  }
   /** 供设置页/外部触发重绘 */
   refresh(): void {
     void this.render();
   }
 
   async onClose(): Promise<void> {
+    this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null; this.appearanceButton = null;
     this.detailArtistPicker?.close(); this.detailArtistPicker = null;
     this.detailArtistRequest++;
     this.releasePress?.(); this.releasePress = null;
@@ -733,6 +753,7 @@ export class MusicWallView extends FileView implements WallHost {
     // 墙面类名：驱动顶栏与墙面同一张画布（展示架的木纹底挂在根上，见 base.css）
     root.removeClass("mw-wall--grid", "mw-wall--list", "mw-wall--shelf");
     root.addClass(`mw-wall--${layout}`);
+    this.refreshAppearance();
     // 模态框挂在 body 上，不在本子树里：渲染时登记皮肤，弹窗自己来取（见 modalTheme.ts）
     setModalTheme(layout === "shelf" ? "shelf" : "default");
     const stage = box.createDiv({ cls: "mw-stage" });
@@ -744,7 +765,7 @@ export class MusicWallView extends FileView implements WallHost {
             ? "mw-grid mw-grid--shelf"
             : "mw-grid",
     });
-    grid.style.setProperty("--mw-min-col", `${this.plugin.settings.minColumnWidth}px`);
+    grid.style.setProperty("--mw-min-col", "180px");
     // 网格级监听只在「新建网格元素」时接一次：renderGrid 会被 rerenderGrid 反复调用，
     // 在里面 addEventListener 会重复注册
     this.wireGridDragTarget(grid);
@@ -873,6 +894,16 @@ export class MusicWallView extends FileView implements WallHost {
     const selectBtn = mkIcon("check-square", t("wall.toolbar.select"), () => {
       if (this.selectMode) this.exitSelectMode();
       else this.enterSelectMode();
+    });
+    this.appearanceButton = mkIcon("sun-moon", t("wallAppearance.title"), () => {
+      const modes = ["system", "light", "dark"] as const;
+      this.plugin.settings.wallAppearance = modes[(modes.indexOf(this.plugin.settings.wallAppearance || "system") + 1) % 3];
+      this.refreshAppearance(); this.plugin.refreshWallAppearance?.();
+      void this.plugin.saveData(this.plugin.settings).catch(() => new Notice(t("library.failed")));
+    }, "mw-wall-appearance");
+    this.appearanceButton.addEventListener("contextmenu", event => {
+      event.preventDefault(); event.stopPropagation();
+      this.showCtxMenu(event, [{ title: t("wall.settingsPanel.open"), icon: "settings", onPick: () => this.openPluginSettings() }]);
     });
     const moreBtn = mkIcon("more-horizontal", t("wall.toolbar.more"), (btn) => {
       const rect = btn.getBoundingClientRect();
@@ -1348,6 +1379,7 @@ export class MusicWallView extends FileView implements WallHost {
         onPick: () => (this.editMode ? this.exitEditMode() : this.enterEditMode()),
       }
     );
+    items.push({ sep: true }, { title: t("wall.settingsPanel.open"), icon: "settings", onPick: () => this.openPluginSettings() });
     this.showCtxMenu(evt, items);
   }
 
@@ -4076,6 +4108,7 @@ export class MusicWallView extends FileView implements WallHost {
         icon: "upload",
         onPick: () => void this.plugin.importMwFile(this),
       },
+      ...(this.plugin.settings.showGitSyncActions ? [
       {
         title: t("gitSync.pullCommand"),
         icon: "download-cloud",
@@ -4084,6 +4117,7 @@ export class MusicWallView extends FileView implements WallHost {
         },
       },
       { title: t("gitSync.pushCommand"), icon: "upload-cloud", onPick: () => void this.plugin.gitSync("push") },
+      ] : []),
     ]);
   }
 }

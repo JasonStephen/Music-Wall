@@ -9,11 +9,9 @@ import {
   ZOOM_STEP,
   clampZoom,
   type DiscStyle,
-  type PlayerBackground,
   type ShelfCaption,
 } from "./types";
 import {
-  playerBgLabel,
   shelfCaptionLabel,
   styleLabel,
   t,
@@ -70,6 +68,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
 
   private renderCategory(containerEl: HTMLElement, generation: number): void {
     if (this.activeTab === "general") {
+
       new Setting(containerEl)
         .setName(t("settings.lang.name"))
         .setDesc(t("settings.lang.desc"))
@@ -90,6 +89,14 @@ export class MusicWallSettingTab extends PluginSettingTab {
             }
           );
         });
+
+      new Setting(containerEl).setName(t("wallAppearance.title")).addDropdown(dropdown => {
+        for (const mode of ["system", "light", "dark"] as const) dropdown.addOption(mode, t(`libraryAppearance.${mode}`));
+        dropdown.setValue(this.plugin.settings.wallAppearance || "system").onChange(async mode => {
+          this.plugin.settings.wallAppearance = mode as "system" | "light" | "dark";
+          this.plugin.refreshWallAppearance(); await this.plugin.saveData(this.plugin.settings);
+        });
+      });
 
       new Setting(containerEl)
         .setName(t("settings.zoom.name"))
@@ -136,20 +143,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
           });
         });
 
-      new Setting(containerEl)
-        .setName(t("settings.colWidth.name"))
-        .setDesc(t("settings.colWidth.desc"))
-        .addSlider((s) =>
-          s
-            .setLimits(140, 320, 10)
-            .setValue(this.plugin.settings.minColumnWidth)
-            .setDynamicTooltip()
-            .onChange(async (v) => {
-              this.plugin.settings.minColumnWidth = v;
-              await this.plugin.saveSettings();
-              this.plugin.refreshOpenViews();
-            })
-        );
+
 
     }
     if (this.activeTab === "player") {
@@ -208,18 +202,6 @@ export class MusicWallSettingTab extends PluginSettingTab {
 
     }
     containerEl.createEl("h3", { text: t("settingsCategories.appearance") });
-    const BG_KEYS: PlayerBackground[] = ["white", "dark", "art", "wood"];
-    new Setting(containerEl)
-      .setName(t("settings.playerBg.name"))
-      .setDesc(t("settings.playerBg.desc"))
-      .addDropdown((d) => {
-        for (const v of BG_KEYS) d.addOption(v, playerBgLabel(v));
-        d.setValue(this.plugin.settings.playerBackground).onChange(async (v) => {
-          this.plugin.settings.playerBackground = v as PlayerBackground;
-          await this.plugin.saveSettings();
-        });
-      });
-
     new Setting(containerEl)
       .setName(t("settings.smtc.name"))
       .setDesc(t("settings.smtc.desc"))
@@ -302,6 +284,10 @@ export class MusicWallSettingTab extends PluginSettingTab {
 
     }
     if (this.activeTab === "sync") {
+      containerEl.createDiv({ cls: "mw-git-experimental-warning", text: t("gitSyncExperimental.warning"), attr: { role: "note" } });
+      new Setting(containerEl).setName(t("gitSyncExperimental.showActions")).setDesc(t("gitSyncExperimental.showActionsDesc")).addToggle(toggle => toggle.setValue(!!this.plugin.settings.showGitSyncActions).onChange(async enabled => {
+        this.plugin.settings.showGitSyncActions = enabled; await this.plugin.saveSettings();
+      }));
       const github = new Setting(containerEl).setName(t("githubAuth.title"))
         .setDesc(!Platform.isDesktopApp ? t("githubPull.hint") : this.plugin.settings.githubAccount ? t("githubAuth.current", { name: this.plugin.settings.githubAccount }) : t("githubAuth.system"))
         .addButton(button => button.setButtonText(t("githubAuth.manage")).setDisabled(!Platform.isDesktopApp).onClick(async () => {

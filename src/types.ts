@@ -171,6 +171,12 @@ export interface MusicWallSettings {
   /** 是否启用 SMTC 正在播放（仅 Windows 桌面端生效） */
   smtcEnabled: boolean;
   /** 播放器页背景模式 */
+  playerExperimental: boolean;
+  playerPresetGroup: "vinyl" | "cd" | "cover" | "machine" | "custom";
+  playerPresetChoices: { vinyl: "classic" | "white" | "color"; cd: "classic" | "color"; cover: "record" | "full"; machine: "vinyl" | "colorVinyl" | "cd" | "colorCd" };
+  playerPresetTone: "system" | "light" | "dark";
+  playerColorGlass: boolean;
+  playerCustomStyle: "vinyl" | "cd" | "cover";
   playerBackground: PlayerBackground;
   playerCase: DeviceCase;
   playerVinylMachine: boolean;
@@ -181,6 +187,8 @@ export interface MusicWallSettings {
   audioCacheMB: number;
   lyricsTranslation: boolean;
   libraryAppearance: "system" | "light" | "dark";
+  wallAppearance: "system" | "light" | "dark";
+  showGitSyncActions: boolean;
   /**
    * 界面缩放（1 = 100%）。对音乐墙与播放器页全局生效，
    * 含侧边抽屉与模态框；可在设置里调，也可在视图内 Ctrl/Alt + 滚轮调。
@@ -206,6 +214,12 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   mobileNoticeShown: false,
   shelfCaption: "pull",
   smtcEnabled: true,
+  playerExperimental: false,
+  playerPresetGroup: "vinyl",
+  playerPresetChoices: { vinyl: "classic", cd: "classic", cover: "record", machine: "vinyl" },
+  playerPresetTone: "system",
+  playerColorGlass: false,
+  playerCustomStyle: "vinyl",
   playerBackground: "dark",
   playerCase: "black",
   playerVinylMachine: true,
@@ -216,6 +230,8 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   audioCacheMB: 1024,
   lyricsTranslation: false,
   libraryAppearance: "system",
+  wallAppearance: "system",
+  showGitSyncActions: false,
   zoomScale: 1,
 };
 

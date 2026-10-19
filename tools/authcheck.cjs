@@ -540,10 +540,17 @@ async function main() {
       const tab = new api.MusicWallSettingTab(instance.app, instance);
       tab.containerEl.ownerDocument = { createElementNS(_ns, tag) { return new Element(tag); } };
       tab.display();
-      assert.equal(settings.length, 2);
+      assert.equal(settings.length, 3);
+      assert.deepEqual(settings.map(setting=>setting.name), [api.t("settings.lang.name"), api.t("wallAppearance.title"), api.t("settings.zoom.name")]);
       const tabs = tab.containerEl.children[0];
       assert.equal(tabs.children.length, 5);
       assert.equal(tabs.children[0].children[0].tag, "svg");
+      tab.selectTab("wall");
+      assert.ok(!settings.some(setting=>setting.name===api.t("settings.colWidth.name")));
+
+      tab.selectTab("player");
+      assert.ok(!settings.some(setting=>setting.name===api.t("playerPresets.customBackground")));
+      assert.ok(tab.containerEl.children[1].children.some(child=>child.textContent===api.t("settingsCategories.appearance")));
       tab.selectTab("account");
       const account = settings.find((setting) => setting.name === api.t("auth.account"));
       assert.equal(account.buttons[0].text, api.t("auth.signIn"));
@@ -551,6 +558,9 @@ async function main() {
       tab.containerEl.scrollTop = 100;
       tab.selectTab("sync");
       assert.ok(settings.find(setting => setting.name === api.t("gitSync.title")));
+      assert.equal(tab.containerEl.children[1].children[0].textContent, api.t("gitSyncExperimental.warning"));
+      assert.ok(settings.some(setting=>setting.name===api.t("gitSyncExperimental.showActions")));
+      assert.equal(instance.settings.showGitSyncActions,false);
       tab.selectTab("account"); assert.equal(tab.containerEl.scrollTop, 100);
       instance.settings.neteaseCookie = "MUSIC_U=test"; settings.length = 0; tab.display();
       const loggedIn = settings.find((setting) => setting.name === api.t("auth.account"));

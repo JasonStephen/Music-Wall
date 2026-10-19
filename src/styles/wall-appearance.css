@@ -1,0 +1,41 @@
+/* Wall palette is local and never changes the wooden shelf layout. */
+.mw-view.mw-wall--grid[data-wall-theme="light"], .mw-view.mw-wall--list[data-wall-theme="light"] {
+  color-scheme: light;
+  --background-primary: #fafafa;
+  --background-secondary: #f0f0f2;
+  --text-normal: #22252b;
+  --text-muted: #606671;
+  --text-faint: #747b86;
+  --text-accent: #6551c3;
+  --background-modifier-border: #d7d9de;
+  --background-modifier-hover: #e9eaf0;
+  --interactive-normal: #f0f0f2;
+  --interactive-hover: #e9eaf0;
+  --interactive-accent: #705bd1;
+  --text-on-accent: #fff;
+}
+.mw-view.mw-wall--grid[data-wall-theme="dark"], .mw-view.mw-wall--list[data-wall-theme="dark"] {
+  color-scheme: dark;
+  --background-primary: #1b1d22;
+  --background-secondary: #24272e;
+  --text-normal: #f0f1f5;
+  --text-muted: #b2b7c3;
+  --text-faint: #949caa;
+  --text-accent: #bdadff;
+  --background-modifier-border: #3b404b;
+  --background-modifier-hover: #30343e;
+  --interactive-normal: #282c34;
+  --interactive-hover: #343945;
+  --interactive-accent: #8872e1;
+  --text-on-accent: #fff;
+}
+
+.mw-view:not(.mw-wall--shelf)[data-wall-theme="light"] .mw-wall-appearance { color:#000; }
+.mw-view:not(.mw-wall--shelf)[data-wall-theme="dark"] .mw-wall-appearance { color:#fff; }
+
+/* Keep the extra appearance action reachable in narrow or zoomed panes. */
+.mw-view .mw-toolbar__actions { min-width:0; max-width:100%; flex-wrap:wrap; justify-content:flex-end; }
+@container mw-pane (max-width:320px) {
+  .mw-view .mw-toolbar .mw-toolbtn { width:30px; height:34px; }
+  .mw-view .mw-toolbar .mw-toolbtn svg { width:21px; height:21px; }
+}

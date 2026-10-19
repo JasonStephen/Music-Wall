@@ -74,6 +74,14 @@ try {
       cases.push({kind:'wall',tablet:true,theme,layout:'shelf',style:'vinyl',width,height,zoom});
     }
   }
+  if(process.argv.includes('--wall-appearance')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark'])for(const layout of ['grid','list','shelf'])for(const [width,height] of [[1280,800],[360,740],[240,600]])cases.push({kind:'wall',theme,layout,style:'vinyl',width,height});
+  }
+  if(process.argv.includes('--presets')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark'])for(const [width,height,zoom] of [[1280,800,1],[1315,642,1],[768,1024,1],[360,740,1],[640,360,1],[240,600,1],[360,740,2]])cases.push({kind:'player',theme,bg:'dark',style:'vinyl',panel:'presets',presets:true,width,height,zoom});
+  }
   if(process.argv.includes('--mouse-back')) {
     cases.splice(0,cases.length);
     for(const kind of ['wall','player'])for(const [width,height] of [[1280,800],[360,740]])cases.push({kind,width,height,theme:'dark',style:'vinyl',layout:'grid',panel:'playlist'});
@@ -98,6 +106,8 @@ try {
     if(process.argv.includes('--mouse-back')) {
       const back=await value('window.verifyMouseBack()');checks+=back.checks;if(back.fail.length){failed++;console.log('FAIL mouse back '+JSON.stringify(item)+' '+JSON.stringify(back.fail));}
     }
+    if(item.presets){const presets=await value('window.verifyPlayerPresets()');checks+=presets.checks;if(presets.fail.length){failed++;console.log('FAIL presets '+JSON.stringify(item)+' '+JSON.stringify(presets.fail));}const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`presets-${item.theme}-${item.width}-${item.zoom}.png`),Buffer.from(shot.data,'base64'));}
+    if(process.argv.includes('--wall-appearance')){const appearance=await value('window.verifyWallAppearance()');checks+=appearance.checks;if(appearance.fail.length){failed++;console.log('FAIL wall appearance '+JSON.stringify(item)+' '+JSON.stringify(appearance.fail));}}
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
     if(item.panel==='bare') {
       await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
@@ -143,7 +153,7 @@ try {
       }
       const lifecycle=await value('window.verifyMiniSeekLifecycle()');checks+=10;if(lifecycle.length){failed++;console.log('FAIL mini seek lifecycle '+JSON.stringify(lifecycle));}
     }
-    if(item.kind==='player'&&item.panel!=='height'&&!keyboardChecked){
+    if(item.kind==='player'&&item.panel!=='height'&&!item.presets&&!keyboardChecked){
       const keyboard=await value('window.verifyKeyboardPlayback()');checks+=keyboard.checks;keyboardChecked=true;
       if(keyboard.fail.length){failed++;console.log('FAIL keyboard playback '+JSON.stringify(keyboard.fail));}
     }
@@ -211,7 +221,7 @@ try {
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
     }
-    if(!playOrderChecked&&item.kind!=='library'&&item.panel!=='height'){
+    if(!playOrderChecked&&item.kind!=='library'&&item.panel!=='height'&&!item.presets){
       const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
       if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }

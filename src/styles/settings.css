@@ -58,3 +58,6 @@
   .mw-settings__panel .setting-item-control { justify-content: flex-start; }
   .mw-settings__panel input[type="text"], .mw-settings__panel input[type="number"], .mw-settings__panel select { max-width: 100%; }
 }
+
+.mw-git-experimental-warning { padding:12px 14px; margin-bottom:14px; border:1px solid #bd922e; border-radius:8px; color:#b07800; background:rgba(255,196,0,.14); font-weight:600; line-height:1.6; }
+.theme-dark .mw-git-experimental-warning { color:#ffd66b; background:rgba(255,196,0,.12); }
