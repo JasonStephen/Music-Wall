@@ -375,12 +375,16 @@
 }
 .mw-player-disc-only { position: relative; width: 100%; aspect-ratio: 1; }
 .mw-player .mw-player-disc-only .mw-record { transform: none; }
-.mw-player .mw-machine-toggle { display: flex; justify-content: space-between; gap: 12px; width: 100%; height: auto; min-height: 36px; padding: 8px; border: 1px solid var(--mw-panel-line); border-radius: 7px; color: var(--mw-panel-fg); background: transparent; box-shadow: none; font: inherit; }
+.mw-player .mw-machine-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: auto; min-height: 44px; padding: 8px; border: 1px solid var(--mw-panel-line); border-radius: 7px; color: var(--mw-panel-fg); background: transparent; box-shadow: none; font: inherit; }
 .mw-machine-toggle .mw-control-icon { display: inline-flex; flex: 0 0 auto; }
-.mw-machine-toggle svg { width: 24px; height: 24px; }
-.mw-machine-toggle[aria-checked="true"] svg { color: var(--mw-accent); }
+.mw-machine-toggle .mw-control-icon svg { width: 44px; height: 26px; }
+.mw-machine-switch__track { fill: var(--mw-panel-hover); stroke: var(--mw-panel-fg-dim); stroke-width: 1; transition: fill 200ms ease, stroke 200ms ease; }
+.mw-machine-switch__thumb { fill: var(--mw-panel-fg); transform: translateX(0); transition: transform 220ms cubic-bezier(.2,.8,.2,1), fill 200ms ease; }
+.mw-machine-toggle[aria-checked="true"] .mw-machine-switch__track { fill: var(--mw-accent); stroke: var(--mw-accent); }
+.mw-machine-toggle[aria-checked="true"] .mw-machine-switch__thumb { transform: translateX(18px); fill: var(--mw-np-accent-fg, var(--mw-panel-bg)); }
 @media (prefers-reduced-motion: reduce) {
   .mw-player-disc-only .mw-record__plate { animation-play-state: paused; }
+  .mw-machine-switch__track, .mw-machine-switch__thumb { transition: none; }
 }
 
 /* ---- 黑胶：唱片机（参考实物：深色盘座 + 银唱臂 + 调速旋钮） ---- */

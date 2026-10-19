@@ -417,6 +417,7 @@ export class MusicPlayerView extends ItemView {
       });
       const grid = secStyle.createDiv({ cls: "mw-preset-grid mw-preset-grid--3" });
       let caseSection: HTMLElement | null = null;
+      let vinylSection: HTMLElement | null = null;
       let refreshMachine = () => {};
       for (const s of PLAYER_STYLES) {
         grid.appendChild(
@@ -439,14 +440,21 @@ export class MusicPlayerView extends ItemView {
       const machineButton = machineSection.createEl("button", { cls: "clickable-icon mw-machine-toggle", attr: { type: "button", role: "switch" } });
       const machineLabel = machineButton.createSpan();
       const machineIcon = machineButton.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } });
+      const switchSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      switchSvg.setAttribute("viewBox", "0 0 44 26"); switchSvg.setAttribute("aria-hidden", "true");
+      const switchTrack = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      switchTrack.setAttribute("x", "1"); switchTrack.setAttribute("y", "1"); switchTrack.setAttribute("width", "42"); switchTrack.setAttribute("height", "24"); switchTrack.setAttribute("rx", "12"); switchTrack.setAttribute("class", "mw-machine-switch__track");
+      const switchThumb = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      switchThumb.setAttribute("cx", "13"); switchThumb.setAttribute("cy", "13"); switchThumb.setAttribute("r", "9"); switchThumb.setAttribute("class", "mw-machine-switch__thumb");
+      switchSvg.append(switchTrack, switchThumb); machineIcon.appendChild(switchSvg);
       refreshMachine = () => {
         machineSection.toggleClass("is-hidden", this.discStyle === "cover");
         const enabled = this.showMachine();
         const label = t(this.discStyle === "cd" ? "playerMachine.cd" : "playerMachine.vinyl");
         machineLabel.setText(label); machineButton.setAttr("aria-label", label);
         machineButton.setAttr("aria-checked", String(enabled)); machineButton.toggleClass("is-active", enabled);
-        setIcon(machineIcon, enabled ? "toggle-right" : "toggle-left");
         caseSection?.toggleClass("is-hidden", this.discStyle === "cover" || !enabled);
+        vinylSection?.toggleClass("is-hidden", this.discStyle !== "vinyl" || enabled);
       };
       machineButton.addEventListener("click", () => {
         if (this.discStyle === "cover") return;
@@ -455,6 +463,25 @@ export class MusicPlayerView extends ItemView {
         this.albumKey = "\0"; this.updateNow(); refreshMachine();
         void this.plugin.saveData(this.plugin.settings);
       });
+
+      vinylSection = panel.createDiv({ cls: "mw-panel__section mw-vinyl-options" });
+      vinylSection.createDiv({ cls: "mw-panel__label", text: t("vinylFinish.title") });
+      const finishes = vinylSection.createDiv({ cls: "mw-preset-grid mw-vinyl-grid" });
+      for (const finish of ["black", "white", "color", "blackGlass", "whiteGlass", "colorGlass"] as const) {
+        const button = finishes.createEl("button", { cls: "mw-preset", attr: { type: "button", "aria-label": t(`vinylFinish.${finish}`), "aria-pressed": String((this.plugin.settings.playerVinylFinish || "black") === finish) } });
+        button.dataset.vinylFinish = finish; button.toggleClass("is-active", (this.plugin.settings.playerVinylFinish || "black") === finish);
+        const swatch = button.createDiv({ cls: "mw-vinyl-swatch", attr: { "aria-hidden": "true" } }); swatch.dataset.mwVinyl = finish;
+        swatch.createSpan({ cls: "mw-vinyl-swatch__disc" });
+        button.createSpan({ cls: "mw-preset__label", text: t(`vinylFinish.${finish}`) });
+        button.addEventListener("click", () => {
+          if (this.discStyle !== "vinyl" || this.showMachine()) return;
+          this.plugin.settings.playerVinylFinish = finish; this.applyCaseAppearance();
+          for (const tile of Array.from(finishes.querySelectorAll<HTMLElement>("[data-vinyl-finish]"))) {
+            const selected = tile.dataset.vinylFinish === finish; tile.toggleClass("is-active", selected); tile.setAttr("aria-pressed", String(selected));
+          }
+          void this.plugin.saveData(this.plugin.settings);
+        });
+      }
 
       caseSection = panel.createDiv({ cls: "mw-panel__section mw-case-options" });
       caseSection.toggleClass("is-hidden", this.discStyle === "cover");
@@ -883,8 +910,11 @@ export class MusicPlayerView extends ItemView {
 
   private applyCaseAppearance(): void {
     const root = this.contentEl, choice = this.plugin.settings.playerCase || "black";
+    root.dataset.mwVinyl = this.discStyle === "vinyl" && this.showMachine()
+      ? choice === "art" ? "color" : "black"
+      : this.plugin.settings.playerVinylFinish || "black";
     if (root.dataset.mwCase !== choice) root.dataset.mwCase = choice;
-    if (choice !== "art" && !this.drawer?.isOpen()) return;
+    if (choice !== "art" && !["color", "colorGlass"].includes(root.dataset.mwVinyl) && !this.drawer?.isOpen()) return;
     const cover = this.displayAlbum()?.cover || DEFAULT_COVER;
     const key = sizedCover(cover, 300);
     if (this.caseToneKey === key) return;

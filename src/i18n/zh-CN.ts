@@ -97,6 +97,7 @@ export const zhCN = {
   },
   case: { title: "外壳", white: "白色", black: "黑色", wood: "原木", art: "跟随封面" },
   buffering: { pauseFade: "暂停与继续渐变（秒）", crossFade: "切歌交叉渐变（秒）", cacheLimit: "歌曲缓存上限（MB，0 为关闭）", cacheUsed: "歌曲缓存已用空间", clearCache: "清除缓存", cacheError: "缓存清理失败，请稍后重试" },
+  vinylFinish: {"title": "黑胶盘面", "black": "黑色", "white": "白色", "color": "彩色", "blackGlass": "黑色玻璃", "whiteGlass": "白色玻璃", "colorGlass": "彩色玻璃"},
   playerMachine: {"vinyl": "显示黑胶播放机", "cd": "显示 CD 播放机"},
   lyrics: {"title": "歌词", "translation": "翻译", "noTranslation": "暂无翻译", "follow": "返回当前歌词", "idle": "播放歌曲后显示歌词", "external": "外部客户端暂不支持同步歌词", "loading": "正在加载歌词…", "failed": "歌词加载失败，请重试", "empty": "暂无歌词", "instrumental": "纯音乐，请欣赏"},
   libraryDetails: {"durationLoading": "正在统计时长…", "durationUnavailable": "时长暂不可用","summary": "{count} 首 · {duration}", "hours": "{value}小时", "minutes": "{value}分钟", "moreActions": "更多操作", "chooseArtist": "选择艺术家", "viewAlbum": "查看所属专辑", "viewArtist": "查看艺术家", "copyLink": "复制网易云链接", "viewDetails": "查看详情", "wallAlbum": "音乐墙专辑", "playlist": "歌单", "album": "专辑"},

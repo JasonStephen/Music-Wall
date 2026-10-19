@@ -175,6 +175,7 @@ export interface MusicWallSettings {
   playerCase: DeviceCase;
   playerVinylMachine: boolean;
   playerCdMachine: boolean;
+  playerVinylFinish: "black" | "white" | "color" | "blackGlass" | "whiteGlass" | "colorGlass";
   pauseFadeSeconds: number;
   crossFadeSeconds: number;
   audioCacheMB: number;
@@ -208,6 +209,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   playerCase: "black",
   playerVinylMachine: true,
   playerCdMachine: true,
+  playerVinylFinish: "black",
   pauseFadeSeconds: 0.3,
   crossFadeSeconds: 2,
   audioCacheMB: 1024,

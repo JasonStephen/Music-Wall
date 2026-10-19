@@ -1,0 +1,50 @@
+/* Full-player record material is independent from the player chassis finish. */
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl] {
+  --mw-vinyl-fill: radial-gradient(circle at 48% 40%, #252527, #0c0c0e 80%);
+  --mw-vinyl-groove: rgba(0,0,0,.5);
+  --mw-vinyl-edge: rgba(255,255,255,.15);
+  --mw-vinyl-reflection: rgba(255,255,255,.14);
+}
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl="white"] {
+  --mw-vinyl-fill: radial-gradient(circle at 40% 32%, #fff, #e4e2dd 75%, #faf9f5);
+  --mw-vinyl-groove: rgba(135,130,122,.2);
+  --mw-vinyl-edge: rgba(170,165,155,.5);
+  --mw-vinyl-reflection: rgba(255,255,255,.65);
+}
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl="whiteGlass"] {
+  --mw-vinyl-fill: linear-gradient(135deg, rgba(240,250,255,.3), rgba(225,245,255,.06) 48%, rgba(240,250,255,.25));
+  --mw-vinyl-groove: rgba(220,240,255,.13);
+  --mw-vinyl-edge: rgba(230,245,255,.6);
+  --mw-vinyl-reflection: rgba(255,255,255,.4);
+}
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl="blackGlass"] {
+  --mw-vinyl-fill: linear-gradient(135deg, rgba(70,77,88,.55), rgba(12,15,21,.2) 48%, rgba(48,56,69,.5));
+  --mw-vinyl-groove: rgba(13,18,26,.23);
+  --mw-vinyl-edge: rgba(190,210,235,.46);
+  --mw-vinyl-reflection: rgba(235,245,255,.28);
+}
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl="colorGlass"] {
+  --mw-vinyl-fill: linear-gradient(135deg, color-mix(in srgb, var(--mw-case-accent, #7557af) 48%, transparent), color-mix(in srgb, var(--mw-case-accent, #7557af) 12%, transparent) 48%, color-mix(in srgb, var(--mw-case-accent, #7557af) 40%, transparent));
+  --mw-vinyl-groove: color-mix(in srgb, var(--mw-case-accent, #7557af) 20%, transparent);
+  --mw-vinyl-edge: color-mix(in srgb, var(--mw-case-accent, #7557af) 48%, #ffffff90);
+  --mw-vinyl-reflection: rgba(255,255,255,.4);
+}
+:is(.mw-player, .mw-vinyl-swatch)[data-mw-vinyl="color"] {
+  --mw-vinyl-fill: radial-gradient(circle at 38% 28%, color-mix(in srgb, var(--mw-case-accent, #7557af) 65%, white), var(--mw-case-accent, #7557af) 60%, color-mix(in srgb, var(--mw-case-accent, #7557af) 70%, black));
+  --mw-vinyl-groove: rgba(0,0,0,.18);
+  --mw-vinyl-edge: rgba(255,255,255,.28);
+  --mw-vinyl-reflection: rgba(255,255,255,.3);
+}
+.mw-player[data-mw-vinyl] .mw-disc--vinyl .mw-record__plate,
+.mw-vinyl-swatch__disc {
+  background: conic-gradient(from 210deg, var(--mw-vinyl-reflection), transparent 35deg 150deg, var(--mw-vinyl-reflection) 180deg, transparent 220deg 330deg, var(--mw-vinyl-reflection)), repeating-radial-gradient(circle, transparent 0 1.5px, var(--mw-vinyl-groove) 1.5px 2.5px, transparent 2.5px 3.5px), var(--mw-vinyl-fill);
+  border: 1px solid var(--mw-vinyl-edge);
+  box-shadow: 0 6px 18px #0004, inset 0 0 0 1px var(--mw-vinyl-edge);
+}
+.mw-vinyl-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.mw-vinyl-swatch { display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 5px; }
+.mw-vinyl-swatch__disc { position: relative; display: block; width: 100%; height: 100%; border-radius: 50%; }
+.mw-vinyl-swatch__disc::after { content: ""; position: absolute; inset: 33%; border-radius: 50%; background: var(--mw-panel-fg-dim); box-shadow: inset 0 0 0 8px var(--mw-panel-bg); }
+@container mw-pane (max-width: 280px) {
+  .mw-vinyl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

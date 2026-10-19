@@ -235,6 +235,8 @@ let close = async()=>{};
       const translate=lyrics.querySelector<HTMLButtonElement>('[aria-pressed]')!;
       translate.click();await wait();expect(lyrics.classList.contains('show-translation')&&translate.getAttribute('aria-pressed')==='true','translation toggle enables translations');
       expect(getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!).display!=='none','translation is visible');
+      const translationStyle=getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!),originalStyle=getComputedStyle(lyrics.querySelector('.mw-lyrics__original')!);
+      expect(Math.abs(parseFloat(translationStyle.fontSize)/parseFloat(originalStyle.fontSize)-.72)<.01&&translationStyle.fontWeight==='525','translation uses 72 percent size and medium weight');
       translate.click();await wait();expect(getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!).display==='none','translation can be hidden');
       lyrics.querySelectorAll<HTMLButtonElement>('.mw-lyrics__line')[8].click();await wait();expect(engine.state.positionMs===40000,'click lyric seeks to row');
       viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:20,bubbles:true}));
@@ -283,15 +285,40 @@ let close = async()=>{};
       expect(!!root.querySelector('.mw-player-disc-only--vinyl .mw-record__plate')&&!root.querySelector('.mw-dev__chassis'),'vinyl toggle renders only disc');
       expect(root.querySelector('.mw-case-options')!.classList.contains('is-hidden'),'bare disc hides machine finish settings');
       expect(!!toggle().querySelector('svg')&&toggle().getAttribute('role')==='switch','machine switch has SVG and accessible state');
+      const switchSvg=toggle().querySelector('svg')!,thumb=toggle().querySelector<SVGCircleElement>('.mw-machine-switch__thumb')!;
+      expect(switchSvg.getBoundingClientRect().width>=43&&switchSvg.getBoundingClientRect().height>=25,'switch has a large 44 by 26 SVG');
+      expect(getComputedStyle(thumb).transitionDuration.includes('0.22'),'switch thumb has sliding animation');
+      const thumbElement=thumb;
+      const finish=(value:string)=>root.querySelector<HTMLButtonElement>(`[data-vinyl-finish="${value}"]`)!.click();
+      expect(root.querySelectorAll('[data-vinyl-finish]').length===6&&!root.querySelector('.mw-vinyl-options')!.classList.contains('is-hidden'),'bare vinyl offers six disc materials');
+      const disc=root.querySelector('.mw-player-disc-only .mw-record__plate')!;const materials:string[]=[];
+      for(const value of ['black','white','color','blackGlass','whiteGlass','colorGlass']){
+        finish(value);await wait();materials.push(getComputedStyle(disc).backgroundImage);
+        expect(root.dataset.mwVinyl===value&&root.querySelector(`[data-vinyl-finish="${value}"]`)!.getAttribute('aria-pressed')==='true','persists selected vinyl finish '+value);
+      }
+      expect(new Set(materials).size===6,'all six materials have distinct rendered backgrounds');
+      expect(root.querySelector('.mw-player-disc-only .mw-record__plate')===disc,'material changes retain rotating element');
+      finish('black');
       expect(unchanged()&&engine.state.status==='paused','switch preserves track, position and pause');
       const plate=root.querySelector<HTMLElement>('.mw-player-disc-only .mw-record__plate')!;
       expect(getComputedStyle(plate).animationPlayState==='paused','bare vinyl is paused with audio');
       await engine.play();await wait(50);expect(root.querySelector('.mw-player-disc-only .mw-record__plate')===plate&&getComputedStyle(plate).animationPlayState==='running','resume starts rotation without replacing disc');
       await engine.pause();await wait();expect(root.querySelector('.mw-player-disc-only .mw-record__plate')===plate&&getComputedStyle(plate).animationPlayState==='paused','pause freezes same rotating disc');
       pick('cd');expect(toggle().getAttribute('aria-checked')==='true'&&!!root.querySelector('.mw-dev--cd'),'CD has independent enabled default');
+      expect(root.querySelector('.mw-vinyl-options')!.classList.contains('is-hidden'),'CD hides vinyl material options');
       toggle().click();await wait();expect(!!root.querySelector('.mw-player-disc-only--cd .mw-disc--cd'),'CD toggle renders bare CD');
       pick('vinyl');expect(toggle().getAttribute('aria-checked')==='false'&&!!root.querySelector('.mw-player-disc-only--vinyl'),'vinyl remembers separate setting');
       toggle().click();await wait();expect(!!root.querySelector('.mw-dev--vinyl')&&!root.querySelector('.mw-case-options')!.classList.contains('is-hidden'),'machine and finish options can be restored');
+      expect(toggle().querySelector('.mw-machine-switch__thumb')===thumbElement,'toggle retains the same SVG thumb for animation');
+      expect(root.querySelector('.mw-vinyl-options')!.classList.contains('is-hidden'),'turntable hides independent disc materials');
+      for(const choice of ['white','black','wood','art']) {
+        root.querySelector<HTMLButtonElement>(`[data-case-choice="${choice}"]`)!.click();
+        expect(root.dataset.mwVinyl===(choice==='art'?'color':'black'),'turntable record follows chassis rule '+choice);
+      }
+      toggle().click();finish('whiteGlass');toggle().click();
+      expect(root.dataset.mwVinyl==='color'&&plugin.settings.playerVinylFinish==='whiteGlass','turntable leaves independent finish preference intact');
+      toggle().click();expect(root.dataset.mwVinyl==='whiteGlass','turning off turntable restores saved independent finish');
+      toggle().click();
       pick('cd');expect(toggle().getAttribute('aria-checked')==='false','restoring vinyl never changes CD setting');
       pick('cover');expect(root.querySelector('.mw-machine-options')!.classList.contains('is-hidden'),'cover has no machine switch');
       expect(unchanged(),'style switches do not seek or change songs');
@@ -352,6 +379,8 @@ let close = async()=>{};
     if(config.panel==='case') {
       root.querySelector<HTMLButtonElement>('.mw-toolbtn')!.click();await wait(40);
       const section=root.querySelector<HTMLElement>('.mw-case-options')!;
+      const vinylOptions=root.querySelector<HTMLElement>('.mw-vinyl-options')!;
+      check(vinylOptions.classList.contains('is-hidden'),'Machine mode hides independent vinyl finish choices');
       check(section.classList.contains('is-hidden')===(config.style==='cover'),'Case options are hidden for the pure cover style');
       if(config.style!=='cover'){
         check(section.querySelectorAll('[data-case-choice]').length===4,'Four case finishes are available');
