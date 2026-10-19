@@ -1,3 +1,4 @@
+import { verifyHiddenZoom } from "./hidden-zoom-ui";
 import { MusicLibraryView } from '../src/ui/MusicLibraryView';
 import { InternalPlayer } from '../src/core/internalPlayer';
 import { AlbumSearchPanel } from '../src/ui/AlbumSearchPanel';
@@ -280,5 +281,6 @@ let dispose=async()=>{};
   let release:any;plugin.libraryApi.searchContent=()=>new Promise(resolve=>release=resolve);v.keyword='pending';await v.navigate('home');const searching=v.navigate('search');await wait(0);await v.navigate('home');release({songs:tracks,artists:[],albums:[],playlists:[],more:false});await searching;
   return accountSafe&&!!root.querySelector('.mw-cloud__home')&&!root.querySelector('.mw-cloud__track');
  };
+ (window as any).verifyHiddenZoom=()=>verifyHiddenZoom(root,scale=>{plugin.settings.zoomScale=scale;view.syncZoomBox();});
  dispose=async()=>{engine.stop();await view.onClose();};return {checks,fail};
 };

@@ -1,3 +1,4 @@
+import { verifyHiddenZoom } from "./hidden-zoom-ui";
 import { InternalPlayer, CombinedNowPlayingProvider } from "../src/core/internalPlayer";
 import { EMPTY_NOW_PLAYING } from "../src/core/nowPlaying";
 import { PlayerLyrics } from "../src/ui/PlayerLyrics";
@@ -698,6 +699,7 @@ let close = async()=>{};
     engine.stop();check(views[0].contentEl.querySelector(".mw-mini")!.classList.contains("is-hidden"),"Stop hides remaining footer");
     return {checks,fail};
   };
+  (window as any).verifyHiddenZoom=()=>verifyHiddenZoom(views[0].contentEl,scale=>{plugin.settings.zoomScale=scale;for(const view of views)view.syncZoomBox();});
   close=async()=>{for(const view of views)await view.onClose();provider.dispose();};
   for (const button of mount.querySelectorAll<HTMLElement>(".mw-np__ctrl, .mw-mini__button:not([data-action='quality'])")) {
     if (!button.getClientRects().length) continue;

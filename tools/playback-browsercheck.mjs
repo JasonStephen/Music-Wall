@@ -74,6 +74,10 @@ try {
       cases.push({kind:'wall',tablet:true,theme,layout:'shelf',style:'vinyl',width,height,zoom});
     }
   }
+  if(process.argv.includes('--hidden-zoom')) {
+    cases.splice(0,cases.length);
+    for(const [width,height] of [[1280,800],[360,740]])for(const kind of ['wall','player','library'])cases.push({kind,width,height,theme:'dark',style:'vinyl',layout:'grid',panel:'playlist',page:'created',lang:'zh-CN'});
+  }
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
   let checks=0,failed=0;let savedFailures=0,keyboardChecked=false,playOrderChecked=false;
   for(let i=0;i<cases.length;i++) {
@@ -83,6 +87,10 @@ try {
     await page('Page.navigate',{url:pathToFileURL(path.join(root,item.kind==='library'?'tools/library-ui-e2e.html':'tools/playback-ui-e2e.html')).href});
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
+    if(process.argv.includes('--hidden-zoom')) {
+      const hidden=await value('window.verifyHiddenZoom()');checks+=hidden.checks;
+      if(hidden.fail.length){failed++;console.log('FAIL hidden zoom '+item.kind+' '+item.width+' '+JSON.stringify(hidden.fail));}
+    }
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
     if(item.panel==='bare') {
       await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});

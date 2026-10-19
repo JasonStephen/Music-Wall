@@ -51,8 +51,6 @@ function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): v
   const px = (v: number) => `${Math.floor(v * 1000) / 1000}px`;
   box.style.width = px(w / z);
   box.style.height = px(h / z);
-  // 记下当前缩放，ResizeObserver 回调里要复用（回调不接参数）
-  root.dataset.mwZoom = String(z);
 }
 
 /**
@@ -68,6 +66,9 @@ function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): v
  * 库内文件变动）或缩放变化才会顺手写对一次。
  */
 export function syncZoomBox(root: HTMLElement, scale: number): void {
+  // Hidden tabs have zero size: retain the requested scale before measurement
+  // so ResizeObserver uses it when the tab becomes visible again.
+  root.dataset.mwZoom = String(clampZoom(scale));
   const box = root.querySelector<HTMLElement>(":scope > .mw-zoombox");
   if (!box) return;
   // 观察者是「跟随窗格尺寸」的增强，拿不到就算了（render 绝不能因为环境缺 API 而抛错）。
