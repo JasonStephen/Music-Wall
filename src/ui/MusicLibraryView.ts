@@ -354,7 +354,13 @@ export class MusicLibraryView extends ItemView {
       if (track.artists) this.link(metadata, track.artists, () => this.trackArtist(track), "artist");
       row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       const actions = row.createDiv({ cls: "mw-cloud__actions" });
-      svgAction(actions, "play", t("internal.playTrack", { name: track.name }), () => collection ? this.play(collection, index) : this.single(track, true)).dataset.trackAction = "play";
+      const play = svgAction(actions, "play", t("internal.playTrack", { name: track.name }), () => collection ? this.play(collection, index) : this.single(track, true));
+      play.dataset.trackAction = "play";
+      row.addEventListener("dblclick", event => {
+        const target = event.target as Element | null;
+        if (event.defaultPrevented || event.button !== 0 || target?.closest("button, a, input, select, textarea, [role=button]")) return;
+        event.preventDefault(); play.click();
+      });
       svgAction(actions, "list-plus", t("library.playNext"), () => this.single(track, false)).dataset.trackAction = "next";
       const menu = this.context(row, () => this.trackActions(track, collection, index));
       const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
