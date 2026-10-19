@@ -243,6 +243,10 @@ let close = async()=>{};
       const badge=root.querySelector<HTMLElement>('.mw-style-custom-label')!,oldAccent=root.style.getPropertyValue('--mw-case-accent');root.style.setProperty('--mw-case-accent','#336699');expect(getComputedStyle(badge).backgroundColor==='rgb(51, 102, 153)','custom badge follows sampled cover accent');root.style.setProperty('--mw-case-accent',oldAccent);
       expect(!!root.querySelector('.mw-np__disc .mw-player-disc-only--vinyl')&&root.dataset.mwVinyl==='black','default preset is a standalone classic black record');
       await group('vinyl');plugin.settings.libraryAppearance='light';view.refreshPresetAppearance();expect(root.classList.contains('mw-bg--white'),'classic follows library day override');
+      await wait(60);const sampled=root.style.getPropertyValue('--mw-case-accent');const probeColor=document.createElement('span');probeColor.style.color=sampled;document.body.append(probeColor);const sampledRgb=getComputedStyle(probeColor).color;probeColor.remove();
+      expect(getComputedStyle(root.querySelector('.mw-np__ctrl--main')!).backgroundColor===sampledRgb,'classic light playback control uses sampled cover color');
+      expect(getComputedStyle(root.querySelector('.mw-np__timeline .mw-slider__thumb')!).backgroundColor===sampledRgb,'light progress thumb uses sampled cover color');
+
       plugin.settings.libraryAppearance='dark';view.refreshPresetAppearance();expect(root.classList.contains('mw-bg--dark'),'classic follows library night override');
       root.querySelector<HTMLButtonElement>('[data-preset-tone="light"]')!.click();await wait();expect(root.classList.contains('mw-bg--white'),'explicit light overrides library night');
       root.querySelector<HTMLButtonElement>('[data-preset-tone="system"]')!.click();await wait();
@@ -258,6 +262,9 @@ let close = async()=>{};
       await group('cover');await pick('record');expect(!!root.querySelector('.mw-dev--cover')&&!root.classList.contains('mw-player--full-cover'),'record cover retains ordinary player layout');
       await pick('full');(view as any).drawer.close();await wait();
       const art=root.querySelector<HTMLElement>('.mw-full-cover')!,box=root.querySelector<HTMLElement>('.mw-zoombox')!,a=art.getBoundingClientRect(),b=box.getBoundingClientRect();
+      const backdrop=(view as any).backdrop,oldSet=backdrop.set;backdrop.set=()=>{};root.style.removeProperty('--mw-full-tone');
+      (view as any).applyBackground();expect(root.style.getPropertyValue('--mw-full-tone')===root.style.getPropertyValue('--mw-case-accent'),'full cover solid color updates even when large backdrop does not load');expect(getComputedStyle(root).backgroundColor===sampledRgb,'full cover actually paints the sampled solid background');backdrop.set=oldSet;
+
       expect(getComputedStyle(art).backgroundSize==='cover','full cover crops to fill');
       expect(getComputedStyle(art).maskImage.includes('linear-gradient')&&getComputedStyle(art).maskImage.includes('rgba(0, 0, 0, 0)'),'cover blends into solid background using alpha gradient');
       if(root.classList.contains('mw-player--portrait')){
@@ -274,8 +281,19 @@ let close = async()=>{};
       (window as any).prepareStylePanelScreenshot=async()=>{await group('vinyl');await pick('classic');(view as any).drawer.open('settings');await wait(50);};
       await (window as any).prepareStylePanelScreenshot();
       const panel=root.querySelector<HTMLElement>('.mw-drawer__body')!;
+      const tabs=root.querySelector<HTMLElement>('.mw-style-tabs')!;
+      expect(!panel.contains(tabs)&&tabs.parentElement===panel.parentElement,'style tabs are outside scrolling grid');
+      panel.scrollTop=panel.scrollHeight;await wait();
+      expect(panel.getBoundingClientRect().top>=tabs.getBoundingClientRect().bottom-1,'grid viewport never intersects style tabs');
+      expect([...root.querySelectorAll('.mw-style-preview .mw-dev__panel--cd')].every(p=>{const box=p.closest('.mw-dev')!.getBoundingClientRect();return [...p.children,...p.querySelectorAll('.mw-dev__btn')].every(child=>{const r=child.getBoundingClientRect();return r.left>=box.left-1&&r.right<=box.right+1;});}),'CD preview display and controls stay inside chassis');
+      panel.scrollTop=0;await wait();
+
       expect(panel.scrollWidth<=panel.clientWidth+1,'style panel has no horizontal overflow at narrow widths');
       expect(root.querySelector('.mw-drawer__title')?.textContent===t('playerPresets.title'),'drawer title is player styles');
+      (window as any).prepareStyleHover=async()=>{
+        await group('custom');const button=root.querySelector<HTMLElement>('.mw-machine-toggle')!;button.scrollIntoView({block:'center'});await wait(30);const r=button.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};
+      };
+      (window as any).styleHoverResult=()=>{const button=root.querySelector<HTMLElement>('.mw-machine-toggle')!;const expected=document.createElement('span');expected.style.backgroundColor=`color-mix(in srgb,${root.style.getPropertyValue('--mw-case-accent')} 14%,transparent)`;document.body.append(expected);const color=getComputedStyle(expected).backgroundColor;expected.remove();return {matches:getComputedStyle(button).backgroundColor===color,background:getComputedStyle(button).backgroundColor,hover:button.matches(':hover')};};
       return {checks:assertions,fail:errors};
     };
     if(config.presets) { close=async()=>{for(const view of views)await view.onClose();provider.dispose();};return {checks,fail}; }

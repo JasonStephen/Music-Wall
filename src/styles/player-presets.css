@@ -3,8 +3,8 @@
 .mw-player-presets svg { width:20px; height:20px; flex-shrink:0; }
 .mw-player .mw-player-presets button[aria-pressed="true"], .mw-player .mw-player-presets button:hover { background:var(--background-modifier-hover); }
 .mw-player .mw-player-presets .is-hidden { display:none; }
-.mw-style-tabs { position:sticky; top:0; z-index:3; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; padding:6px 0 12px; margin-bottom:8px; background:var(--mw-panel-bg); }
-.mw-player .mw-style-tab { display:flex; align-items:center; justify-content:center; gap:8px; min-height:42px; height:auto; padding:8px; border:1px solid var(--mw-panel-line); border-radius:8px; color:var(--mw-panel-fg); background:transparent; box-shadow:none; }
+.mw-style-tabs { position:relative; flex:0 0 auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; padding:3px; margin:12px 14px 0; border:1px solid var(--mw-panel-line); border-radius:10px; background:var(--mw-panel-surface); }
+.mw-player .mw-style-tab { display:flex; align-items:center; justify-content:center; gap:8px; min-height:42px; height:auto; padding:8px; border:1px solid transparent; border-radius:7px; color:var(--mw-panel-fg); background:transparent; box-shadow:none; }
 .mw-style-tab svg { width:20px; height:20px; flex-shrink:0; }
 .mw-player .mw-style-tab[aria-selected="true"] { border-color:var(--mw-case-accent,var(--interactive-accent)); background:var(--mw-panel-hover); }
 .mw-style-section { margin:0 0 22px; }
@@ -75,3 +75,46 @@
 
 .mw-player .mw-style-tab { min-width:0; }
 .mw-style-tab span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+
+/* One cover-derived interaction palette for the player and its style drawer. */
+.mw-player .mw-player-presets button:hover,
+.mw-player .mw-np__ctrl:not(.mw-np__ctrl--main):hover,
+.mw-player .mw-np__quality-button:hover {
+  background:color-mix(in srgb,var(--mw-case-accent,#70757f) 18%,var(--mw-ctrl-bg,transparent));
+  border-color:var(--mw-case-accent,#70757f);
+  filter:none;
+}
+.mw-player .mw-style-tab:hover,
+.mw-player .mw-style-tab[aria-selected="true"],
+.mw-player .mw-preset-tones button:hover,
+.mw-player .mw-preset-tones button[aria-pressed="true"] {
+  border-color:var(--mw-case-accent,#70757f);
+  background:color-mix(in srgb,var(--mw-case-accent,#70757f) 18%,transparent);
+  box-shadow:none;
+}
+.mw-player .mw-preset-option:hover,
+.mw-player .mw-preset-option[aria-pressed="true"] {
+  border-color:var(--mw-case-accent,#70757f);
+  background:color-mix(in srgb,var(--mw-case-accent,#70757f) 14%,var(--mw-panel-surface));
+}
+.mw-player .mw-machine-toggle:hover,
+.mw-player .mw-preset-glass:hover {
+  border-color:var(--mw-case-accent,#70757f) !important;
+  background:color-mix(in srgb,var(--mw-case-accent,#70757f) 14%,transparent) !important;
+  color:var(--mw-panel-fg) !important;
+  box-shadow:none !important;
+}
+/* Device controls scale with their own chassis, including small previews. */
+.mw-player .mw-dev { container-type:inline-size; }
+.mw-player .mw-dev__readout { font-size:clamp(3px,3.2cqw,11px); padding:.3cqw 2cqw; border-radius:1.2cqw; }
+.mw-player .mw-dev__led { width:2cqw; height:2cqw; flex:0 0 2cqw; }
+.mw-player .mw-dev__panel--cd { gap:3%; }
+.mw-player .mw-dev__panel--cd .mw-dev__btnrow { flex:0 1 45%; min-width:0; max-width:80px; gap:5%; }
+.mw-player .mw-dev__panel--cd .mw-dev__btn { flex:1 1 15px; min-width:0; width:auto; max-width:15px; height:3cqw; max-height:10px; border-radius:.7cqw; }
+
+.mw-player.mw-view { --mw-panel-hover:color-mix(in srgb,var(--mw-case-accent,#70757f) 14%,transparent); --background-modifier-hover:var(--mw-panel-hover); }
+.mw-player.mw-bg--wood :is(.mw-slider,.mw-range) { --mw-range-fill:var(--mw-np-accent,#70757f); }
+.mw-player .mw-drawer .mw-preset:hover { background-color:color-mix(in srgb,var(--mw-case-accent,#70757f) 14%,transparent) !important; border-color:var(--mw-case-accent,#70757f) !important; }
+.mw-player .mw-drawer__body > :is(.mw-style-section,.mw-panel__section) { flex:0 0 auto; }
+
+.mw-player.mw-view { --mw-np-accent:var(--mw-case-accent,#70757f); --mw-np-accent-fg:var(--mw-style-tag-fg,#fff); }

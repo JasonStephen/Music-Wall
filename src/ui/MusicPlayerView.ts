@@ -26,7 +26,7 @@ import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
-import { coverTone, onAccentFor } from "./accent";
+import { coverTone, type CoverTone } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
@@ -85,6 +85,7 @@ export class MusicPlayerView extends ItemView {
   private volumeIcon = "";
   private stopHostInset: (() => void) | null = null;
   private caseToneKey = "";
+  private coverPalette: CoverTone | null = null;
   private backdrop: CoverBackdrop | null = null;
 
   private shell: HTMLElement | null = null;
@@ -199,7 +200,7 @@ export class MusicPlayerView extends ItemView {
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
     this.backdrop?.dispose(); this.backdrop = null;
-    this.caseToneKey = "";
+    this.caseToneKey = ""; this.coverPalette = null;
     this.stopHostInset?.(); this.stopHostInset = null;
     if (this.offNow) {
       this.offNow();
@@ -366,18 +367,13 @@ export class MusicPlayerView extends ItemView {
     // 取色 + 自适应字色：只有「封面」模式跟着封面走，其余模式用 CSS 里各模式的固定色
     if (this.bg !== "art") {
       this.backdrop?.set("", () => {});
-      root.style.removeProperty("--mw-np-accent"); root.style.removeProperty("--mw-np-accent-fg"); this.setArtTone(null);
+      this.setArtTone(null);
       root.style.removeProperty("--mw-player-art");
       return;
     }
-    this.backdrop?.set(art, tone => {
-      if (this.bg !== "art") return;
-      root.style.setProperty("--mw-full-tone", tone.accent || "#303742");
-      root.style.setProperty("--mw-full-foreground", presetForeground(tone.accent || "#303742"));
-      if (tone.accent) { root.style.setProperty("--mw-np-accent", tone.accent); root.style.setProperty("--mw-np-accent-fg", onAccentFor(tone.accent)); }
-      else { root.style.removeProperty("--mw-np-accent"); root.style.removeProperty("--mw-np-accent-fg"); }
-      this.setArtTone(tone.luma);
-    });
+    // Palette sampling must not depend on decoding the larger backdrop image.
+    if (this.coverPalette && this.caseToneKey === sizedCover(art, 300)) this.applyCoverPalette(this.coverPalette);
+    this.backdrop?.set(art, () => {});
   }
 
   /**
@@ -439,7 +435,10 @@ export class MusicPlayerView extends ItemView {
     }
   }
   private buildStyleTabs(panel: HTMLElement): void {
-    const tabs = panel.createDiv({ cls: "mw-style-tabs", attr: { role: "tablist", "aria-label": t("playerPresets.title") } });
+    const host = panel.parentElement!;
+    host.querySelector(":scope > .mw-style-tabs")?.remove();
+    const tabs = host.createDiv({ cls: "mw-style-tabs", attr: { role: "tablist", "aria-label": t("playerPresets.title") } });
+    host.insertBefore(tabs, panel);
     for (const tab of ["presets", "custom"] as const) {
       const custom = tab === "custom", label = t(`playerPresets.${tab}`);
       const selected = custom === (this.presetGroup() === "custom");
@@ -1043,19 +1042,28 @@ export class MusicPlayerView extends ItemView {
       ? choice === "art" ? "color" : "black"
       : preset?.finish || this.plugin.settings.playerVinylFinish || "black";
     if (root.dataset.mwCase !== choice) root.dataset.mwCase = choice;
-    if (choice !== "art" && !["color", "colorGlass"].includes(root.dataset.mwVinyl) && !this.drawer?.isOpen()) return;
     const cover = this.displayAlbum()?.cover || DEFAULT_COVER;
     const key = sizedCover(cover, 300);
     if (this.caseToneKey === key) return;
-    this.caseToneKey = key;
-    root.style.setProperty("--mw-case-accent", "#596773");
-    root.style.setProperty("--mw-style-tag-fg", presetForeground("#596773"));
+    this.caseToneKey = key; this.coverPalette = null;
     void coverTone(key).then(tone => {
       if (this.caseToneKey !== key) return;
-      const accent = tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#b4b6b8" : "#51555b");
-      root.style.setProperty("--mw-case-accent", accent); root.style.setProperty("--mw-style-tag-fg", presetForeground(accent));
+      this.coverPalette = tone; this.applyCoverPalette(tone);
     });
   }
+  private applyCoverPalette(tone: CoverTone): void {
+    const root = this.contentEl;
+    const accent = tone.accent || (tone.luma !== null && tone.luma >= .5 ? "#747780" : "#70757f");
+    const foreground = presetForeground(accent);
+    root.style.setProperty("--mw-case-accent", accent);
+    root.style.setProperty("--mw-style-tag-fg", foreground);
+    root.style.setProperty("--mw-np-accent", accent);
+    root.style.setProperty("--mw-np-accent-fg", foreground);
+    root.style.setProperty("--mw-full-tone", accent);
+    root.style.setProperty("--mw-full-foreground", foreground);
+    if (this.bg === "art") this.setArtTone(tone.luma);
+  }
+
   private showMachine(): boolean {
     if (this.preset()) return this.preset()!.machine;
     return (this.discStyle === "cd" ? this.plugin.settings.playerCdMachine : this.plugin.settings.playerVinylMachine) !== false;
