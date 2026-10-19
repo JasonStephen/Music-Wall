@@ -253,6 +253,7 @@ export const en: typeof zhCN = {
     aboutLogout: "Signing out stops playback and clears this plugin’s sign-in information. The NetEase client stays signed in.",
   },
 
+  settingsCategories: { playback: "Playback", appearance: "Appearance and system controls", cache: "Audio cache", title: "Settings categories", general: "General", wall: "Music wall", player: "Player", account: "Account", sync: "Git sync" },
   settings: {
     lang: {
       name: "Interface language",

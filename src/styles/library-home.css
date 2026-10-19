@@ -86,7 +86,11 @@
 }
 @container mw-pane (max-width: 210px) {
   .mw-cloud .mw-cloud__head { flex-wrap: wrap; }
-  .mw-cloud .mw-cloud__head h2 { order: -1; flex: 1 0 100%; }
+  .mw-cloud .mw-cloud__heading { order: -1; flex: 1 0 100%; }
   .mw-cloud .mw-cloud__tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mw-cloud .mw-cloud__tabs button { font-size: 10px; gap: 3px; }
 }
+
+.mw-cloud__heading { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.mw-cloud .mw-cloud__heading h2 { flex: 1; min-width: 0; }
+.mw-cloud__heading .mw-cloud__back { flex-shrink: 0; }

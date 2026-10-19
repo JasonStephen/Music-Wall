@@ -20,16 +20,20 @@ const notices = [];
 const modals = [];
 class Element {
   constructor(tag = "div", options = {}) {
+    this.scrollTop = 0;
     this.tag = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = options.text || "";
     this.attrs = options.attr || {}; this.style = { setProperty() {}, removeProperty() {} };
   }
   addClass() {} removeClass() {} toggleClass() {} setText(value) { this.textContent = value; }
   focus() {}
+  setAttribute(name, value) { this.attrs[name] = value; }
+  appendChild(child) { this.children.push(child); return child; }
+  querySelector() { return null; }
   removeAttribute(name) { delete this[name]; delete this.attrs[name]; }
   setAttr(name, value) { this.attrs[name] = value; }
   addEventListener(name, fn) { this[name] = fn; }
   empty() { this.children = []; }
-  createEl(tag, options) { const el = new Element(tag, options); this.children.push(el); return el; }
+  createEl(tag, options) { const el = new Element(tag, options); el.ownerDocument = this.ownerDocument; this.children.push(el); return el; }
   createDiv(options) { return this.createEl("div", options); }
   createSpan(options) { return this.createEl("span", options); }
   appendText(text) { this.textContent += text; }
@@ -533,10 +537,21 @@ async function main() {
     for (const language of ["zh-CN", "zh-TW", "en"]) {
       api.setLanguage(language); settings.length = 0;
       const instance = plugin();
-      const tab = new api.MusicWallSettingTab(instance.app, instance); tab.display();
+      const tab = new api.MusicWallSettingTab(instance.app, instance);
+      tab.containerEl.ownerDocument = { createElementNS(_ns, tag) { return new Element(tag); } };
+      tab.display();
+      assert.equal(settings.length, 2);
+      const tabs = tab.containerEl.children[0];
+      assert.equal(tabs.children.length, 5);
+      assert.equal(tabs.children[0].children[0].tag, "svg");
+      tab.selectTab("account");
       const account = settings.find((setting) => setting.name === api.t("auth.account"));
       assert.equal(account.buttons[0].text, api.t("auth.signIn"));
-      assert.ok(tab.containerEl.children.find((child) => child.tag === "details"));
+      assert.ok(tab.containerEl.children[1].children.find((child) => child.tag === "details"));
+      tab.containerEl.scrollTop = 100;
+      tab.selectTab("sync");
+      assert.ok(settings.find(setting => setting.name === api.t("gitSync.title")));
+      tab.selectTab("account"); assert.equal(tab.containerEl.scrollTop, 100);
       instance.settings.neteaseCookie = "MUSIC_U=test"; settings.length = 0; tab.display();
       const loggedIn = settings.find((setting) => setting.name === api.t("auth.account"));
       assert.equal(loggedIn.buttons[1].text, api.t("auth.signOut"));

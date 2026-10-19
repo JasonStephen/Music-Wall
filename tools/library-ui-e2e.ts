@@ -93,14 +93,14 @@ let dispose=async()=>{};
   const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
   const themeButton=root.querySelector<HTMLButtonElement>('.mw-cloud__appearance')!,footerBefore=root.querySelector('.mw-mini'),bodyBefore=body.firstElementChild;
   const callsBefore=apiCalls,songBefore=engine.state.songId;
-  themeButton.click();await wait();const modes=MENU_LOG.at(-1)!.items;
-  expect(modes.map(mode=>mode.icon).join(',')==='sun,moon,sun-moon'&&modes[2].checked,'appearance menu has three SVG modes with system selected');
-  await modes[0].run?.();await wait();
+  const menuCount=MENU_LOG.length;
+  themeButton.click();await wait();
+  expect(MENU_LOG.length===menuCount&&!themeButton.hasAttribute('aria-haspopup'),'appearance cycles without a menu');
   expect(root.dataset.libraryTheme==='light'&&themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='sun'&&getComputedStyle(themeButton).color==='rgb(0, 0, 0)','day mode uses black sun');
-  await modes[1].run?.();await wait();
+  themeButton.click();await wait();
   expect(root.dataset.libraryTheme==='dark'&&themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='moon'&&getComputedStyle(themeButton).color==='rgb(255, 255, 255)','night mode uses white moon');
   expect(plugin.settings.libraryAppearance==='dark'&&apiCalls===callsBefore&&engine.state.songId===songBefore&&root.querySelector('.mw-mini')===footerBefore&&body.firstElementChild===bodyBefore,'appearance changes persist preference without refetching, rerendering or affecting audio');
-  await modes[2].run?.();await wait();expect(themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='sun-moon','system mode uses combined sun and moon icon');
+  themeButton.click();await wait();expect(themeButton.querySelector<SVGElement>('svg')!.dataset.icon==='sun-moon','cycle returns to system mode');
   for(const tab of ['created','collected']) {
    await v.navigate(tab);await wait(100);
    expect(root.querySelector('.mw-cloud__card-stats')?.textContent===statsSummary({count:24,duration:6240000}),tab+' card shows actual count and hours');
@@ -111,6 +111,7 @@ let dispose=async()=>{};
   expect(root.querySelector('.mw-cloud__card-stats')?.textContent===statsSummary({count:3,duration:780000}),'album search card shows count and minutes');
   await v.openArtist(artists[0]);
   expect(root.querySelectorAll('.mw-cloud__track').length===3&&!root.querySelector('.mw-cloud__album'),'artist defaults to songs');
+  expect(!!root.querySelector('.mw-cloud__head .mw-cloud__back')&&!root.querySelector('.mw-cloud__collection [data-icon=arrow-left]'),'artist back is in top heading');
   root.querySelector<HTMLButtonElement>('[data-artist-section=albums]')!.click();await wait();
   expect(!root.querySelector('.mw-cloud__track')&&root.querySelectorAll('.mw-cloud__album').length===4,'artist tabs are exclusive');
   await wait(100);expect(root.querySelector('.mw-cloud__card-stats')?.textContent===statsSummary({count:3,duration:780000}),'artist album card shows count and duration');
@@ -120,7 +121,7 @@ let dispose=async()=>{};
   expect(root.querySelector('.mw-cloud__summary')?.textContent===collectionSummary(v.collection),'album shows song count and duration');
   root.querySelector<HTMLButtonElement>('.mw-cloud__track [data-track-action=play]')!.click();await wait();
   expect(engine.contentKind==='album'&&engine.album?.albumId===100,'album detail uses album playback');
-  v.back();expect(v.artistSection==='albums'&&!!root.querySelector('.mw-cloud__album'),'back restores artist album tab');
+  root.querySelector<HTMLButtonElement>('.mw-cloud__head .mw-cloud__back')!.click();await wait();expect(v.artistSection==='albums'&&!!root.querySelector('.mw-cloud__album'),'back restores artist album tab');
   root.querySelector<HTMLButtonElement>('[data-artist-section=songs]')!.click();await wait();
   root.querySelector<HTMLButtonElement>('.mw-cloud__track [data-link=album]')!.click();await wait();
   expect(v.collection?.albumId===100,'song album metadata opens correct album');
@@ -210,8 +211,8 @@ let dispose=async()=>{};
   return {checks:count,fail:errors};
  };
  (window as any).setLibraryAppearance=async(mode:string)=>{
-  root.querySelector<HTMLButtonElement>('.mw-cloud__appearance')!.click();await wait();
-  await MENU_LOG.at(-1)!.items[['light','dark','system'].indexOf(mode)].run?.();await wait();
+  for(let i=0;i<3&&plugin.settings.libraryAppearance!==mode;i++) { root.querySelector<HTMLButtonElement>('.mw-cloud__appearance')!.click();await wait(); }
+
  };
  (window as any).libraryAppearanceState=()=>({theme:root.dataset.libraryTheme,mode:plugin.settings.libraryAppearance,color:getComputedStyle(root.querySelector('.mw-cloud__appearance')!).color});
  let nativeMenuCount=0,nativeSong:number|undefined;

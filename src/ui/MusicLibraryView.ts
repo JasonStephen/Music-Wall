@@ -1,4 +1,4 @@
-import { ItemView, Menu, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
 import { LIBRARY_VIEW_TYPE } from "../types";
@@ -60,7 +60,6 @@ export class MusicLibraryView extends ItemView {
   private playIntent = 0;
   private appearanceMedia: MediaQueryList | null = null;
   private appearanceButton: HTMLButtonElement | null = null;
-  private appearanceMenu: Menu | null = null;
   private onAppearanceChange = () => this.updateAppearance();
   constructor(leaf: WorkspaceLeaf, private plugin: MusicWallPlugin) { super(leaf); }
   getViewType(): string { return LIBRARY_VIEW_TYPE; }
@@ -87,7 +86,7 @@ export class MusicLibraryView extends ItemView {
   }
   async onClose(): Promise<void> {
     this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null;
-    this.appearanceMenu?.hide(); this.appearanceMenu = null; this.appearanceButton = null;
+    this.appearanceButton = null;
     this.resetCardStats(); this.statsCache.clear();
     this.closed = true; ++this.generation; ++this.playIntent;
     this.clearMenus(); this.artistPicker?.close(); this.stopInset?.(); this.resize?.disconnect(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl);
@@ -137,15 +136,18 @@ export class MusicLibraryView extends ItemView {
   private render(): void {
     if (this.closed || !this.body) return;
     this.resetCardStats();
-    this.appearanceMenu?.hide(); this.appearanceMenu = null;
     this.clearMenus(); this.renderNav(); this.head.empty(); this.body.empty();
     const nav = svgAction(this.head, "menu", t("library.expandNav"), () => this.toggleNav()); nav.dataset.navToggle = "true"; nav.addClass("mw-cloud__menu");
-    this.head.createEl("h2", { text: this.getDisplayText() });
+    const heading = this.head.createDiv({ cls: "mw-cloud__heading" });
+    if (this.collection || this.artist || this.playlistItem || this.albumItem || this.artistItem) {
+      svgAction(heading, "arrow-left", t("common.back"), () => this.back()).addClass("mw-cloud__back");
+    }
+    heading.createEl("h2", { text: this.getDisplayText() });
     svgAction(this.head, "home", t("library.home"), () => this.navigate("home"));
     svgAction(this.head, "refresh-cw", t("library.refresh"), () => { this.statsCache.clear(); this.plugin.libraryApi.clear(); return this.reload(); });
     svgAction(this.head, "disc", t("cmd.openPlayer"), () => this.plugin.openPlayerView());
-    this.appearanceButton = svgAction(this.head, "sun-moon", t("libraryAppearance.title"), () => this.openAppearanceMenu());
-    this.appearanceButton.addClass("mw-cloud__appearance"); this.appearanceButton.setAttr("aria-haspopup", "menu");
+    this.appearanceButton = svgAction(this.head, "sun-moon", t("libraryAppearance.title"), () => this.cycleAppearance());
+    this.appearanceButton.addClass("mw-cloud__appearance");
     this.updateAppearance();
     const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void; tabHeaderInnerTitleEl?: HTMLElement };
     leaf.updateHeader?.(); leaf.tabHeaderInnerTitleEl?.setText(this.getDisplayText());
@@ -249,18 +251,13 @@ export class MusicLibraryView extends ItemView {
     const glyph = button.querySelector<HTMLElement>(".mw-control-icon");
     if (glyph) setIcon(glyph, mode === "light" ? "sun" : mode === "dark" ? "moon" : "sun-moon");
   }
-  private openAppearanceMenu(): void {
-    if (!this.appearanceButton) return;
-    this.appearanceMenu?.hide();
-    const menu = new Menu(); this.appearanceMenu = menu;
-    const modes = ["light", "dark", "system"] as const;
-    for (const mode of modes) menu.addItem(item => item.setTitle(t(`libraryAppearance.${mode}`)).setIcon(mode === "light" ? "sun" : mode === "dark" ? "moon" : "sun-moon")
-      .setChecked((this.plugin.settings.libraryAppearance || "system") === mode).onClick(async () => {
-        if (this.closed) return;
-        this.plugin.settings.libraryAppearance = mode; this.updateAppearance();
-        try { await this.plugin.saveData(this.plugin.settings); } catch { new Notice(t("library.failed")); }
-      }));
-    const bounds = this.appearanceButton.getBoundingClientRect(); menu.showAtPosition({ x: bounds.left, y: bounds.bottom + 4 });
+  private async cycleAppearance(): Promise<void> {
+    if (this.closed) return;
+    const modes = ["system", "light", "dark"] as const;
+    const current = modes.indexOf(this.plugin.settings.libraryAppearance || "system");
+    this.plugin.settings.libraryAppearance = modes[(current + 1) % modes.length];
+    this.updateAppearance();
+    try { await this.plugin.saveData(this.plugin.settings); } catch { new Notice(t("library.failed")); }
   }
   private resetCardStats(): void {
     ++this.statsEpoch; this.statsObserver?.disconnect(); this.statsObserver = null;
@@ -333,7 +330,6 @@ export class MusicLibraryView extends ItemView {
   }
   private renderCollection(collection: AlbumMeta): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });
-    svgAction(head, "arrow-left", t("common.back"), () => this.back());
     head.createEl("img", { attr: { src: sizedCover(collection.cover || DEFAULT_COVER, 160), alt: "" } });
     const info = head.createDiv({ cls: "mw-cloud__collection-info" });
     info.createEl("h3", { text: collection.name });
@@ -367,7 +363,6 @@ export class MusicLibraryView extends ItemView {
   }
   private renderArtist(content: ArtistContent): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });
-    svgAction(head, "arrow-left", t("common.back"), () => this.back());
     head.createEl("img", { attr: { src: sizedCover(content.artist.cover || DEFAULT_COVER, 160), alt: "" } }); head.createEl("h3", { text: content.artist.name });
     const tabs = this.body.createDiv({ cls: "mw-cloud__tabs", attr: { role: "tablist", "aria-label": content.artist.name } });
     for (const section of ["songs", "albums"] as const) {
@@ -423,7 +418,6 @@ export class MusicLibraryView extends ItemView {
     const empty = this.body.createDiv({ cls: "mw-cloud__empty" }); empty.createEl("p", { text: t("library.failed") });
     svgAction(empty, "refresh-cw", t("library.retry"), () => this.retry?.(), true);
     svgAction(empty, "log-in", t("auth.signIn"), () => this.signIn(), true);
-    if (this.playlistItem || this.artistItem || this.albumItem) svgAction(empty, "arrow-left", t("common.back"), () => this.back(), true);
   }
   private async openPlaylist(item: CloudPlaylist, remember = true): Promise<void> {
     if (remember) this.remember(); if (this.tab === "home") this.tab = "search";

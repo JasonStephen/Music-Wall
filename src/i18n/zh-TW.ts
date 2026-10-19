@@ -253,6 +253,7 @@ export const zhTW: typeof zhCN = {
     aboutLogout: "登出會停止播放並清除此外掛的登入資訊，不影響網易雲用戶端。",
   },
 
+  settingsCategories: { playback: "播放", appearance: "外觀與系統控制", cache: "音訊快取", title: "設定分類", general: "一般", wall: "音樂牆", player: "播放器", account: "帳號", sync: "Git 同步" },
   settings: {
     lang: {
       name: "介面語言",

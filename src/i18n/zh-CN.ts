@@ -251,6 +251,7 @@ export const zhCN = {
     aboutLogout: "登出会停止播放并清除本插件的登录信息，不影响网易云客户端。",
   },
 
+  settingsCategories: { playback: "播放", appearance: "外观与系统控制", cache: "音频缓存", title: "设置分类", general: "常规", wall: "音乐墙", player: "播放器", account: "账号", sync: "Git 同步" },
   settings: {
     lang: {
       name: "界面语言",
