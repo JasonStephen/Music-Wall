@@ -237,10 +237,15 @@ export class MusicLibraryView extends ItemView {
   private cardStats(card: HTMLElement, key: string, count: number, load: () => Promise<CollectionStats>): void {
     const label = card.createSpan({ cls: "mw-cloud__card-stats", text: statsSummary({ count }, true) });
     const epoch = this.statsEpoch, cookie = this.plugin.settings.neteaseCookie;
+    const scope = this.plugin.settings.neteaseUserId || (cookie ? "" : "public");
     const valid = () => !this.closed && epoch === this.statsEpoch && cookie === this.plugin.settings.neteaseCookie && label.isConnected;
     const enqueue = () => {
       this.statsQueue.push(async () => {
         if (!valid()) return;
+        const cached = await this.plugin.collectionStatsCache?.get(scope, key, count);
+        if (!valid()) return;
+        if (cached) { label.textContent = statsSummary(cached.stats); label.title = label.textContent; }
+        if (cached?.fresh) return;
         let result = this.statsCache.get(key);
         if (!result) {
           result = load(); this.statsCache.set(key, result);
@@ -248,10 +253,12 @@ export class MusicLibraryView extends ItemView {
         }
         try {
           const stats = await result;
+          if (cookie === this.plugin.settings.neteaseCookie) await this.plugin.collectionStatsCache?.put(scope, key, count, stats);
+          if (this.plugin.collectionStatsCache && this.statsCache.get(key) === result) this.statsCache.delete(key);
           if (valid()) { label.textContent = statsSummary(stats); label.title = label.textContent; }
         } catch {
           if (this.statsCache.get(key) === result) this.statsCache.delete(key);
-          if (valid()) label.textContent = statsSummary({ count });
+          if (valid() && !cached) label.textContent = statsSummary({ count });
         }
       }); this.drainCardStats();
     };

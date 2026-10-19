@@ -176,6 +176,7 @@ export interface MusicWallSettings {
   pauseFadeSeconds: number;
   crossFadeSeconds: number;
   audioCacheMB: number;
+  lyricsTranslation: boolean;
   /**
    * 界面缩放（1 = 100%）。对音乐墙与播放器页全局生效，
    * 含侧边抽屉与模态框；可在设置里调，也可在视图内 Ctrl/Alt + 滚轮调。
@@ -206,6 +207,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   pauseFadeSeconds: 0.3,
   crossFadeSeconds: 2,
   audioCacheMB: 1024,
+  lyricsTranslation: false,
   zoomScale: 1,
 };
 

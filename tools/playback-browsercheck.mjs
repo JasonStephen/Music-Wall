@@ -33,6 +33,10 @@ try {
   if(process.argv.includes('--queue')) cases.splice(0,cases.length,...cases.filter(item=>item.panel==='queue'||item.queue||item.source==='playlist'));
   if(process.argv.includes('--mini')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'));
   if(process.argv.includes('--seek')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'&&item.layout==='grid'&&item.style==='cover'&&[1280,360].includes(item.width)));
+  if(process.argv.includes('--lyrics')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[768,1024,1],[360,740,1],[240,600,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',panel:'lyrics',theme,bg:theme==='dark'?'dark':'white',style:'cover',width,height,zoom});
+  }
   if(process.argv.includes('--quick')) {
     const selected=cases.filter(item=>item.width===1280&&item.kind==='player'&&item.panel==='playlist'||item.kind==='wall'&&item.width===360&&item.style==='cover');
     cases.splice(0,cases.length,...selected);
@@ -69,6 +73,11 @@ try {
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.panel==='lyrics') {
+      const test=await value('window.verifyLyricsUI()');checks+=test.checks;if(test.fail.length){failed++;console.log('FAIL lyrics '+JSON.stringify({item,errors:test.fail}));}
+      await value('window.prepareLyricsScreenshot()');
+      const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`lyrics-${item.theme}-${item.width}-${item.zoom}.png`),Buffer.from(shot.data,'base64'));
+    }
     if(process.argv.includes('--seek')) {
       for(const buffering of [false,true]) for(const touch of [false,true]) {
         const p=await value('window.prepareMiniSeek('+buffering+')');

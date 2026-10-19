@@ -34,6 +34,7 @@ import { QueueControls } from "./QueueControls";
 import { CoverBackdrop } from "./CoverBackdrop";
 import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 import { PickerModal } from "./smallModals";
+import { PlayerLyrics } from "./PlayerLyrics";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -75,6 +76,7 @@ export class MusicPlayerView extends ItemView {
   private popover: "volume" | "quality" | null = null;
   private queueControls: QueueControls | null = null;
   private qualityKey = "";
+  private playerLyrics: PlayerLyrics | null = null;
   private artistPicker: PickerModal | null = null;
   private artistRequest = 0;
   private artistContext = "";
@@ -176,6 +178,7 @@ export class MusicPlayerView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
     this.backdrop?.dispose(); this.backdrop = null;
     this.caseToneKey = "";
@@ -282,6 +285,7 @@ export class MusicPlayerView extends ItemView {
   // ---- 渲染 ----
 
   private async render(): Promise<void> {
+    this.playerLyrics?.dispose(); this.playerLyrics = null;
     const root = this.contentEl;
     const prevDrawer = this.drawer?.currentKey() ?? null;
     this.drawer?.dispose();
@@ -309,6 +313,7 @@ export class MusicPlayerView extends ItemView {
     const body = box.createDiv({ cls: "mw-player__body" });
     this.shell = body;
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
+    this.playerLyrics = new PlayerLyrics(body.createDiv(), this.plugin);
 
     // 上拉曲目面板 + 遮罩：内置播放可选择曲目；客户端模式保留原只读列表。
     // 遮罩只做视觉，不拦截点击；点击列表外区域、收起钮、列表钮或 Esc 均可关闭。
@@ -683,6 +688,7 @@ export class MusicPlayerView extends ItemView {
   // ---- 增量更新 ----
 
   private updateNow(): void {
+    this.playerLyrics?.update(this.now);
     const artistContext = this.currentArtistContext();
     if (artistContext !== this.artistContext) {
       this.artistContext = artistContext; this.artistRequest++;
@@ -870,6 +876,7 @@ export class MusicPlayerView extends ItemView {
   private syncLayout(): void {
     if (!this.shell) return;
     const w = this.contentEl.clientWidth || 0;
+    this.contentEl.toggleClass("mw-player--lyrics-stacked", w > 0 && w / (this.plugin.settings.zoomScale || 1) < 620);
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);

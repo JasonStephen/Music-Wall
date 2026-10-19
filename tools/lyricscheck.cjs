@@ -1,0 +1,24 @@
+const assert=require('node:assert/strict'),{buildSync}=require('esbuild');
+const output=buildSync({entryPoints:['src/core/lyrics.ts'],bundle:true,platform:'node',format:'cjs',write:false,external:['obsidian']});
+const mod={exports:{}};new Function('module','exports','require',output.outputFiles[0].text)(mod,mod.exports,require);
+const {parseLrc,parseLyrics,lyricIndexAt,LyricsService}=mod.exports;
+(async()=>{
+ const lines=parseLrc('[ar:Artist]\n[offset:-100]\n[00:01.2][00:03.045]Hello\n[00:02]Second\n[00:04.00]\n[99:99]bad');
+ assert.deepEqual(lines.map(line=>line.time),[1100,1900,2945,3900]);assert.equal(lines[3].text,'');
+ assert.equal(lyricIndexAt(lines,1099),-1);assert.equal(lyricIndexAt(lines,1900),1);assert.equal(lyricIndexAt(lines,99999),3);
+ assert.deepEqual(parseLrc('[ti:Title]\nText only\nAnother line'),[{time:null,text:'Text only'},{time:null,text:'Another line'}]);
+ const parsed=parseLyrics({lrc:{lyric:'[00:01]Hello\n[00:02]World'},tlyric:{lyric:'[00:02]世界\n[00:01]你好'}});
+ assert.deepEqual(parsed.lines.map(line=>line.translation),['你好','世界']);assert.equal(parseLyrics({nolyric:true}).instrumental,true);
+ let calls=0,disk='',time=1000000,fail=false;
+ const request=async req=>{calls++;assert.ok(req.url.endsWith('/weapi/song/lyric'));assert.ok(!req.headers.Cookie);if(fail)throw Error('Offline');return {status:200,text:JSON.stringify({code:200,lrc:{lyric:'[00:01]Hello'},tlyric:{lyric:'[00:01]你好'}}),headers:{}};};
+ const storage={exists:async()=>!!disk,read:async()=>disk,write:async(_path,value)=>{disk=value;}};
+ const service=new LyricsService(request,storage,'lyrics',()=>time);
+ const [a,b]=await Promise.all([service.get(1),service.get(1)]);assert.deepEqual(a,b);assert.equal(calls,1);
+ await new Promise(resolve=>setImmediate(resolve));const restored=new LyricsService(request,storage,'lyrics',()=>time);
+ assert.deepEqual(await restored.get(1),a);assert.equal(calls,1);assert.ok(!disk.includes('Cookie'));
+ time+=8*86400000;fail=true;assert.deepEqual(await restored.get(1),a);assert.equal(calls,2);
+ await assert.rejects(restored.get(1,true));fail=false;await restored.get(1,true);assert.equal(calls,4);
+ await assert.rejects(service.get(-1));
+ disk='{bad';const corrupt=new LyricsService(request,storage,'lyrics',()=>time);await corrupt.get(2);assert.equal(calls,5);
+ console.log('Lyrics parsing, offsets, translation alignment, timeline, deduplication, persistence, expiration, offline fallback and retry passed');
+})().catch(error=>{console.error(error);process.exitCode=1;});

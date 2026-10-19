@@ -46,6 +46,8 @@ import type { PlaybackDeps } from "./core/playback";
 import { SongSourceResolver } from "./core/audioSource";
 import { isAudioQuality } from "./core/quality";
 import { AudioTransport } from "./core/audioTransport";
+import { CollectionStatsCache } from "./core/collectionStatsCache";
+import { LyricsService } from "./core/lyrics";
 import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
 import {
   createNowPlayingProvider,
@@ -64,7 +66,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.2.5";
+const BUILD_TAG = "1.2.7-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -80,6 +82,8 @@ export default class MusicWallPlugin extends Plugin {
   private audioSources: SongSourceResolver;
   audioTransport: AudioTransport | null = null;
   libraryApi: MusicLibraryApi;
+  collectionStatsCache: CollectionStatsCache;
+  lyrics: LyricsService;
   private openingLibrary: Promise<void> | null = null;
   private openingPlayer: Promise<void> | null = null;
   private statusEl: HTMLElement | null = null;
@@ -155,6 +159,8 @@ export default class MusicWallPlugin extends Plugin {
     this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
     this.registerView(LIBRARY_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
     this.libraryApi = new MusicLibraryApi(this.requester);
+    this.collectionStatsCache = new CollectionStatsCache(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/collection-stats-cache.json`);
+    this.lyrics = new LyricsService(this.requester, this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/lyrics-cache.json`);
 
     this.addRibbonIcon("library", t("cmd.createWall"), () => {
       void this.createNewWallCommand();
@@ -265,6 +271,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   onunload(): void {
+    void this.collectionStatsCache?.flush();
     this.unloading = true;
     ++this.authGeneration;
     ++this.playbackRequest;

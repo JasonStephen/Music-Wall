@@ -64,6 +64,7 @@ let close = async()=>{};
     settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
     async openLibraryCollection(meta:any){sourceCalls.push({kind:"library",meta});},async revealWallAlbum(path:string,id:number){sourceCalls.push({kind:"wall",path,id});},
     async openLibraryArtist(artist:any){sourceCalls.push({kind:"artist",artist});},libraryApi:{songs:()=>artistLookup()},
+    lyrics:{async get(id:number){return {instrumental:false,lines:Array.from({length:60},(_,index)=>({time:index*5000,text:`Song ${id} · Line ${index+1} 夜色中的微光`,translation:`歌曲 ${id} · 翻译 ${index+1}`}))};}},
     ensureNowPlayingStarted(){},async ensureNeteaseLogin(){return true;},async openPlayerView(){opens++;},
     getPlaybackDeps:()=>({isDesktop:false,request:async()=>{throw Error("No external calls");},playInside:(m:any,i:number)=>engine.playAlbum(m,i)}),
     async scanWallItems(){return [{albumId:1,meta}];},async findAlbumWall(){return null;},async saveData(){},wallFiles:()=>[],firstPlayerView:()=>null,
@@ -213,6 +214,42 @@ let close = async()=>{};
     check(!view.contentEl.querySelector(".mw-mini"),"Full player has no duplicate footer");
     const root=view.contentEl;
     activePlayer=view;
+    (window as any).verifyLyricsUI=async()=>{
+      const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
+      await engine.seek(12000);await wait(40);
+      const lyrics=root.querySelector<HTMLElement>('.mw-lyrics')!,viewport=lyrics.querySelector<HTMLElement>('.mw-lyrics__viewport')!;
+      expect(lyrics.querySelectorAll('.mw-lyrics__line').length===60,'loads line lyrics');
+      expect(lyrics.querySelector('.is-active')?.textContent?.includes('Line 3'),'timeline highlights current line');
+      const left=root.querySelector('.mw-player__now')!.getBoundingClientRect(),right=lyrics.getBoundingClientRect();
+      expect(root.classList.contains('mw-player--lyrics-stacked')?left.bottom<=right.top+1:left.right<=right.left+1,'player and lyrics occupy separate responsive columns/rows');
+      expect(right.width>0&&right.height>0&&right.right<=innerWidth+1&&right.bottom<=innerHeight+1,'lyrics fit pane');
+      expect(['auto','hidden'].includes(getComputedStyle(root.querySelector('.mw-player__now')!).overflowY),'player content cannot overflow into lyrics');
+      expect(lyrics.querySelectorAll('.mw-svg-action svg').length===3,'all lyric controls use SVG');
+      const translate=lyrics.querySelector<HTMLButtonElement>('[aria-pressed]')!;
+      translate.click();await wait();expect(lyrics.classList.contains('show-translation')&&translate.getAttribute('aria-pressed')==='true','translation toggle enables translations');
+      expect(getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!).display!=='none','translation is visible');
+      translate.click();await wait();expect(getComputedStyle(lyrics.querySelector('.mw-lyrics__translation')!).display==='none','translation can be hidden');
+      lyrics.querySelectorAll<HTMLButtonElement>('.mw-lyrics__line')[8].click();await wait();expect(engine.state.positionMs===40000,'click lyric seeks to row');
+      viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:20,bubbles:true}));
+      expect(!lyrics.querySelector('.mw-lyrics__bar button')!.classList.contains('is-hidden'),'manual browsing exposes follow button');
+      lyrics.querySelector<HTMLButtonElement>('.mw-lyrics__bar button')!.click();await wait();
+      expect(lyrics.querySelector('.mw-lyrics__bar button')!.classList.contains('is-hidden'),'follow resumes');
+      await engine.seek(0);await wait();expect(lyrics.querySelector('.is-active')?.textContent?.includes('Line 1'),'seek backwards resets highlight');
+      let resolveOld:any;const original=plugin.lyrics.get;(plugin.lyrics as any).get=()=>new Promise(resolve=>{resolveOld=resolve;});
+      await engine.select(1);await wait();(plugin.lyrics as any).get=original;await engine.select(2);await wait();
+      resolveOld({instrumental:false,lines:[{time:0,text:'STALE LYRICS'}]});await wait();
+      expect(!lyrics.textContent?.includes('STALE')&&lyrics.textContent?.includes('Song 13'),'old request never replaces new song');
+      (plugin.lyrics as any).get=async()=>{throw Error('Offline');};await engine.select(3);await wait();
+      expect(!!lyrics.querySelector('.mw-lyrics__message')&&!lyrics.querySelector(':scope > button')!.classList.contains('is-hidden'),'failed request exposes retry');
+      (plugin.lyrics as any).get=async()=>({instrumental:false,lines:[{time:null,text:'Static lyrics'}]});
+      lyrics.querySelector<HTMLButtonElement>(':scope > button')!.click();await wait();
+      expect(lyrics.textContent?.includes('Static lyrics')&&!lyrics.querySelector('.is-active'),'plain lyrics remain readable without false timing');
+      expect(lyrics.querySelector<HTMLButtonElement>('[aria-pressed]')!.disabled,'translation disabled when unavailable');
+      (plugin.lyrics as any).get=async()=>({instrumental:true,lines:[]});await engine.select(0);await wait();
+      expect(lyrics.querySelector('.mw-lyrics__message')?.textContent==='纯音乐，请欣赏','instrumental state');
+      (plugin.lyrics as any).get=original;return {checks:count,fail:errors};
+    };
+    (window as any).prepareLyricsScreenshot=async()=>{(view as any).togglePlaylist(false);(view as any).togglePopover(null);await engine.select(1);await engine.seek(25000);await wait(60);};
     (window as any).verifyKeyboardPlayback=async()=>{
       const failures:string[]=[];let assertions=0;
       const expect=(ok:boolean,label:string)=>{assertions++;if(!ok)failures.push(label);};
