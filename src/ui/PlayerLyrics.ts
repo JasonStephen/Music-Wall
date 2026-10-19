@@ -18,6 +18,8 @@ export class PlayerLyrics {
   private generation = 0;
   private active = -2;
   private manual = false;
+  private followTimer: ReturnType<typeof setTimeout> | null = null;
+  private touching = false;
   private disposed = false;
   private resize: ResizeObserver | null = null;
   private frame = 0;
@@ -26,7 +28,7 @@ export class PlayerLyrics {
     root.addClass("mw-lyrics"); root.setAttr("aria-label", t("lyrics.title"));
     const bar = root.createDiv({ cls: "mw-lyrics__bar" });
     bar.createSpan({ cls: "mw-lyrics__heading", text: t("lyrics.title") });
-    this.follow = svgAction(bar, "locate", t("lyrics.follow"), () => { this.manual = false; this.updateActive(true); }, true);
+    this.follow = svgAction(bar, "locate", t("lyrics.follow"), () => this.resumeFollow(), true);
     this.follow.addClass("is-hidden");
     this.translate = svgAction(bar, "languages", t("lyrics.translation"), async () => {
       this.plugin.settings.lyricsTranslation = !this.plugin.settings.lyricsTranslation;
@@ -35,9 +37,15 @@ export class PlayerLyrics {
     this.viewport = root.createDiv({ cls: "mw-lyrics__viewport", attr: { tabindex: "0" } });
     this.track = this.viewport.createDiv({ cls: "mw-lyrics__track" });
     this.retry = svgAction(root, "refresh-cw", t("library.retry"), () => this.load(true), true); this.retry.addClass("is-hidden");
-    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.cancelMotion(); this.follow.removeClass("is-hidden"); } };
+    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.cancelMotion(); this.follow.removeClass("is-hidden"); this.scheduleFollow(); } };
     this.viewport.addEventListener("wheel", event => { if (!event.ctrlKey && !event.altKey) browse(); }, { passive: true });
-    this.viewport.addEventListener("touchstart", browse, { passive: true });
+    this.viewport.addEventListener("touchstart", () => { this.touching = true; browse(); }, { passive: true });
+    this.viewport.addEventListener("touchmove", browse, { passive: true });
+    const endTouch = (event: TouchEvent) => { this.touching = event.touches.length > 0; if (this.manual) this.scheduleFollow(); };
+    this.viewport.addEventListener("touchend", endTouch, { passive: true });
+    this.viewport.addEventListener("touchcancel", endTouch, { passive: true });
+    // Include touch inertia: count ten seconds from the last actual scroll.
+    this.viewport.addEventListener("scroll", () => { if (this.manual) this.scheduleFollow(); }, { passive: true });
     this.viewport.addEventListener("keydown", event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) browse(); });
     if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateActive(true)); this.resize.observe(this.viewport); }
     this.updateTranslation();
@@ -52,6 +60,7 @@ export class PlayerLyrics {
   private message(text: string): void { this.rows = []; this.viewport.addClass("is-message"); this.track.empty(); this.track.createDiv({ cls: "mw-lyrics__message", text }); }
   private async load(refresh = false): Promise<void> {
     const token = ++this.generation, key = this.key;
+    this.clearFollowTimer(); this.touching = false;
     this.cancelMotion();
     if (this.frame) cancelAnimationFrame(this.frame);
     this.lyrics = null; this.active = -2; this.manual = false;
@@ -77,7 +86,7 @@ export class PlayerLyrics {
         if (line.translation) text.createSpan({ cls: "mw-lyrics__translation", text: line.translation });
         if (timed) row.addEventListener("click", () => {
           if (this.state?.source !== "internal" || String(this.state.songId) !== key || !this.state.seekable) return;
-          this.manual = false; this.follow.addClass("is-hidden"); void this.plugin.internalPlayer.seek(line.time!);
+          this.clearFollowTimer(); this.manual = false; this.follow.addClass("is-hidden"); void this.plugin.internalPlayer.seek(line.time!);
         });
         this.rows.push(row);
       }
@@ -135,6 +144,24 @@ export class PlayerLyrics {
       });
     });
   }
+  private clearFollowTimer(): void {
+    if (this.followTimer !== null) clearTimeout(this.followTimer);
+    this.followTimer = null;
+  }
+  private scheduleFollow(): void {
+    this.clearFollowTimer();
+    if (this.disposed || !this.manual || this.touching) return;
+    const generation = this.generation;
+    this.followTimer = setTimeout(() => {
+      this.followTimer = null;
+      if (this.disposed || generation !== this.generation || !this.manual || this.touching) return;
+      this.resumeFollow();
+    }, 10_000);
+  }
+  private resumeFollow(): void {
+    this.clearFollowTimer(); this.manual = false;
+    this.follow.addClass("is-hidden"); this.updateActive(true);
+  }
   private cancelMotion(): void { this.motions.splice(0).forEach(animation => animation.cancel()); }
-  dispose(): void { this.disposed = true; ++this.generation; this.resize?.disconnect(); this.cancelMotion(); if (this.frame) cancelAnimationFrame(this.frame); }
+  dispose(): void { this.clearFollowTimer(); this.disposed = true; ++this.generation; this.resize?.disconnect(); this.cancelMotion(); if (this.frame) cancelAnimationFrame(this.frame); }
 }

@@ -1,5 +1,6 @@
 import { InternalPlayer, CombinedNowPlayingProvider } from "../src/core/internalPlayer";
 import { EMPTY_NOW_PLAYING } from "../src/core/nowPlaying";
+import { PlayerLyrics } from "../src/ui/PlayerLyrics";
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
 import { MusicWallView } from "../src/ui/MusicWallView";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -260,6 +261,32 @@ let close = async()=>{};
       expect(!lyrics.querySelector('.mw-lyrics__bar button')!.classList.contains('is-hidden'),'manual browsing exposes follow button');
       lyrics.querySelector<HTMLButtonElement>('.mw-lyrics__bar button')!.click();await wait();
       expect(lyrics.querySelector('.mw-lyrics__bar button')!.classList.contains('is-hidden'),'follow resumes');
+      const realSetTimeout=window.setTimeout,realClearTimeout=window.clearTimeout;
+      let clock=0,nextTimer=-1;const followTimers=new Map<number,{at:number;run:()=>void}>();
+      window.setTimeout=((handler:TimerHandler,delay?:number,...args:any[])=>{
+        if(delay!==10000||typeof handler!=='function')return realSetTimeout(handler,delay,...args);
+        const id=nextTimer--;followTimers.set(id,{at:clock+delay,run:()=>handler(...args)});return id;
+      }) as typeof window.setTimeout;
+      window.clearTimeout=((id?:number)=>{if(id!==undefined&&followTimers.delete(id))return;realClearTimeout(id);}) as typeof window.clearTimeout;
+      const tick=(ms:number)=>{clock+=ms;for(const [id,timer] of [...followTimers])if(timer.at<=clock){followTimers.delete(id);timer.run();}};
+      const following=()=>lyrics.querySelector('.mw-lyrics__bar button')!.classList.contains('is-hidden');
+      try {
+        viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:30}));tick(9999);expect(!following(),'manual lyrics remain until ten seconds elapse');
+        tick(1);await wait(25);expect(following()&&followTimers.size===0,'ten idle seconds automatically restore following');
+        const active=lyrics.querySelector<HTMLElement>('.is-active')!;
+        expect(Math.abs(viewport.scrollTop-Math.max(0,active.offsetTop-viewport.clientHeight*.26))<2,'idle return targets the current timed lyric');
+        viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:30}));tick(9000);viewport.dispatchEvent(new Event('scroll'));tick(9000);expect(!following(),'continued or inertial scrolling restarts the countdown');
+        tick(1000);await wait(25);expect(following(),'following returns ten seconds after scrolling stops');
+        viewport.dispatchEvent(new TouchEvent('touchstart'));tick(20000);expect(!following()&&followTimers.size===0,'held touch never triggers automatic return');
+        viewport.dispatchEvent(new TouchEvent('touchend'));tick(9999);expect(!following(),'touch release starts a fresh ten-second countdown');tick(1);await wait(25);expect(following(),'touch browsing resumes after ten idle seconds');
+        viewport.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown'}));tick(9000);viewport.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown'}));tick(1000);expect(!following(),'repeated keyboard browsing restarts countdown');
+        lyrics.querySelector<HTMLButtonElement>('.mw-lyrics__bar button')!.click();await wait();expect(following()&&followTimers.size===0,'explicit follow cancels pending return');
+        viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:30}));lyrics.querySelectorAll<HTMLButtonElement>('.mw-lyrics__line')[8].click();await wait();expect(followTimers.size===0&&following(),'lyric seek cancels pending return');
+        const probe=root.createDiv(),component=new PlayerLyrics(probe,plugin as never);component.update(engine.state);await wait();
+        probe.querySelector('.mw-lyrics__viewport')!.dispatchEvent(new WheelEvent('wheel',{deltaY:30}));expect(followTimers.size===1,'independent lyric view schedules return');
+        component.update({...engine.state,songId:987654});expect(followTimers.size===0,'song changes cancel old return');await wait();
+        probe.querySelector('.mw-lyrics__viewport')!.dispatchEvent(new WheelEvent('wheel',{deltaY:30}));component.dispose();expect(followTimers.size===0,'closing lyrics cancels pending return');tick(10000);probe.remove();
+      } finally { for(const id of followTimers.keys())window.clearTimeout(id);window.setTimeout=realSetTimeout;window.clearTimeout=realClearTimeout; }
       await engine.seek(0);await wait();expect(lyrics.querySelector('.is-active')?.textContent?.includes('Line 1'),'seek backwards resets highlight');
       let resolveOld:any;const original=plugin.lyrics.get;(plugin.lyrics as any).get=()=>new Promise(resolve=>{resolveOld=resolve;});
       await engine.select(1);await wait();(plugin.lyrics as any).get=original;await engine.select(2);await wait();
