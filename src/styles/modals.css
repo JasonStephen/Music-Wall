@@ -38,6 +38,15 @@
   color: var(--text-accent);
   font-size: 0.95em;
 }
+.mw-panel button.mw-panel__link {
+  display:block; width:100%; height:auto; min-height:0; padding:0; margin:0;
+  border:0; border-radius:2px; background:transparent; box-shadow:none;
+  color:inherit; font-family:inherit; text-align:left; white-space:normal;
+  overflow-wrap:anywhere; cursor:pointer;
+}
+.mw-panel button.mw-panel__artist { color:var(--text-accent); }
+.mw-panel button.mw-panel__link:hover { background:transparent; text-decoration:underline; text-underline-offset:3px; }
+.mw-panel button.mw-panel__link:focus-visible { outline:2px solid var(--text-accent); outline-offset:3px; }
 .mw-panel__meta {
   display: flex;
   flex-direction: column;

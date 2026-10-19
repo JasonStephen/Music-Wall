@@ -37,6 +37,10 @@ try {
     for(const theme of ['light','dark']) for(const width of [760,600,557,420,400,360,280,240,200]) for(const statusBar of [true,false]) cases.push({kind:'wall',theme,layout:'grid',style:'cover',width,height:740,statusBar});
     for(const zoom of [.5,1.5,2]) for(const width of [557,360,240]) cases.push({kind:'wall',theme:'dark',layout:'shelf',style:'vinyl',width,height:740,zoom});
   }
+  if(process.argv.includes('--wall-nav')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const layout of ['grid','list','shelf']) for(const width of [1280,360]) cases.push({kind:'wall',theme,layout,style:'cover',width,height:800,wallNavigation:true});
+  }
   if(process.argv.includes('--seek')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'&&item.layout==='grid'&&item.style==='cover'&&[1280,360].includes(item.width)));
   if(process.argv.includes('--lyrics')) {
     cases.splice(0,cases.length);
@@ -114,6 +118,7 @@ try {
     if(item.presets){const presets=await value('window.verifyPlayerPresets()');checks+=presets.checks;if(presets.fail.length){failed++;console.log('FAIL presets '+JSON.stringify(item)+' '+JSON.stringify(presets.fail));}if(item.width===1280){const target=await value('window.prepareStyleHover()');await page('Input.dispatchMouseEvent',{type:'mouseMoved',x:target.x,y:target.y});await new Promise(r=>setTimeout(r,100));const hover=await value('window.styleHoverResult()');checks++;if(!hover.matches||!hover.hover){failed++;console.log('FAIL style hover '+JSON.stringify(hover));}await value('window.prepareStylePanelScreenshot()');}const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,`presets-${item.theme}-${item.width}-${item.zoom}.png`),Buffer.from(shot.data,'base64'));}
     if(process.argv.includes('--wall-appearance')){const appearance=await value('window.verifyWallAppearance()');checks+=appearance.checks;if(appearance.fail.length){failed++;console.log('FAIL wall appearance '+JSON.stringify(item)+' '+JSON.stringify(appearance.fail));}}
     if(result.fail.length){failed++;console.log('FAIL '+JSON.stringify(item)+' '+JSON.stringify(result.fail));if(savedFailures++<6){const shot=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(shotRoot,'failure-'+i+'.png'),Buffer.from(shot.data,'base64'));}}
+    if(item.wallNavigation){const nav=await value('window.verifyWallAlbumNavigation()');checks+=nav.checks;if(nav.fail.length){failed++;console.log('FAIL wall album navigation '+JSON.stringify(item)+' '+JSON.stringify(nav.fail));}}
     if(item.panel==='bare') {
       await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
       const bare=await value('window.verifyStandaloneDiscs()');checks+=bare.checks;if(bare.fail.length){failed++;console.log('FAIL bare disc '+JSON.stringify({item,errors:bare.fail}));}

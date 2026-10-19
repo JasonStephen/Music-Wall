@@ -549,11 +549,20 @@ export class MusicWallView extends FileView implements WallHost {
     });
     return wrap(this.plugin.getPlaybackDeps());
   }
+  private albumPanelNavigation(): import("./AlbumPanelModal").AlbumPanelNavigation {
+    return {
+      openAlbum: meta => this.plugin.openLibraryCollection(meta),
+      openArtist: artist => this.plugin.openLibraryArtist({ ...artist, cover: "" }),
+      fetchAlbum: id => this.fetchAlbumDetail(id),
+      accountKey: () => this.plugin.settings.neteaseCookie,
+    };
+  }
   confirmAdd(meta: AlbumMeta, onAdd: () => void): void {
     new AlbumPanelModal(this.app, "add", {
       meta,
       style: this.getStyle(),
       source: "search",
+      navigation: this.albumPanelNavigation(),
       deps: this.getPlaybackDeps(),
       onAdd: () => {
         onAdd();
@@ -1009,6 +1018,7 @@ export class MusicWallView extends FileView implements WallHost {
       addAlbum: (meta: AlbumMeta, source: "search" | "manual") => this.addAlbum(meta, source),
       getPlaybackDeps: () => this.getPlaybackDeps(),
       getStyle: () => this.getStyle(),
+      navigation: this.albumPanelNavigation(),
     }).open();
   }
 
@@ -3231,6 +3241,7 @@ export class MusicWallView extends FileView implements WallHost {
   private openPlayModal(item: WallItem): void {
     new AlbumPanelModal(this.app, "play", {
       meta: item.meta,
+      navigation: this.albumPanelNavigation(),
       style: this.data!.style,
       locked: item.locked,
       source: item.source,

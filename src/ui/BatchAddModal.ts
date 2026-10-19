@@ -5,13 +5,14 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import type { AlbumMeta } from "../types";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
-import { renderAlbumPanel } from "./AlbumPanelModal";
+import { renderAlbumPanel, type AlbumPanelNavigation } from "./AlbumPanelModal";
 import { applyModalTheme } from "./modalTheme";
 import { sizedCover } from "../core/metadata";
 import { createSelectBox } from "./selectBox";
 import { t } from "../i18n";
 
 export interface BatchHost {
+  navigation?: AlbumPanelNavigation;
   fetchAlbumDetail(albumId: number): Promise<AlbumMeta>;
   getExistingIds(): Set<number>;
   addAlbum(meta: AlbumMeta, source: "search" | "manual"): void;
@@ -494,6 +495,8 @@ export class BatchAddModal extends Modal {
       meta,
       style: this.host.getStyle(),
       deps: this.host.getPlaybackDeps(),
+      navigation: this.host.navigation,
+      onNavigate: () => this.close(),
     }).open();
   }
 
@@ -503,18 +506,23 @@ export class BatchAddModal extends Modal {
 }
 
 class DetailPreviewModal extends Modal {
+  private onNavigate?: () => void;
+  private navigation?: AlbumPanelNavigation;
+  private disposePanel?: () => void;
   private meta: AlbumMeta;
   private style: import("../types").DiscStyle;
   private deps: PlaybackDeps;
 
   constructor(
     app: App,
-    args: { meta: AlbumMeta; style: import("../types").DiscStyle; deps: PlaybackDeps }
+    args: { meta: AlbumMeta; style: import("../types").DiscStyle; deps: PlaybackDeps; navigation?: AlbumPanelNavigation; onNavigate?: () => void }
   ) {
     super(app);
     this.meta = args.meta;
     this.style = args.style;
     this.deps = args.deps;
+    this.navigation = args.navigation;
+    this.onNavigate = args.onNavigate;
   }
 
   onOpen(): void {
@@ -528,7 +536,8 @@ class DetailPreviewModal extends Modal {
       cls: "mw-album-modal__heading",
     });
     const panel = contentEl.createDiv();
-    renderAlbumPanel(panel, { meta: this.meta, style: this.style, source: "search" });
+    this.disposePanel?.();
+    this.disposePanel = renderAlbumPanel(panel, { meta: this.meta, style: this.style, source: "search", app: this.app, navigation: this.navigation, onNavigate: () => { this.close(); this.onNavigate?.(); } });
     const btns = contentEl.createDiv({ cls: "mw-album-modal__buttons" });
     const back = btns.createEl("button", { text: t("common.back") });
     back.addEventListener("click", () => this.close());
@@ -544,6 +553,7 @@ class DetailPreviewModal extends Modal {
   }
 
   onClose(): void {
+    this.disposePanel?.(); this.disposePanel = undefined;
     this.contentEl.empty();
   }
 }

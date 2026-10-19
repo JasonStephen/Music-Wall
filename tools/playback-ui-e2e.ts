@@ -3,6 +3,7 @@ import { InternalPlayer, CombinedNowPlayingProvider } from "../src/core/internal
 import { EMPTY_NOW_PLAYING } from "../src/core/nowPlaying";
 import { PlayerLyrics } from "../src/ui/PlayerLyrics";
 import { backdropForeground, type CoverTone } from "../src/ui/accent";
+import { BatchAddModal } from "../src/ui/BatchAddModal";
 import { MusicPlayerView } from "../src/ui/MusicPlayerView";
 import { MusicWallView } from "../src/ui/MusicWallView";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -89,6 +90,41 @@ let close = async()=>{};
   };
   if(config.kind==="wall") {
     const wall=await createWall();
+    (window as any).verifyWallAlbumNavigation=async()=>{
+      const failures:string[]=[];let checks=0;const expect=(ok:unknown,label:string)=>{checks++;if(!ok)failures.push(label);};
+      const original=(wall as any).data.style,before=JSON.stringify((wall as any).data);
+      const audio=engine.state.songId;let adds=0;
+      const single={...meta,artistRefs:[{id:77,name:'Wall artist'}]};
+      const item={albumId:meta.albumId,meta:single,source:'manual',locked:true,addedAt:''};
+      const panel=()=>document.querySelector<HTMLElement>('.mw-album-modal')!;
+      const title=()=>panel().querySelector<HTMLButtonElement>('button.mw-panel__title')!;
+      const artist=()=>panel().querySelector<HTMLButtonElement>('button.mw-panel__artist')!;
+      for(const style of ['vinyl','cd','cassette','cover']){
+        (wall as any).data.style=style;(wall as any).openPlayModal(item);
+        expect(!!title()&&getComputedStyle(title()).backgroundColor==='rgba(0, 0, 0, 0)',`${style} title remains a text link`);
+        title().click();await wait(0);expect(sourceCalls.at(-1)?.kind==='library'&&sourceCalls.at(-1)?.meta.albumId===meta.albumId,`${style} opens album detail`);
+        expect(!document.querySelector('.mw-album-modal'),`${style} closes covering modal before navigation`);
+        (wall as any).openPlayModal(item);artist().click();await wait(0);expect(sourceCalls.at(-1)?.artist?.id===77,`${style} opens single artist directly`);
+      }
+      (wall as any).data.style=original;
+      wall.confirmAdd({...single,artistRefs:[{id:78,name:'First'},{id:79,name:'Second'}]},()=>{adds++;});
+      artist().click();await wait(0);expect(document.querySelectorAll('.mw-picker__row').length===2,'search detail offers actual artist identities');
+      document.querySelectorAll<HTMLElement>('.mw-picker__row')[1].click();await wait(0);
+      expect(sourceCalls.at(-1)?.artist?.id===79&&!document.querySelector('.mw-album-modal'),'search selection navigates and dismisses detail');
+      wall.confirmAdd(single,()=>{adds++;});title().click();await wait(0);expect(sourceCalls.at(-1)?.kind==='library','search title opens album without adding');
+      const nav=(wall as any).albumPanelNavigation();
+      const batch=new BatchAddModal(app as never,{navigation:nav,fetchAlbumDetail:async()=>single,getExistingIds:()=>new Set(),addAlbum:()=>{adds++;},getPlaybackDeps:()=>plugin.getPlaybackDeps(),getStyle:()=>original});
+      batch.open();(batch as any).openDetail(single);title().click();await wait(0);expect(!document.querySelector('.mw-batch,.mw-album-modal'),'batch preview navigation closes both covering modals');
+      let resolve:any;(plugin as any).fetchAlbumDetail=()=>new Promise(done=>{resolve=done;});
+      wall.confirmAdd({...meta,artistRefs:undefined},()=>{adds++;});artist().click();await wait(0);
+      panel().querySelector<HTMLButtonElement>('.mw-album-modal__buttons button')!.click();
+      const count=sourceCalls.length;resolve(single);await wait(0);expect(sourceCalls.length===count&&!document.querySelector('.mw-picker__row'),'closed detail ignores pending artist lookup');
+      (plugin as any).fetchAlbumDetail=async()=>single;
+      wall.confirmAdd({...meta,artistRefs:undefined},()=>{adds++;});artist().click();await wait(0);expect(sourceCalls.at(-1)?.artist?.id===77,'legacy wall metadata resolves missing artist IDs');
+      expect(adds===0&&JSON.stringify((wall as any).data)===before,'detail navigation never adds or edits wall albums');
+      expect(engine.state.songId===audio,'detail navigation preserves playback');
+      return {checks,fail:failures};
+    };
     check(wall.contentEl.querySelector(".mw-mini")?.classList.contains("is-hidden"),"No queue hides footer");
     await engine.playAlbum(meta);
     if(config.queue) { engine.enqueueAlbum({...meta,albumId:2,name:"A very long queued album · 第二张专辑"});engine.enqueueAlbum({...meta,albumId:3,name:"Third album"}); }

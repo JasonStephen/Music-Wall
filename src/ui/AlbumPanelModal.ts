@@ -2,7 +2,7 @@
 // 播放确认（mode=play）与搜索添加确认（mode=add）复用同一组件，
 // 底部按钮与回调按模式切换（计划书 §变更B.2）。
 
-import { App, Modal, setIcon } from "obsidian";
+import { App, Modal, Notice, setIcon } from "obsidian";
 import type { AlbumMeta, DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
 import { fmtDur, fmtTotalDur, fmtTotalDurTip, sumTrackDur } from "./duration";
@@ -11,6 +11,14 @@ import { applyModalTheme } from "./modalTheme";
 import { buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating";
 import { RatingModal } from "./RatingModal";
 import { t } from "../i18n";
+import { PickerModal } from "./smallModals";
+
+export interface AlbumPanelNavigation {
+  openAlbum(meta: AlbumMeta): Promise<void>;
+  openArtist(artist: { id: number; name: string }): Promise<void>;
+  fetchAlbum(albumId: number): Promise<AlbumMeta>;
+  accountKey(): string;
+}
 
 export interface PanelOptions {
   meta: AlbumMeta;
@@ -23,10 +31,12 @@ export interface PanelOptions {
   onRate?: (rating: number | undefined) => void;
   /** 打开评分框需要 App 实例（仅 onRate 存在时需要） */
   app?: App;
+  navigation?: AlbumPanelNavigation;
+  onNavigate?: () => void;
 }
 
 /** 渲染共享面板到容器 */
-export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): void {
+export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): () => void {
   container.empty();
   container.addClass("mw-panel");
 
@@ -44,11 +54,42 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
 
   // 右：metadata
   const right = container.createDiv({ cls: "mw-panel__right" });
-  right.createDiv({ cls: "mw-panel__title", text: opts.meta.name });
-  right.createDiv({
+  const name = right.createEl(opts.navigation ? "button" : "div", { cls: "mw-panel__title", text: opts.meta.name });
+  const artist = right.createEl(opts.navigation ? "button" : "div", {
     cls: "mw-panel__artist",
     text: opts.meta.artist || t("common.unknownArtist"),
   });
+  let alive = true, request = 0, picker: PickerModal | null = null;
+  let refs = opts.meta.artistRefs;
+  if (opts.navigation && opts.app) {
+    const nav = opts.navigation, app = opts.app;
+    for (const link of [name, artist]) { link.addClass("mw-panel__link", "clickable-icon"); link.setAttr("type", "button"); link.title = link.textContent || ""; }
+    name.addEventListener("click", event => {
+      event.stopPropagation(); opts.onNavigate?.();
+      void nav.openAlbum(opts.meta).catch(() => new Notice(t("library.failed")));
+    });
+    artist.addEventListener("click", event => {
+      event.stopPropagation();
+      const token = ++request, account = nav.accountKey();
+      const valid = () => alive && token === request && artist.isConnected && account === nav.accountKey();
+      picker?.close(); picker = null;
+      void (async () => {
+        if (!refs?.length) refs = (await nav.fetchAlbum(opts.meta.albumId)).artistRefs;
+        if (!valid()) return;
+        const artists = [...new Map((refs || []).filter(a => a.id > 0).map(a => [a.id, a])).values()];
+        const open = async (index: number) => {
+          if (!valid()) return;
+          opts.onNavigate?.(); await nav.openArtist(artists[index]);
+        };
+        if (artists.length === 1) await open(0);
+        else if (artists.length > 1) {
+          picker = new PickerModal(app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "mic" })),
+            index => { void open(index).catch(() => new Notice(t("library.failed"))); });
+          picker.open();
+        }
+      })().catch(() => { if (valid()) new Notice(t("library.failed")); });
+    });
+  }
 
   const meta = right.createDiv({ cls: "mw-panel__meta" });
   const row = (k: string, v?: string | number) => {
@@ -121,6 +162,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): vo
       if (dur) li.createSpan({ cls: "mw-track-dur", text: dur });
     }
   }
+  return () => { alive = false; request++; picker?.close(); picker = null; };
 }
 
 type PanelModalMode = "play" | "add";
@@ -135,6 +177,8 @@ export class AlbumPanelModal extends Modal {
   private onAdd?: () => void;
   private rating?: number;
   private onRate?: (rating: number | undefined) => void;
+  private navigation?: AlbumPanelNavigation;
+  private disposePanel?: () => void;
 
   constructor(
     app: App,
@@ -148,6 +192,7 @@ export class AlbumPanelModal extends Modal {
       onAdd?: () => void;
       rating?: number;
       onRate?: (rating: number | undefined) => void;
+      navigation?: AlbumPanelNavigation;
     }
   ) {
     super(app);
@@ -160,6 +205,7 @@ export class AlbumPanelModal extends Modal {
     this.onAdd = args.onAdd;
     this.rating = normalizeRating(args.rating);
     this.onRate = args.onRate;
+    this.navigation = args.navigation;
   }
 
   onOpen(): void {
@@ -174,7 +220,8 @@ export class AlbumPanelModal extends Modal {
     });
 
     const panel = contentEl.createDiv();
-    renderAlbumPanel(panel, {
+    this.disposePanel?.();
+    this.disposePanel = renderAlbumPanel(panel, {
       meta: this.meta,
       style: this.style,
       locked: this.locked,
@@ -188,6 +235,8 @@ export class AlbumPanelModal extends Modal {
           }
         : undefined,
       app: this.app,
+      navigation: this.navigation,
+      onNavigate: () => this.close(),
     });
 
     const btns = contentEl.createDiv({ cls: "mw-album-modal__buttons" });
@@ -225,6 +274,7 @@ export class AlbumPanelModal extends Modal {
   }
 
   onClose(): void {
+    this.disposePanel?.(); this.disposePanel = undefined;
     this.contentEl.empty();
   }
 }
