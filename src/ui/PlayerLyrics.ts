@@ -49,7 +49,7 @@ export class PlayerLyrics {
     if (this.key !== key) { this.key = key; void this.load(); }
     else this.updateActive();
   }
-  private message(text: string): void { this.rows = []; this.track.empty(); this.track.createDiv({ cls: "mw-lyrics__message", text }); }
+  private message(text: string): void { this.rows = []; this.viewport.addClass("is-message"); this.track.empty(); this.track.createDiv({ cls: "mw-lyrics__message", text }); }
   private async load(refresh = false): Promise<void> {
     const token = ++this.generation, key = this.key;
     this.cancelMotion();
@@ -62,16 +62,18 @@ export class PlayerLyrics {
     this.message(t("lyrics.loading"));
     try {
       if (!this.plugin.lyrics) throw new Error("Unavailable");
-      const lyrics = await this.plugin.lyrics.get(Number(key), refresh);
+      const source = await this.plugin.lyrics.get(Number(key), refresh);
+      // Normalize at the display boundary so existing cached lyrics are fixed too.
+      const lyrics = { ...source, lines: source.lines.filter(line => line.text.trim().length > 0) };
       if (this.disposed || token !== this.generation || key !== this.key) return;
       this.lyrics = lyrics;
       if (!lyrics.lines.some(line => line.text)) { this.message(t(lyrics.instrumental ? "lyrics.instrumental" : "lyrics.empty")); return; }
-      this.track.empty(); this.rows = [];
+      this.viewport.removeClass("is-message"); this.track.empty(); this.rows = [];
       for (const line of lyrics.lines) {
         const timed = line.time !== null;
         const row = this.track.createEl(timed ? "button" : "div", { cls: "mw-lyrics__line", ...(timed ? { attr: { type: "button" } } : {}) });
         const text = row.createSpan({ cls: "mw-lyrics__text" });
-        text.createSpan({ cls: "mw-lyrics__original", text: line.text || "♪" });
+        text.createSpan({ cls: "mw-lyrics__original", text: line.text });
         if (line.translation) text.createSpan({ cls: "mw-lyrics__translation", text: line.translation });
         if (timed) row.addEventListener("click", () => {
           if (this.state?.source !== "internal" || String(this.state.songId) !== key || !this.state.seekable) return;

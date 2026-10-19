@@ -254,8 +254,18 @@ let close = async()=>{};
       lyrics.querySelector<HTMLButtonElement>(':scope > button')!.click();await wait();
       expect(lyrics.textContent?.includes('Static lyrics')&&!lyrics.querySelector('.is-active'),'plain lyrics remain readable without false timing');
       expect(lyrics.querySelector<HTMLButtonElement>('[aria-pressed]')!.disabled,'translation disabled when unavailable');
+      const cachedLines=[{time:0,text:'First line'},{time:5000,text:''},{time:7000,text:'  \t '},{time:10000,text:'Second line',translation:'第二句'}];
+      (plugin.lyrics as any).get=async()=>({instrumental:false,lines:cachedLines});await engine.select(0);await engine.seek(6000);await wait();
+      expect(lyrics.querySelectorAll('.mw-lyrics__line').length===2&&!lyrics.textContent?.includes('♪'),'cached blank and whitespace rows never render symbols or placeholders');
+      expect(cachedLines.length===4,'filtering never mutates cached lyrics');
+      lyrics.querySelectorAll<HTMLButtonElement>('.mw-lyrics__line')[1].click();await wait();
+      expect(engine.state.positionMs===10000&&lyrics.querySelector('.is-active')?.textContent?.includes('Second line'),'remaining lyrics retain original timestamps and highlight correctly');
+      (plugin.lyrics as any).get=async()=>({instrumental:false,lines:[{time:0,text:''},{time:5000,text:'   '}]});await engine.select(1);await wait();
+      expect(!lyrics.querySelector('.mw-lyrics__line')&&lyrics.querySelector('.mw-lyrics__message')?.textContent==='暂无歌词','blank-only lyrics show empty state');
       (plugin.lyrics as any).get=async()=>({instrumental:true,lines:[]});await engine.select(0);await wait();
       expect(lyrics.querySelector('.mw-lyrics__message')?.textContent==='纯音乐，请欣赏','instrumental state');
+      const messageRect=lyrics.querySelector('.mw-lyrics__message')!.getBoundingClientRect(),viewportRect=viewport.getBoundingClientRect();
+      expect(Math.abs(messageRect.top+messageRect.height/2-viewportRect.top-viewportRect.height/2)<2&&Math.abs(messageRect.left+messageRect.width/2-viewportRect.left-viewportRect.width/2)<2,'status message centered horizontally and vertically inside lyric content');
       (plugin.lyrics as any).get=original;return {checks:count,fail:errors};
     };
     (window as any).verifyLyricMotion=async()=>{
