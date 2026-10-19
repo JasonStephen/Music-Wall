@@ -37,6 +37,12 @@ try {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[768,1024,1],[360,740,1],[240,600,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',panel:'lyrics',theme,bg:theme==='dark'?'dark':'white',style:'cover',width,height,zoom});
   }
+  if(process.argv.includes('--height')) {
+    cases.splice(0,cases.length);
+    for(const style of ['vinyl','cd','cover']) for(const machine of [true,false]) for(const height of [800,700,660,642,621,620,600,520]) cases.push({kind:'player',panel:'height',theme:'dark',bg:'art',style,machine,width:1315,height});
+    for(const style of ['vinyl','cd','cover']) for(const paneHeight of [642,600])cases.push({kind:'player',panel:'height',theme:'dark',bg:'art',style,machine:false,width:1315,height:1000,paneHeight});
+    for(const [width,height,zoom] of [[768,642,1],[360,740,1],[640,360,1],[360,740,2]])cases.push({kind:'player',panel:'height',theme:'dark',bg:'art',style:'vinyl',machine:false,width,height,zoom});
+  }
   if(process.argv.includes('--bare')) {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const style of ['vinyl','cd']) for(const [width,height] of [[1280,800],[360,740],[640,360]]) cases.push({kind:'player',panel:'bare',theme,bg:theme==='dark'?'dark':'white',style,width,height});
@@ -122,7 +128,7 @@ try {
       }
       const lifecycle=await value('window.verifyMiniSeekLifecycle()');checks+=10;if(lifecycle.length){failed++;console.log('FAIL mini seek lifecycle '+JSON.stringify(lifecycle));}
     }
-    if(item.kind==='player'&&!keyboardChecked){
+    if(item.kind==='player'&&item.panel!=='height'&&!keyboardChecked){
       const keyboard=await value('window.verifyKeyboardPlayback()');checks+=keyboard.checks;keyboardChecked=true;
       if(keyboard.fail.length){failed++;console.log('FAIL keyboard playback '+JSON.stringify(keyboard.fail));}
     }
@@ -190,7 +196,7 @@ try {
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
     }
-    if(!playOrderChecked&&item.kind!=='library'){
+    if(!playOrderChecked&&item.kind!=='library'&&item.panel!=='height'){
       const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
       if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }

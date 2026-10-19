@@ -153,8 +153,6 @@
 @container mw-pane (max-height: 620px) {
   .mw-player__body { overflow-y: auto; }
   .mw-player__now { overflow: visible; }
-  .mw-np__stack { --mw-np-size: clamp(100px, 37cqh, 240px); gap: 9px; max-width: min(100%, 300px); margin-block: auto; }
-  .mw-np__disc { width: var(--mw-np-size); max-width: 100%; margin-inline: auto; }
   .mw-np__title { font-size: 1.05em; }
   .mw-player__playlist { max-height: 75%; }
   .mw-player .mw-np__popover { position: fixed; left: 50%; right: auto; bottom: 12px; transform: translateX(-50%); max-width: calc(100cqw - 24px); max-height: calc(100cqh - 80px); overflow-y: auto; }

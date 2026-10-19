@@ -1,6 +1,10 @@
 /* Full player only. Native scroll remains available for browsing older lines. */
 .mw-player .mw-player__body { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: clamp(16px, 4vw, 64px); overflow: hidden; }
-.mw-player .mw-player__now { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.mw-player .mw-player__now { container-type: size; container-name: mw-now; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+/* Size the artwork from this column's actual height, independently of the
+   controls' width. Keep the stack intact; scroll only when content cannot fit. */
+.mw-player .mw-np__stack { --mw-np-size: clamp(80px, calc(100cqh - 250px), 340px); max-width: min(100%, 340px); flex-shrink: 0; gap: 12px; }
+.mw-player .mw-np__disc { width: min(100%, var(--mw-np-size)); margin-inline: auto; }
 .mw-player .mw-np__controls { flex-wrap: wrap; justify-content: center; }
 .mw-player, .mw-player * { scrollbar-width: none; }
 .mw-player::-webkit-scrollbar, .mw-player *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
@@ -28,14 +32,10 @@
 .mw-lyrics__viewport.is-message { mask-image: none; }
 .mw-lyrics__viewport.is-message .mw-lyrics__track { display: grid; place-items: center; box-sizing: border-box; height: 100%; min-height: 100%; padding: 0; }
 .mw-player--lyrics-stacked .mw-player__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(100px, .9fr); gap: 12px; padding: 8px 16px; }
-.mw-player--lyrics-stacked { --mw-np-size: clamp(64px, 14vh, 130px); }
-.mw-player--lyrics-stacked .mw-np__stack { --mw-np-size: clamp(48px, 12cqh, 100px); max-width: min(100%, 320px); gap: 6px; flex-shrink: 0; }
+.mw-player--lyrics-stacked .mw-np__stack { --mw-np-size: clamp(48px, calc(100cqh - 190px), 100px); max-width: min(100%, 320px); gap: 6px; flex-shrink: 0; }
 .mw-player--lyrics-stacked .mw-np__disc { max-width: var(--mw-np-size); }
 .mw-player--lyrics-stacked .mw-lyrics__line { font-size: 19px; }
 .mw-player--lyrics-stacked .mw-lyrics__track { padding-top: 40px; padding-bottom: 180px; }
-@container mw-pane (max-height: 520px) {
-  .mw-player .mw-np__stack { --mw-np-size: clamp(48px, 14cqh, 80px); gap: 6px; flex-shrink: 0; }
-}
 @media (prefers-reduced-motion: reduce) {
   .mw-player .mw-lyrics__line, .mw-lyrics__text { transition: none; filter: none; }
 }

@@ -1,6 +1,6 @@
 {
   "name": "music-wall",
-  "version": "1.2.8-exp-2",
+  "version": "1.2.8-exp-3",
   "description": "Obsidian 音乐墙插件（网易云专辑 · 唱片墙可视化）",
   "main": "main.js",
   "type": "module",

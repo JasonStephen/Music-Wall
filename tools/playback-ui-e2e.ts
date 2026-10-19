@@ -38,7 +38,7 @@ let close = async()=>{};
   setLanguage(config.lang || 'zh-CN');
   document.body.className = `theme-${config.theme}${config.tablet ? " is-mobile is-tablet" : ""}`;
   document.body.style.setProperty("--mw-zoom",String(config.zoom??1));
-  const mount=document.getElementById("mount")!;mount.empty();
+  const mount=document.getElementById("mount")!;mount.empty();mount.style.height=config.paneHeight ? `${config.paneHeight}px` : "100vh";
   const hostBar=document.querySelector<HTMLElement>(".status-bar")!;
   hostBar.style.display=config.statusBar===false?"none":"flex";
   const fail:string[]=[];let checks=0;
@@ -64,7 +64,7 @@ let close = async()=>{};
   let opens=0; const sourceCalls:any[]=[];
   let artistLookup = async () => [{ id: 11, artistRefs: [{ id: 91, name: "Resolved artist" }] }];
   const plugin={
-    settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
+    settings:{...DEFAULT_SETTINGS,playerBackground:config.bg??"dark",playerCase:config.deviceCase??"black",playerTexture:false,playerVinylMachine:config.machine!==false,playerCdMachine:config.machine!==false,zoomScale:config.zoom??1,shelfCaption:config.caption??"pull"},internalPlayer:engine,nowPlaying:provider,
     async openLibraryCollection(meta:any){sourceCalls.push({kind:"library",meta});},async revealWallAlbum(path:string,id:number){sourceCalls.push({kind:"wall",path,id});},
     async openLibraryArtist(artist:any){sourceCalls.push({kind:"artist",artist});},libraryApi:{songs:()=>artistLookup()},
     lyrics:{async get(id:number){return {instrumental:false,lines:Array.from({length:60},(_,index)=>({time:index*5000,text:`Song ${id} · Line ${index+1} 夜色中的微光`,translation:`歌曲 ${id} · 翻译 ${index+1}`}))};}},
@@ -217,6 +217,23 @@ let close = async()=>{};
     check(!view.contentEl.querySelector(".mw-mini"),"Full player has no duplicate footer");
     const root=view.contentEl;
     activePlayer=view;
+    if(config.panel==='height') {
+      const left=root.querySelector<HTMLElement>('.mw-player__now')!,stack=root.querySelector<HTMLElement>('.mw-np__stack')!,disc=root.querySelector<HTMLElement>('.mw-np__disc')!,controls=root.querySelector<HTMLElement>('.mw-np__controls')!,quality=root.querySelector<HTMLElement>('.mw-np__quality')!;
+      const area=left.getBoundingClientRect(),record=disc.getBoundingClientRect(),buttons=[...controls.querySelectorAll('button')].map(e=>e.getBoundingClientRect());
+      check(Math.abs(record.width-record.height)<2,'Artwork stays square');
+      check(record.left>=area.left-1&&record.right<=area.right+1,'Artwork remains within left column');
+      check(getComputedStyle(stack).flexShrink==='0','Stack never collapses children');
+      if(config.width>=1000&&(config.zoom||1)===1) {
+        check(buttons.every(r=>Math.abs(r.top+r.height/2-buttons[0].top-buttons[0].height/2)<2),'Wide player keeps all six controls on one row');
+        check(quality.getBoundingClientRect().bottom<=area.bottom+1,'Quality selector fits actual available height');
+        check(left.scrollHeight<=left.clientHeight+1,'Wide player fits without scrolling');
+      }
+      left.scrollTop=left.scrollHeight;
+      check(quality.getBoundingClientRect().bottom<=left.getBoundingClientRect().bottom+Math.max(1,config.zoom||1),'Last control is reachable when scrolling is needed');
+      left.scrollTop=0;
+      return {checks,fail};
+    }
+
     (window as any).verifyLyricsUI=async()=>{
       const errors:string[]=[];let count=0;const expect=(ok:unknown,label:string)=>{count++;if(!ok)errors.push(label);};
       await engine.seek(12000);await wait(40);
