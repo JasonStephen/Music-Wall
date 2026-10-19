@@ -151,7 +151,7 @@ let close = async()=>{};
     const openRect=mini.querySelector<HTMLElement>(".mw-mini__open")!.getBoundingClientRect();
     const coverRect=mini.querySelector<HTMLElement>(".mw-mini__cover")!.getBoundingClientRect();
     check(getComputedStyle(mini.querySelector(".mw-mini__cover")!).display==="none"||Math.abs(openRect.left-coverRect.left)<2,"Footer metadata stays left aligned");
-    check(coverRect.height>=openRect.height-2,"Footer cover spans the information area's height");
+    check(Math.abs(coverRect.height-coverRect.width)<1,"Footer cover remains square at every pane width");
     const transport=mini.querySelector<HTMLElement>('.mw-mini__controls')!.getBoundingClientRect();
     check(openRect.bottom<=transport.top+1||openRect.right<=transport.left+1,"Centered transport stays beside song information or wraps below in very narrow panes");
     check(coverRect.right<=transport.left+1||coverRect.bottom<=transport.top+1,"Cover does not overlap playback controls");
@@ -159,7 +159,24 @@ let close = async()=>{};
       const r=button.getBoundingClientRect();check(r.left>=-1&&r.right<=innerWidth+1,"Every footer control remains inside its pane");
     }
     check([...mini.querySelectorAll('.mw-mini__controls button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='prev,toggle,next',"Transport order is previous, play/pause, next");
-    check([...mini.querySelectorAll('.mw-mini__tools button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='play-order,playlist,quality,volume,expand',"Playback order immediately precedes playlist in footer tools");
+    check([...mini.querySelectorAll('.mw-mini__tools button')].map(x=>(x as HTMLElement).dataset.action).join(',')==='play-order,playlist,quality,volume,expand,more',"Playback order immediately precedes playlist in footer tools");
+    const compact=getComputedStyle(mini.querySelector('[data-action="more"]')!).display!=='none';
+    const paneWidth=wall.contentEl.querySelector('.mw-zoombox')!.getBoundingClientRect().width/(config.zoom||1);
+    if(paneWidth<=600){
+      check(rect.height/(config.zoom||1)<=(paneWidth<=180?166:130)+(config.statusBar===false?0:hostBar.offsetHeight/(config.zoom||1)),"Compact footer uses at most two rows plus host inset");
+      check(transport.height/(config.zoom||1)>=32,"Compact transport retains usable hit areas");
+    }
+    if(compact){
+      const more=mini.querySelector<HTMLButtonElement>('[data-action="more"]')!;
+      more.click();check(!mini.querySelector('.mw-mini__more')!.classList.contains('is-hidden'),'Compact overflow opens');
+      mini.querySelector<HTMLButtonElement>('[data-more-action="quality"]')!.click();
+      check(!mini.querySelector('.mw-mini__quality')!.classList.contains('is-hidden'),'Overflow reaches quality selector');
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+      check(document.activeElement===more,'Escape returns focus to visible overflow trigger');
+      more.click();mini.querySelector<HTMLButtonElement>('[data-more-action="volume"]')!.click();
+      check(!mini.querySelector('.mw-mini__volume')!.classList.contains('is-hidden'),'Overflow reaches volume slider');
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+    }
     check(!!mini.querySelector('.mw-mini__tools [data-action="play-order"] svg'),"Footer playback order uses an SVG icon");
     check(mini.querySelector('.mw-mini__progress')!.getBoundingClientRect().top<=rect.top+1,"Progress runs along the top of the bar");
     for(const name of ['playlist','quality','volume']) {

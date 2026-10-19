@@ -16,7 +16,7 @@
 }
 .mw-mini .mw-mini__open:hover { background: transparent; }
 .mw-mini__open:hover .mw-mini__title { text-decoration: underline; text-underline-offset: 3px; }
-.mw-mini__cover { width: 60px; height: 100%; min-height: 56px; object-fit: cover; border-radius: 4px; flex: 0 0 auto; align-self: stretch; }
+.mw-mini__cover { width: 56px; height: 56px; min-height: 0; object-fit: cover; border-radius: 4px; flex: 0 0 auto; align-self: center; }
 .mw-mini__meta { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
 .mw-mini__title, .mw-mini__artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mw-mini__title { font-size: 12px; font-weight: 600; color: var(--mw-panel-fg); }
@@ -66,25 +66,50 @@
 .mw-mini .mw-mini__quality-option:hover, .mw-mini .mw-mini__quality-option[aria-pressed="true"],
 .mw-mini .mw-mini__track:hover, .mw-mini .mw-mini__track.is-current { background: var(--mw-panel-hover); }
 .mw-mini .mw-mini__volume { right: 34px; width: 42px; padding: 8px; }
-@container mw-pane (max-width: 560px) {
-  .mw-view .mw-mini { grid-template-columns: minmax(0, 1fr); gap: 6px 10px; padding: 8px 10px; }
-  .mw-mini__controls { grid-column: 1; justify-self: center; }
-  .mw-mini .mw-mini__open { max-width: 100%; }
-  .mw-mini__cover { width: 48px; min-height: 52px; }
-  .mw-mini__tools { grid-column: 1 / -1; justify-self: end; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
-  .mw-mini .mw-mini__button { width: 28px; height: 28px; }
+/* Auxiliary actions stay available through one SVG overflow button. */
+.mw-mini .mw-mini__button[data-action="more"] { display:none; }
+.mw-mini .mw-mini__more { width:200px; }
+.mw-mini .mw-mini__more-item {
+  display:flex; align-items:center; justify-content:flex-start; gap:10px;
+  width:100%; min-height:40px; height:auto; padding:8px 10px; margin:0;
+  border:0; border-radius:6px; box-shadow:none; font-size:12px;
+  background:transparent; color:var(--mw-panel-fg); text-align:left;
 }
-@container mw-pane (max-width: 280px) {
-  .mw-mini__cover { width: 36px; }
-  .mw-mini .mw-mini__open { gap: 6px; }
-  .mw-mini__controls { gap: 0; }
-  .mw-mini__title { font-size: 11px; }
+.mw-mini .mw-mini__more-item:hover { background:var(--mw-panel-hover); }
+.mw-mini__more-item > span:first-child { display:flex; flex:0 0 auto; }
+@container mw-pane (max-width: 600px) {
+  .mw-view .mw-mini {
+    grid-template-columns:minmax(0,1fr) auto; gap:4px 10px;
+    padding:8px 10px calc(8px + var(--mw-host-bottom,0px));
+  }
+  .mw-mini__left { grid-column:1; grid-row:1; }
+  .mw-mini__controls { grid-column:2; grid-row:1; justify-self:end; }
+  .mw-mini .mw-mini__open { max-width:100%; width:100%; gap:8px; }
+  .mw-mini__cover { width:48px; height:48px; min-height:0; }
+  .mw-mini__meta { gap:1px; }
+  .mw-mini__tools { grid-column:1 / -1; grid-row:2; margin:0; align-self:center; justify-self:end; }
+  .mw-mini .mw-mini__button { width:34px; height:34px; }
 }
-@container mw-pane (max-width: 200px) {
-  .mw-mini__left { flex-wrap: wrap; gap: 6px; }
-  .mw-mini .mw-mini__open { flex-basis: 100%; width: 100%; }
-  .mw-mini__controls { margin-left: auto; }
-  .mw-mini__time { font-size: 10px; }
-  .mw-mini__tools { gap: 2px; }
-  .mw-mini .mw-mini__button[data-action="quality"] { min-width: 60px; padding-inline: 2px; gap: 2px; }
+@container mw-pane (max-width: 400px) {
+  .mw-view .mw-mini { column-gap:8px; }
+  .mw-mini__left { grid-column:1 / -1; grid-row:1; }
+  .mw-mini__controls { grid-column:1; grid-row:2; justify-self:center; }
+  .mw-mini__tools { grid-column:2; grid-row:2; }
+  .mw-mini .mw-mini__button:is([data-action="quality"],[data-action="volume"],[data-action="expand"]) { display:none; }
+  .mw-mini .mw-mini__button[data-action="more"] { display:flex; }
+}
+@container mw-pane (max-width: 260px) {
+  .mw-mini__controls, .mw-mini__tools { gap:0; }
+  .mw-mini .mw-mini__button { width:32px; height:36px; }
+  .mw-mini__cover { width:40px; height:40px; }
+  .mw-mini__title { font-size:11px; }
+}
+@container mw-pane (max-width: 220px) {
+  .mw-view .mw-mini { padding-inline:4px; column-gap:0; }
+  .mw-mini .mw-mini__button { width:28px; }
+}
+/* Very small panes at high UI zoom cannot fit six usable buttons on one row. */
+@container mw-pane (max-width: 180px) {
+  .mw-mini__controls { grid-column:1 / -1; grid-row:2; }
+  .mw-mini__tools { grid-column:1 / -1; grid-row:3; justify-self:center; }
 }

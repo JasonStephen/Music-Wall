@@ -12,7 +12,8 @@ const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };
-type Panel = "playlist" | "quality" | "volume";
+type Panel = "playlist" | "quality" | "volume" | "more";
+const PANELS: Panel[] = ["playlist", "quality", "volume", "more"];
 
 /** Every wall controls the same global player. */
 export class MiniPlayer {
@@ -86,9 +87,25 @@ export class MiniPlayer {
     setIcon(this.buttons.quality.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "chevron-down");
     this.volumeButton = this.buttons.volume = this.button(tools, "volume", "volume-2", t("internal.volume"), () => this.showPanel("volume"));
     this.button(tools, "expand", "maximize-2", t("mini.open"), () => void plugin.openPlayerView());
-    for (const name of ["playlist", "quality", "volume"] as const) {
+    this.buttons.more = this.button(tools, "more", "ellipsis", t("wall.toolbar.more"), () => this.showPanel("more"));
+    for (const name of PANELS) {
       this.buttons[name].setAttr("aria-expanded", "false");
       this.panels[name] = this.root.createDiv({ cls: `mw-mini__panel mw-mini__${name} is-hidden`, attr: { role: "group", "aria-label": this.buttons[name].getAttribute("aria-label")! } });
+    }
+    for (const [action, icon, label] of [
+      ["quality", "audio-lines", t("quality.choose")],
+      ["volume", "volume-2", t("internal.volume")],
+      ["expand", "maximize-2", t("mini.open")],
+    ]) {
+      const button = this.panels.more.createEl("button", { cls: "mw-mini__more-item", attr: { "data-more-action": action } });
+      setIcon(button.createSpan(), icon); button.createSpan({ text: label });
+      button.addEventListener("click", () => {
+        if (action === "expand") { this.showPanel(null); void plugin.openPlayerView(); }
+        else {
+          this.showPanel(action as Panel);
+          this.panels[action as Panel].querySelector<HTMLElement>("button, input")?.focus();
+        }
+      });
     }
     this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin(), () => { this.albumKey = ""; this.update(); });
     this.playlistBody = this.panels.playlist.createDiv();
@@ -120,7 +137,8 @@ export class MiniPlayer {
   };
   private escape = (event: KeyboardEvent) => {
     if (event.key === "Escape" && this.openPanel) {
-      const button = this.buttons[this.openPanel]; this.showPanel(null); button.focus();
+      const button = this.buttons[this.openPanel]; this.showPanel(null);
+      (button.getClientRects().length ? button : this.buttons.more).focus();
     }
   };
   private releaseSeek = (event: PointerEvent) => {
@@ -135,7 +153,7 @@ export class MiniPlayer {
   }
   private showPanel(name: Panel | null): void {
     this.openPanel = name === this.openPanel ? null : name;
-    for (const key of ["playlist", "quality", "volume"] as const) {
+    for (const key of PANELS) {
       const open = key === this.openPanel;
       this.panels[key].toggleClass("is-hidden", !open);
       this.buttons[key].setAttr("aria-expanded", String(open));
@@ -143,6 +161,7 @@ export class MiniPlayer {
     }
   }
   private reserveSpace(): void {
+    if (this.openPanel === "more" && !this.buttons.more.getClientRects().length) this.showPanel(null);
     this.parent.toggleClass("has-mini", this.visible);
     const measured = this.visible ? this.root.offsetHeight : 0;
     if (!Number.isFinite(measured) || measured === this.height) return;

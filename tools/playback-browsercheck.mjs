@@ -32,6 +32,11 @@ try {
   for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[360,740,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',theme,bg:'dark',style:'cd',panel:'queue',longQueue:true,width,height,zoom});
   if(process.argv.includes('--queue')) cases.splice(0,cases.length,...cases.filter(item=>item.panel==='queue'||item.queue||item.source==='playlist'));
   if(process.argv.includes('--mini')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'));
+  if(process.argv.includes('--mini-compact')) {
+    cases.splice(0,cases.length);
+    for(const theme of ['light','dark']) for(const width of [760,600,557,420,400,360,280,240,200]) for(const statusBar of [true,false]) cases.push({kind:'wall',theme,layout:'grid',style:'cover',width,height:740,statusBar});
+    for(const zoom of [.5,1.5,2]) for(const width of [557,360,240]) cases.push({kind:'wall',theme:'dark',layout:'shelf',style:'vinyl',width,height:740,zoom});
+  }
   if(process.argv.includes('--seek')) cases.splice(0,cases.length,...cases.filter(item=>item.kind==='wall'&&item.layout==='grid'&&item.style==='cover'&&[1280,360].includes(item.width)));
   if(process.argv.includes('--lyrics')) {
     cases.splice(0,cases.length);
