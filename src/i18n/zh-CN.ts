@@ -1,7 +1,8 @@
 // 简体中文（基准/回退语言：结构变更以此为源，zh-TW 与 en 用 typeof 约束对齐）。
 
 export const zhCN = {
-  history: {"songs": "历史播放单曲", "albums": "历史播放专辑", "playlists": "历史播放歌单", "search": "搜索历史", "remove": "删除这条历史记录", "removeSearch": "删除搜索记录：{name}", "clearKind": "清空当前分类", "clearConfirm": "是否清空当前分类的历史记录？删除后无法恢复。"},
+  history: {"songs": "历史播放单曲", "albums": "历史专辑", "playlists": "历史歌单", "search": "搜索历史", "remove": "删除这条历史记录", "removeSearch": "删除搜索记录：{name}", "clearKind": "清空当前分类", "clearConfirm": "是否清空当前分类的历史记录？删除后无法恢复。"},
+  libraryLayout: {title:"显示方式", grid:"网格视图", list:"列表视图"},
   cacheManager: {"total": "缓存已用空间", "estimated": "约 {size}", "audio": "音频缓存", "lyrics": "歌词缓存", "stats": "专辑／歌单统计缓存", "cover": "封面取色缓存", "playback": "播放历史记录", "search": "搜索历史记录", "clear": "清理", "all": "清理全部", "confirm": "是否删除全部？删除后所有内容将需要重新加载？", "warning": "播放历史和搜索历史也将被清空，无法恢复。音乐墙文件、账号登录信息和个人设置不会删除。", "done": "清理完成", "failed": "清理失败，请重试。", "lyricsDesc": "歌词原文与翻译。清理后重新获取，当前显示的歌词仍可继续使用。", "statsDesc": "歌曲数与总时长。清理后按需重新计算。", "coverDesc": "仅清理插件的封面取色与亮度内存缓存（{count} 项），不删除浏览器图片缓存。", "historyDesc": "当前库中各账号的本地历史记录。清理后无法恢复。", "audioMobile": "此设备未启用插件音频磁盘缓存。", "approx": "约 {size} KB"},
 
   githubAuth: {

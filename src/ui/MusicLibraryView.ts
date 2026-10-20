@@ -199,6 +199,25 @@ export class MusicLibraryView extends ItemView {
       button.dataset.searchKind = kind; button.setAttr("role", "tab"); button.setAttr("aria-selected", String(this.searchKind === kind));
     }
   }
+  private listLayout(): boolean { return this.plugin.settings.libraryLayout === "list"; }
+  private layoutControls(parent: HTMLElement): void {
+    const bar = parent.createDiv({cls:"mw-cloud__layouts", attr:{role:"group", "aria-label":t("libraryLayout.title")}});
+    for (const [mode, icon] of [["grid", "layout-grid"], ["list", "list"]] as const) {
+      const button = svgAction(bar, icon, t(`libraryLayout.${mode}`), async () => {
+        this.plugin.settings.libraryLayout = mode;
+        this.render(); this.plugin.refreshLibraryLayouts?.(this);
+        try { await this.plugin.saveData(this.plugin.settings); } catch { new Notice(t("library.failed")); }
+      });
+      button.dataset.libraryLayout = mode; button.setAttr("aria-pressed", String(this.listLayout() === (mode === "list")));
+    }
+  }
+  private cardContainer(parent: HTMLElement): HTMLElement {
+    this.layoutControls(parent);
+    return parent.createDiv({cls:`mw-cloud__grid${this.listLayout() ? " is-list" : ""}`});
+  }
+  private recordViewed(kind: "albums" | "playlists", meta: AlbumMeta): void {
+    void this.plugin.historyStore?.record(this.plugin.historyScope(), kind, meta).catch(() => {});
+  }
   private renderHistory(): void {
     const scope = this.plugin.historyScope?.() || "guest", kind = this.historyKind;
     const bar = this.body.createDiv({ cls: "mw-cloud__tabs" });
@@ -213,8 +232,25 @@ export class MusicLibraryView extends ItemView {
     }).open(), true);
     clear.disabled = entries.length === 0;
     if (!entries.length) { this.empty(this.body); return; }
-    if (kind === "songs") { this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return; }
-    const grid = this.body.createDiv({ cls: "mw-cloud__grid" });
+    if (kind === "songs") {
+      this.layoutControls(this.body);
+      if (this.listLayout()) this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries);
+      else {
+        const grid = this.body.createDiv({cls:"mw-cloud__grid"});
+        for (const entry of entries) {
+          const track = entry.track!, card = grid.createDiv({cls:"mw-history-card"});
+          const button = this.card(card, track.name, track.artists || "", track.cover || "");
+          button.addEventListener("dblclick", () => void this.single(track, true));
+          this.context(button, () => this.trackActions(track));
+          card.createDiv({cls:"mw-history-time",text:new Date(entry.at).toLocaleString()});
+          const actions = card.createDiv({cls:"mw-cloud__actions"});
+          svgAction(actions,"play",t("panel.play"),()=>this.single(track,true));
+          svgAction(actions,"trash-2",t("history.remove"),()=>this.plugin.historyStore.remove(scope,kind,entry.id)).dataset.historyDelete=String(entry.id);
+        }
+      }
+      return;
+    }
+    const grid = this.cardContainer(this.body);
     for (const entry of entries) {
       const meta = entry.collection!, card = grid.createDiv({ cls: "mw-history-card" });
       const button = this.card(card, meta.name, meta.artist, meta.cover);
@@ -230,7 +266,7 @@ export class MusicLibraryView extends ItemView {
     if (this.searchKind === "albums") this.renderAlbums(this.body, this.results.albums);
     if (this.searchKind === "playlists") this.renderLists(this.body, this.results.playlists);
     if (this.searchKind === "artists") {
-      const grid = this.body.createDiv({ cls: "mw-cloud__grid" });
+      const grid = this.cardContainer(this.body);
       for (const artist of this.results.artists) {
         const card = this.card(grid, artist.name, "", artist.cover); card.addClass("mw-cloud__artist-card");
         card.addEventListener("click", () => void this.openArtist(artist));
@@ -249,7 +285,7 @@ export class MusicLibraryView extends ItemView {
   }
   private renderLists(parent: HTMLElement, lists: CloudPlaylist[]): void {
     if (!lists.length) { this.empty(parent); return; }
-    const grid = parent.createDiv({ cls: "mw-cloud__grid" });
+    const grid = this.cardContainer(parent);
     for (const item of lists) {
       const card = this.card(grid, item.name, item.creator, item.cover);
       this.cardStats(card, `playlist:${item.id}`, item.count, () => this.plugin.libraryApi.playlistStats(item.id, this.plugin.settings.neteaseCookie));
@@ -259,7 +295,7 @@ export class MusicLibraryView extends ItemView {
   }
   private renderAlbums(parent: HTMLElement, albums: AlbumSummary[]): void {
     if (!albums.length) { this.empty(parent); return; }
-    const grid = parent.createDiv({ cls: "mw-cloud__grid" });
+    const grid = this.cardContainer(parent);
     for (const album of albums) {
       const entry = grid.createDiv({ cls: "mw-cloud__album" });
       const card = entry.createEl("button", { cls: "mw-cloud__album-card", attr: { type: "button", title: album.name } });
@@ -380,7 +416,7 @@ export class MusicLibraryView extends ItemView {
     if (remember) this.remember();
     if (this.tab === "home") this.tab = "search";
     this.albumItem = album; this.playlistItem = null; this.collection = null; this.artist = null; this.artistItem = null;
-    return this.request(() => this.plugin.fetchAlbumDetail(album.albumId), meta => { this.collection = meta; }, () => this.openAlbum(album, false));
+    return this.request(() => this.plugin.fetchAlbumDetail(album.albumId), meta => { this.collection = meta; this.recordViewed("albums", meta); }, () => this.openAlbum(album, false));
   }
   private renderCollection(collection: AlbumMeta): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });
@@ -484,7 +520,7 @@ export class MusicLibraryView extends ItemView {
   private async openPlaylist(item: CloudPlaylist, remember = true): Promise<void> {
     if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
     this.playlistItem = item; this.collection = null; this.albumItem = null; this.artist = null; this.artistItem = null;
-    return this.request(() => this.plugin.libraryApi.detail(item, this.plugin.settings.neteaseCookie), collection => { this.collection = collection; }, () => this.openPlaylist(item, false));
+    return this.request(() => this.plugin.libraryApi.detail(item, this.plugin.settings.neteaseCookie), collection => { this.collection = collection; this.recordViewed("playlists", collection); }, () => this.openPlaylist(item, false));
   }
   async showArtist(artist: CloudArtist): Promise<void> { await this.openArtist(artist); }
   private async openArtist(artist: CloudArtist, remember = true): Promise<void> {

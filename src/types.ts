@@ -187,6 +187,7 @@ export interface MusicWallSettings {
   audioCacheMB: number;
   lyricsTranslation: boolean;
   libraryAppearance: "system" | "light" | "dark";
+  libraryLayout?: "grid" | "list";
   wallAppearance: "system" | "light" | "dark";
   showGitSyncActions: boolean;
   /**

@@ -115,3 +115,28 @@
 .mw-cloud__heading { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 .mw-cloud .mw-cloud__heading h2 { flex: 1; min-width: 0; }
 .mw-cloud__heading .mw-cloud__back { flex-shrink: 0; }
+
+/* Library layout preferences never affect music wall or player views. */
+.mw-cloud__layouts { display:flex; justify-content:flex-end; gap:4px; margin:0 0 10px; }
+.mw-cloud__layouts button[aria-pressed="true"] { background:var(--mw-panel-hover); border-color:var(--mw-panel-line); }
+.mw-cloud .mw-cloud__grid.is-list { display:flex; flex-direction:column; gap:8px; }
+.mw-cloud .is-list > .mw-cloud__card,
+.mw-cloud .is-list .mw-cloud__album-card,
+.mw-cloud .is-list .mw-history-card > .mw-cloud__card { display:grid; grid-template-columns:52px minmax(0,1fr); gap:3px 12px; align-items:center; text-align:left; }
+.mw-cloud .is-list .mw-cloud__card img,
+.mw-cloud .is-list .mw-cloud__album-card img { grid-column:1; grid-row:1 / span 3; width:52px; height:52px; margin:0; }
+.mw-cloud .is-list .mw-cloud__name,
+.mw-cloud .is-list .mw-cloud__creator,
+.mw-cloud .is-list .mw-cloud__card-stats { grid-column:2; min-width:0; margin:0; }
+.mw-cloud .is-list .mw-cloud__album { display:flex; align-items:center; gap:8px; }
+.mw-cloud .is-list .mw-cloud__album-card { flex:1; }
+.mw-cloud .is-list .mw-cloud__actions { margin:0; flex-wrap:wrap; }
+.mw-cloud .is-list .mw-history-card { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; padding:8px; border-bottom:1px solid var(--mw-panel-line); }
+.mw-cloud .is-list .mw-history-card > .mw-cloud__card { grid-column:1; }
+.mw-cloud .is-list .mw-history-time { grid-column:1; padding-left:74px; }
+.mw-cloud .is-list .mw-history-card > .mw-svg-action { grid-column:2; grid-row:1 / span 2; }
+@container mw-pane (max-width:360px) {
+  .mw-cloud .is-list .mw-cloud__album { flex-wrap:wrap; }
+  .mw-cloud .is-list .mw-cloud__album-card { flex-basis:100%; }
+  .mw-cloud .is-list .mw-cloud__actions { width:100%; }
+}

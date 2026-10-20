@@ -3,7 +3,8 @@
 import type { zhCN } from "./zh-CN";
 
 export const en: typeof zhCN = {
-  history: {"songs": "Played songs", "albums": "Played albums", "playlists": "Played playlists", "search": "Search history", "remove": "Delete this history entry", "removeSearch": "Delete search: {name}", "clearKind": "Clear this category", "clearConfirm": "Clear history in this category? This cannot be undone."},
+  history: {"songs": "Played songs", "albums": "Album history", "playlists": "Playlist history", "search": "Search history", "remove": "Delete this history entry", "removeSearch": "Delete search: {name}", "clearKind": "Clear this category", "clearConfirm": "Clear history in this category? This cannot be undone."},
+  libraryLayout: {title:"View layout", grid:"Grid view", list:"List view"},
   cacheManager: {"total": "Cache space used", "estimated": "Approx. {size}", "audio": "Audio cache", "lyrics": "Lyrics cache", "stats": "Album / playlist statistics cache", "cover": "Cover color cache", "playback": "Playback history", "search": "Search history", "clear": "Clear", "all": "Clear all", "confirm": "Delete everything? All content will need to be loaded again.", "warning": "Playback and search history will also be erased and cannot be recovered. Music wall files, sign-in information and preferences will be preserved.", "done": "Cleared successfully", "failed": "Could not clear data. Please try again.", "lyricsDesc": "Original lyrics and translations. Fetches again when needed; currently displayed lyrics remain available.", "statsDesc": "Song counts and total durations. Recalculated on demand after clearing.", "coverDesc": "Clears only plugin color and brightness memory cache ({count} entries), not browser image cache.", "historyDesc": "Local history for all accounts in this vault. Clearing cannot be undone.", "audioMobile": "Plugin audio disk caching is not enabled on this device.", "approx": "Approximately {size} KB"},
 
   githubAuth: {

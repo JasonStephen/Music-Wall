@@ -70,7 +70,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.1-exp-1";
+const BUILD_TAG = "1.3.1-exp-2";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -369,6 +369,12 @@ export default class MusicWallPlugin extends Plugin {
     for (const view of this.allWallViews()) view.syncZoomBox();
     for (const view of this.allPlayerViews()) view.syncZoomBox();
     for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) (leaf.view as MusicLibraryView).syncZoomBox();
+  }
+
+  refreshLibraryLayouts(source?: MusicLibraryView): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) {
+      if (leaf.view !== source) (leaf.view as MusicLibraryView).refresh();
+    }
   }
 
   refreshOpenViews(): void {

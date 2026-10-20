@@ -33,7 +33,7 @@ let dispose=async()=>{};
  if(config.playing)await engine.playPlaylist(collection);
  const plugin:any={settings:{...DEFAULT_SETTINGS,neteaseCookie:config.page==='signedout'?'':'test-cookie',neteaseUserId:'42',neteaseNickname:'Music Wall 用户',zoomScale:config.zoom||1},
   historyStore,historyScope(){return this.settings.neteaseUserId||'guest';},
-  internalPlayer:engine,nowPlaying:engine,async ensureNeteaseLogin(){return !!this.settings.neteaseCookie;},async openPlayerView(){},saveZoom(){},
+  internalPlayer:engine,nowPlaying:engine,async ensureNeteaseLogin(){return !!this.settings.neteaseCookie;},async openPlayerView(){},async saveData(){},saveZoom(){},
   getPlaybackDeps(){return {isCurrent:()=>true,playInside:(meta:any)=>engine.playAlbum(meta)};},async fetchAlbumDetail(id:number){return {...(albums.find(a=>a.albumId===id)||albums[0]),albumId:id,trackCount:3,tracks:tracks.slice(0,3)};},async enqueueAlbum(meta:any){engine.enqueueAlbum(meta);},addLibraryAlbum(){wallAdded++;},
   libraryApi:{clear(){},async userPlaylists(){apiCalls++;if(throwError)throw Error();return config.page==='empty'?[]:items;},
    async searchContent(keyword:string,kind:string,_cookie:string,offset:number){apiCalls++;searchCalls.push({keyword,kind,offset});return {songs:kind==='songs'?tracks.slice(0,3):[],artists:kind==='artists'?artists:[],albums:kind==='albums'?albums:[],playlists:kind==='playlists'?items:[],more:offset===0};},
@@ -294,14 +294,55 @@ let dispose=async()=>{};
  (window as any).verifyHiddenZoom=()=>verifyHiddenZoom(root,scale=>{plugin.settings.zoomScale=scale;view.syncZoomBox();});
  (window as any).verifyHistoryUI=async()=>{
   let checks=0;const fail:string[]=[];const expect=(value:unknown,label:string)=>{checks++;if(!value)fail.push(label);};
+  await historyStore.clear();
+  await v.openAlbum(albums[0]);await wait();
+  expect(historyStore.list('42','albums')[0]?.id===albums[0].albumId,'viewing album detail records history without playing');
+  await v.openAlbum(albums[1]);await v.openAlbum(albums[0]);await wait();
+  expect(historyStore.list('42','albums').length===2&&historyStore.list('42','albums')[0].id===albums[0].albumId,'revisiting promotes album without duplicates');
+  await v.openPlaylist(items[0]);await wait();
+  expect(historyStore.list('42','playlists')[0]?.id===items[0].id,'viewing playlist detail records history without playing');
+  const assertLayout=async(label:string)=>{
+    expect(root.querySelectorAll('[data-library-layout]').length===2,label+' has SVG layout controls');
+    for(const mode of ['list','grid']) {
+      root.querySelector<HTMLButtonElement>(`[data-library-layout="${mode}"]`)!.click();await wait();
+      expect(root.querySelector(`[data-library-layout="${mode}"]`)?.getAttribute('aria-pressed')==='true',label+' selected '+mode);
+      expect(!!root.querySelector('.mw-cloud__grid.is-list')===(mode==='list'),label+' applies '+mode);
+      expect(body.scrollWidth<=body.clientWidth+1,label+' '+mode+' fits pane');
+    }
+  };
+  for(const section of ['created','collected']){await v.navigate(section);await assertLayout(section);}
+  v.keyword='test';
+  for(const kind of ['albums','playlists','artists']){v.searchKind=kind;await v.navigate('search');await assertLayout('search '+kind);}
+  await v.openArtist(artists[0]);v.artistSection='albums';v.render();await assertLayout('artist albums');
+  await historyStore.clear();
   await historyStore.record('42','songs',tracks[0]);await historyStore.record('42','songs',tracks[1]);
   await historyStore.record('42','albums',{...albums[0]});await historyStore.record('42','playlists',collection);
   await v.navigate('history');
   expect(root.querySelectorAll('[data-history-kind]').length===3&&root.querySelectorAll('[data-history-delete]').length===2,'history has three categories and individual song deletion');
   expect(root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,'history fits narrow panes');
+  root.querySelector<HTMLButtonElement>('[data-library-layout="grid"]')!.click();await wait();
+  expect(root.querySelectorAll('.mw-history-card').length===2,'song history supports grid');
+  root.querySelector<HTMLButtonElement>('[data-library-layout="list"]')!.click();await wait();
+  expect(root.querySelectorAll('.mw-cloud__track').length===2,'song history supports list');
   root.querySelector<HTMLButtonElement>('[data-history-delete="1"]')!.click();await wait();expect(historyStore.list('42','songs').length===1,'song deletion updates store and UI');
   root.querySelector<HTMLButtonElement>('[data-history-kind="albums"]')!.click();await wait();
   expect(root.querySelectorAll('.mw-history-card').length===1,'album history renders metadata cards');
+  await assertLayout('album history');
+  root.querySelector<HTMLButtonElement>('[data-history-kind="playlists"]')!.click();await wait();await assertLayout('playlist history');
+  root.querySelector<HTMLButtonElement>('[data-library-layout="list"]')!.click();await wait();
+  await v.navigate('created');expect(!!root.querySelector('.mw-cloud__grid.is-list'),'created shares the library list preference');
+  await v.navigate('history');expect(!!root.querySelector('.mw-cloud__grid.is-list'),'playlist history layout persists when returning');
+  root.querySelector<HTMLButtonElement>('[data-history-kind="albums"]')!.click();await wait();
+  expect(!!root.querySelector('.mw-cloud__grid.is-list'),'album history shares the library list preference');
+  const otherLeaf:any=new WorkspaceLeaf({workspace:{activeLeaf:null}}),other=new MusicLibraryView(otherLeaf,plugin);
+  mount.appendChild(other.contentEl);await other.onOpen();await (other as any).navigate('collected');
+  expect(!!other.contentEl.querySelector('.mw-cloud__grid.is-list'),'new library tabs inherit the saved layout');
+  plugin.refreshLibraryLayouts=(source:any)=>{for(const target of [view,other])if(target!==source)target.refresh();};
+  other.contentEl.querySelector<HTMLButtonElement>('[data-library-layout="grid"]')!.click();await wait();
+  expect(!root.querySelector('.mw-cloud__grid.is-list'),'another open library tab synchronizes immediately');
+  root.querySelector<HTMLButtonElement>('[data-library-layout="list"]')!.click();await wait();
+  expect(!!other.contentEl.querySelector('.mw-cloud__grid.is-list'),'layout synchronizes in both directions');
+  await other.onClose();other.contentEl.remove();delete plugin.refreshLibraryLayouts;
   root.querySelector<HTMLButtonElement>('.mw-cloud__tabs button:last-child')!.click();await wait();
   expect(historyStore.list('42','albums').length===1,'clear history requires confirmation');
   document.querySelector<HTMLButtonElement>('.mw-confirm .mod-warning')!.click();await wait();
