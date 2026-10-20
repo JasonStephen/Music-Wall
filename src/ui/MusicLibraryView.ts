@@ -232,30 +232,12 @@ export class MusicLibraryView extends ItemView {
     }).open(), true);
     clear.disabled = entries.length === 0;
     if (!entries.length) { this.empty(this.body); return; }
-    if (kind === "songs") {
-      this.layoutControls(this.body);
-      if (this.listLayout()) this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries);
-      else {
-        const grid = this.body.createDiv({cls:"mw-cloud__grid"});
-        for (const entry of entries) {
-          const track = entry.track!, card = grid.createDiv({cls:"mw-history-card"});
-          const button = this.card(card, track.name, track.artists || "", track.cover || "");
-          button.addEventListener("dblclick", () => void this.single(track, true));
-          this.context(button, () => this.trackActions(track));
-          card.createDiv({cls:"mw-history-time",text:new Date(entry.at).toLocaleString()});
-          const actions = card.createDiv({cls:"mw-cloud__actions"});
-          svgAction(actions,"play",t("panel.play"),()=>this.single(track,true));
-          svgAction(actions,"trash-2",t("history.remove"),()=>this.plugin.historyStore.remove(scope,kind,entry.id)).dataset.historyDelete=String(entry.id);
-        }
-      }
-      return;
-    }
+    if (kind === "songs") { this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return; }
     const grid = this.cardContainer(this.body);
     for (const entry of entries) {
       const meta = entry.collection!, card = grid.createDiv({ cls: "mw-history-card" });
       const button = this.card(card, meta.name, meta.artist, meta.cover);
       button.addEventListener("click", () => void this.showCollection(meta));
-      card.createDiv({ cls: "mw-history-time", text: new Date(entry.at).toLocaleString() });
       svgAction(card, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(scope, kind, entry.id)).dataset.historyDelete = String(entry.id);
     }
   }
@@ -442,7 +424,6 @@ export class MusicLibraryView extends ItemView {
       const detail = row.createDiv({ cls: "mw-cloud__track-info" }); detail.createSpan({ cls: "mw-cloud__name", text: track.name }); const metadata = detail.createDiv({ cls: "mw-cloud__track-meta" });
       if (track.albumName || collection && !collection.playlistId) this.link(metadata, track.albumName || collection!.name, () => this.trackAlbum(track, collection), "album");
       if (track.artists) this.link(metadata, track.artists, () => this.trackArtist(track), "artist");
-      if (historyEntries) metadata.createSpan({ cls: "mw-history-time", text: new Date(historyEntries[index].at).toLocaleString() });
       row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       const actions = row.createDiv({ cls: "mw-cloud__actions" });
       if (historyEntries) svgAction(actions, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(this.plugin.historyScope(), "songs", track.id)).dataset.historyDelete = String(track.id);

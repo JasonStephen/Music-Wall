@@ -2,7 +2,7 @@ import type { AlbumMeta, AlbumTrackSnapshot } from "../types";
 
 export type HistoryKind = "songs" | "albums" | "playlists";
 export type SearchScope = "library" | "wall";
-export interface HistoryEntry { id: number; at: number; track?: AlbumTrackSnapshot; collection?: AlbumMeta; }
+export interface HistoryEntry { id: number; track?: AlbumTrackSnapshot; collection?: AlbumMeta; }
 interface Bucket { songs: HistoryEntry[]; albums: HistoryEntry[]; playlists: HistoryEntry[]; library: string[]; wall: string[]; }
 interface Storage { exists(path: string): Promise<boolean>; read(path: string): Promise<string>; write(path: string, value: string): Promise<unknown>; }
 const empty = (): Bucket => ({ songs: [], albums: [], playlists: [], library: [], wall: [] });
@@ -39,9 +39,9 @@ export class HistoryStore {
           for (const kind of ["songs", "albums", "playlists"] as const) {
             const seen = new Set<number>();
             for (const entry of (Array.isArray(source[kind]) ? source[kind] : []).slice(0, limits[kind])) {
-              if (!id(entry?.id) || seen.has(entry.id) || !Number.isFinite(entry.at) || entry.at < 0 || entry.at > Date.now()) continue;
+              if (!id(entry?.id) || seen.has(entry.id)) continue;
               if (kind === "songs" ? !id(entry.track?.id) || entry.track.id !== entry.id : !entry.collection || (kind === "albums" ? entry.collection.albumId : entry.collection.playlistId) !== entry.id) continue;
-              seen.add(entry.id); bucket[kind].push({ id: entry.id, at: entry.at, ...(kind === "songs" ? { track: track(entry.track) } : { collection: collection(entry.collection) }) });
+              seen.add(entry.id); bucket[kind].push({ id: entry.id, ...(kind === "songs" ? { track: track(entry.track) } : { collection: collection(entry.collection) }) });
             }
           }
           for (const kind of ["library", "wall"] as const) bucket[kind] = [...new Set<string>((Array.isArray(source[kind]) ? source[kind] : []).filter((v: any) => typeof v === "string" && v.trim()).map((v: string) => text(v.trim(), 200)))].slice(0, 30);
@@ -64,7 +64,7 @@ export class HistoryStore {
     const key = kind === "songs" ? (value as AlbumTrackSnapshot).id : kind === "albums" ? (value as AlbumMeta).albumId : (value as AlbumMeta).playlistId;
     if (!id(key)) return;
     const bucket = this.bucket(scope);
-    bucket[kind] = [{ id: key!, at: Date.now(), ...(kind === "songs" ? { track: track(value) } : { collection: collection(value) }) }, ...bucket[kind].filter(e => e.id !== key)].slice(0, limits[kind]);
+    bucket[kind] = [{ id: key!, ...(kind === "songs" ? { track: track(value) } : { collection: collection(value) }) }, ...bucket[kind].filter(e => e.id !== key)].slice(0, limits[kind]);
     await this.save();
   }
   async search(scope: string, kind: SearchScope, keyword: string): Promise<void> {
