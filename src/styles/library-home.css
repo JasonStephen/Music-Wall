@@ -117,6 +117,9 @@
 /* Library layout preferences never affect music wall or player views. */
 .mw-cloud__layouts { display:flex; justify-content:flex-end; gap:4px; margin:0 0 10px; }
 .mw-cloud__layouts button[aria-pressed="true"] { background:var(--mw-panel-hover); border-color:var(--mw-panel-line); }
+.mw-history__section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px; }
+.mw-history__section-title { margin:0; color:var(--text-normal); font-size:1.05em; font-weight:600; }
+.mw-history__section-actions { display:flex; align-items:center; gap:4px; }
 .mw-cloud .mw-cloud__grid.is-list { display:flex; flex-direction:column; gap:8px; }
 .mw-cloud .is-list > .mw-cloud__card,
 .mw-cloud .is-list .mw-cloud__album-card,

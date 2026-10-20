@@ -225,6 +225,9 @@ export class MusicLibraryView extends ItemView {
       const button = svgAction(bar, icon, t(`history.${key}`), () => { this.historyKind = key; this.render(); }, true);
       button.dataset.historyKind = key; button.setAttr("aria-pressed", String(key === kind));
     }
+    const sectionHead = this.body.createDiv({ cls: "mw-history__section-head" });
+    sectionHead.createEl("h3", { cls: "mw-history__section-title", text: t(`history.${kind}`) });
+    const sectionActions = sectionHead.createDiv({ cls: "mw-history__section-actions" });
     const entries = this.plugin.historyStore?.list(scope, kind) || [];
     if (!entries.length) { this.empty(this.body); return; }
     const addClear = (layout: HTMLElement) => {
@@ -235,8 +238,7 @@ export class MusicLibraryView extends ItemView {
       clear.disabled = entries.length === 0;
     };
     if (kind === "songs") {
-      this.layoutControls(this.body);
-      addClear(this.body.querySelector<HTMLElement>(".mw-cloud__layouts")!);
+      addClear(sectionActions);
       this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return;
     }
     const grid = this.cardContainer(this.body);
