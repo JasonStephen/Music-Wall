@@ -179,6 +179,8 @@ export interface MusicWallSettings {
   playerCustomStyle: "vinyl" | "cd" | "cover";
   playerBackground: PlayerBackground;
   playerCase: DeviceCase;
+  playerVolume: number;
+  playbackOrder: "order" | "repeat" | "one" | "shuffle";
   playerVinylMachine: boolean;
   playerCdMachine: boolean;
   playerVinylFinish: "black" | "white" | "color" | "blackGlass" | "whiteGlass" | "colorGlass";
@@ -223,6 +225,8 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   playerCustomStyle: "vinyl",
   playerBackground: "dark",
   playerCase: "black",
+  playerVolume: 1,
+  playbackOrder: "order",
   playerVinylMachine: true,
   playerCdMachine: true,
   playerVinylFinish: "black",

@@ -80,7 +80,7 @@ export class MiniPlayer {
     this.toggle = this.button(controls, "toggle", "play", t("player.toggleTip"), () => void this.control("toggle"));
     this.next = this.button(controls, "next", "skip-forward", t("player.nextTip"), () => void this.control("next"));
     const tools = this.root.createDiv({ cls: "mw-mini__tools" });
-    this.orderButton = this.button(tools, "play-order", "", "", () => cyclePlayOrder(plugin.internalPlayer));
+    this.orderButton = this.button(tools, "play-order", "", "", () => cyclePlayOrder(plugin.internalPlayer, order => { plugin.settings.playbackOrder = order; void plugin.saveData(plugin.settings); }));
     this.buttons.playlist = this.button(tools, "playlist", "list-music", t("player.playlistTip"), () => this.showPanel("playlist"));
     this.buttons.quality = this.button(tools, "quality", "", t("quality.choose"), () => this.showPanel("quality"));
     this.qualityText = this.buttons.quality.createSpan();
@@ -107,11 +107,11 @@ export class MiniPlayer {
         }
       });
     }
-    this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin(), () => { this.albumKey = ""; this.update(); });
+    this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin(), () => { this.albumKey = ""; this.update(); }, () => { plugin.settings.playbackOrder = plugin.internalPlayer.order; void plugin.saveData(plugin.settings); });
     this.playlistBody = this.panels.playlist.createDiv();
     this.volume = this.panels.volume.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
     decorateRange(this.volume, true);
-    this.volume.addEventListener("input", () => plugin.internalPlayer.setVolume(Number(this.volume.value)));
+    this.volume.addEventListener("input", () => { const value = Number(this.volume.value); plugin.internalPlayer.setVolume(value); plugin.settings.playerVolume = value; void plugin.saveData(plugin.settings); });
     parent.ownerDocument.addEventListener("pointerdown", this.outside);
     parent.ownerDocument.addEventListener("keydown", this.escape);
     parent.ownerDocument.addEventListener("keydown", this.space);
@@ -198,6 +198,8 @@ export class MiniPlayer {
     this.showPanel(null);
     if (!(await this.plugin.ensureNeteaseLogin()) || player.state.songId !== song) return;
     await player.setQuality(quality);
+    this.plugin.settings.defaultAudioQuality = quality;
+    await this.plugin.saveData(this.plugin.settings);
   }
   private update(): void {
     const player = this.plugin.internalPlayer;

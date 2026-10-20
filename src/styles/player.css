@@ -233,9 +233,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mw-player .mw-player__bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); }
-.mw-player__bar > .mw-toolbtn { justify-self: end; }
-.mw-player button.mw-player__source { display: block; width: 100%; min-width: 0; height: auto; padding: 4px; border: 0; background: transparent; box-shadow: none; color: inherit; font: inherit; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mw-player .mw-player__bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.mw-player button.mw-player__source { grid-column: 2; justify-self: center; display: block; width: auto; max-width: min(60cqw, 680px); min-width: 0; height: auto; padding: 4px; border: 0; background: transparent; box-shadow: none; color: inherit; font: inherit; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mw-player .mw-player-presets { grid-column: 3; justify-self: end; }
 .mw-player button.mw-player__source:hover { text-decoration: underline; }
 .mw-player button.mw-player__source.is-hidden { visibility: hidden; }
 /* 图标钮只有图标：颜色跟随背景模式的 --text-normal/--text-muted，
@@ -257,7 +257,7 @@
 }
 .mw-player .mw-toolbtn.is-active {
   background: transparent;
-  color: var(--mw-np-accent, var(--interactive-accent));
+  color: var(--text-normal);
 }
 
 /* 芯片（样式 / 背景）：底色与文字全部走当前背景模式的变量。

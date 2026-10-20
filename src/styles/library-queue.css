@@ -56,6 +56,9 @@
 .mw-queue .mw-queue__button { width: auto; max-width: 100%; height: auto; min-height: 28px; white-space: normal; }
 .mw-queue__list { border-top: 1px solid var(--mw-panel-line); margin-top: 5px; padding-top: 5px; }
 .mw-queue__row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 5px; align-items: center; padding: 4px; border-radius: 6px; }
+.mw-queue__row[data-song] { grid-template-columns: 26px minmax(0, 1fr) auto auto; }
+.mw-queue__row[data-song] .mw-queue__number { text-align: right; font-variant-numeric: tabular-nums; color: var(--mw-panel-fg-dim); }
+.mw-queue__row[data-song] .mw-queue__duration { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--mw-panel-fg-dim); font-size: 12px; }
 .mw-queue__row.is-current { background: var(--mw-panel-hover); }
 .mw-queue__grip { display: flex; cursor: grab; }
 .mw-queue__row.is-current .mw-queue__grip { cursor: default; }
@@ -82,6 +85,8 @@
 }
 @container mw-pane (max-width: 200px) {
   .mw-queue__row { grid-template-columns: 16px minmax(0, 1fr); }
+  .mw-queue__row[data-song] { grid-template-columns: 24px minmax(0, 1fr) auto; }
+  .mw-queue__row[data-song] .mw-queue__actions { grid-column: 1 / -1; justify-content: flex-end; }
   .mw-queue__actions { grid-column: 1 / -1; justify-content: flex-end; }
   .mw-cloud__head { flex-wrap: wrap; }
   .mw-cloud__head h2 { flex-basis: 100%; }

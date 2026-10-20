@@ -1,7 +1,16 @@
 .mw-player-presets { display:flex; gap:3px; justify-self:end; align-items:center; }
 .mw-player .mw-player-presets button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:32px; height:34px; padding:5px; border:0; border-radius:7px; background:transparent; box-shadow:none; color:var(--text-normal); }
 .mw-player-presets svg { width:20px; height:20px; flex-shrink:0; }
-.mw-player .mw-player-presets button[aria-pressed="true"], .mw-player .mw-player-presets button:hover { background:var(--background-modifier-hover); }
+.mw-player .mw-player-presets button[aria-pressed="true"] { background:var(--background-modifier-hover); }
+.mw-player .mw-player-presets button:hover { background:transparent; }
+.mw-player .mw-player-presets .mw-toolbtn.is-active,
+.mw-player .mw-player-presets .mw-toolbtn:focus,
+.mw-player .mw-player-presets .mw-toolbtn:focus-visible,
+.mw-player .mw-player-presets .mw-toolbtn:hover { background:transparent !important; color:var(--text-normal) !important; }
+.mw-player .mw-player-presets .mw-player__more:hover,
+.mw-player .mw-player-presets .mw-player__more:focus,
+.mw-player .mw-player-presets .mw-player__more:focus-visible,
+.mw-player .mw-player-presets .mw-player__more.is-active { background:transparent !important; color:var(--text-normal) !important; }
 .mw-player .mw-player-presets .is-hidden { display:none; }
 .mw-style-tabs { position:relative; flex:0 0 auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; padding:3px; margin:12px 14px 0; border:1px solid var(--mw-panel-line); border-radius:10px; background:var(--mw-panel-surface); }
 .mw-player .mw-style-tab { display:flex; align-items:center; justify-content:center; gap:8px; min-height:42px; height:auto; padding:8px; border:1px solid transparent; border-radius:7px; color:var(--mw-panel-fg); background:transparent; box-shadow:none; }
@@ -56,10 +65,9 @@
 .mw-player--full-cover.mw-player--portrait.mw-player--cover-lyrics .mw-lyrics { display:flex; }
 .mw-player--full-cover.mw-player--portrait.mw-player--cover-lyrics .mw-full-cover { opacity:.18; }
 @container mw-pane (max-width:700px) {
-  .mw-player .mw-player__bar { grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; }
-  .mw-player__bar .mw-player__title { grid-column:1; grid-row:1; }
-  .mw-player__bar .mw-player-presets { grid-column:2; grid-row:1; }
-  .mw-player__bar .mw-player__source { grid-column:1 / -1; grid-row:2; max-width:100%; justify-self:center; }
+  .mw-player .mw-player__bar { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-rows:auto; }
+  .mw-player__bar .mw-player__source { grid-column:2; grid-row:1; max-width:55cqw; justify-self:center; }
+  .mw-player__bar .mw-player-presets { grid-column:3; grid-row:1; justify-self:end; }
 }
 @container mw-pane (max-width:300px) {
   .mw-player .mw-player__bar { padding-inline:6px; gap:3px; }

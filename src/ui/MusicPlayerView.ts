@@ -5,7 +5,7 @@ import { bindMouseBack } from "./mouseBack";
 // 结构：当前播放区（SMTC 或最近一次拖入的专辑）+ 曲目列表（可点单曲播放）。
 // 唱片可从任意音乐墙拖入本页（复用 WALL_DRAG_MIME），或经墙上菜单「加入播放器」。
 
-import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Menu, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
   PLAYER_VIEW_TYPE,
@@ -401,10 +401,6 @@ export class MusicPlayerView extends ItemView {
   /** 顶栏：只有标题 + 右上角一个样式图标（点开滑出「样式 / 背景」抽屉） */
   private buildBar(root: HTMLElement): HTMLElement {
     const bar = root.createDiv({ cls: "mw-player__bar" });
-    bar.createDiv({
-      cls: "mw-player__title",
-      text: t("player.displayName"),
-    });
     this.el.source = bar.createEl("button", { cls: "clickable-icon mw-player__source", attr: { type: "button" } });
     this.el.source.addEventListener("click", () => void this.openSource());
     const tools = bar.createDiv({ cls: "mw-player-presets", attr: { role: "group", "aria-label": t("playerPresets.title") } });
@@ -414,6 +410,8 @@ export class MusicPlayerView extends ItemView {
     const button = tools.createEl("button", { cls: "clickable-icon mw-toolbtn", attr: { type: "button", title: t("playerPresets.title"), "aria-label": t("playerPresets.title") } });
     setIcon(button, "palette"); button.addEventListener("click", () => this.drawer?.toggle("settings"));
     this.styleBtn = button;
+    const more = tools.createEl("button", { cls: "clickable-icon mw-player__more", attr: { type: "button", title: t("player.menu"), "aria-label": t("player.menu") } });
+    setIcon(more, "ellipsis"); more.addEventListener("click", event => this.openPlayerMenu(event));
     return bar;
   }
 
@@ -710,7 +708,7 @@ export class MusicPlayerView extends ItemView {
       cls: "mw-np__ctrl is-hidden", attr: { type: "button", "data-action": "play-order" },
     });
     this.el.btnOrder.addEventListener("click", () => {
-      if (this.plugin.internalPlayer) cyclePlayOrder(this.plugin.internalPlayer);
+      if (this.plugin.internalPlayer) cyclePlayOrder(this.plugin.internalPlayer, order => { this.plugin.settings.playbackOrder = order; void this.plugin.saveData(this.plugin.settings); });
     });
 
     this.el.btnPlaylist = listControls.createEl("button", {
@@ -738,7 +736,12 @@ export class MusicPlayerView extends ItemView {
     const volume = volumePanel.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
     this.el.volume = volume;
     decorateRange(volume, true);
-    volume.addEventListener("input", () => this.plugin.internalPlayer?.setVolume(Number(volume.value)));
+    volume.addEventListener("input", () => {
+      const value = Number(volume.value);
+      this.plugin.internalPlayer?.setVolume(value);
+      this.plugin.settings.playerVolume = value;
+      void this.plugin.saveData(this.plugin.settings);
+    });
 
     const qualityAnchor = stack.createDiv({ cls: "mw-np__popover-anchor mw-np__quality is-hidden" });
     this.el.qualityAnchor = qualityAnchor;
@@ -790,6 +793,8 @@ export class MusicPlayerView extends ItemView {
     if (!(await this.plugin.ensureNeteaseLogin())) return;
     if (player.state.songId !== songId) return;
     await player.setQuality(quality);
+    this.plugin.settings.defaultAudioQuality = quality;
+    await this.plugin.saveData(this.plugin.settings);
   }
 
   /** 上拉面板的开关（面板覆盖在 page 之上，点遮罩/Esc 收起） */
@@ -812,9 +817,7 @@ export class MusicPlayerView extends ItemView {
     setIcon(close, "chevron-down");
     close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
-    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateTrackList(); this.updateHighlights(); });
-    this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
-    this.updateTrackList();
+    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateHighlights(); }, () => { this.plugin.settings.playbackOrder = this.plugin.internalPlayer.order; void this.plugin.saveData(this.plugin.settings); });
   }
 
   /** 曲目列表重建；仅内置播放支持点击切歌，客户端歌单顺序不受影响。 */
@@ -950,6 +953,24 @@ export class MusicPlayerView extends ItemView {
 
     this.updateHighlights();
   }
+  private currentMeta(): AlbumMeta | null {
+    return this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta || null;
+  }
+  private async openCurrentAlbum(): Promise<void> {
+    const track = this.plugin.internalPlayer?.album?.tracks?.[this.plugin.internalPlayer.index];
+    const id = track?.albumId || this.currentMeta()?.albumId;
+    if (!id || id <= 0) return;
+    const meta = await this.plugin.fetchAlbumDetail(id);
+    await this.plugin.openLibraryCollection(meta);
+  }
+  private openPlayerMenu(event: MouseEvent): void {
+    const menu = new Menu();
+    menu.addItem(item => item.setTitle(t("player.viewArtist")).setIcon("user-round").onClick(() => void this.openCurrentArtist()));
+    menu.addItem(item => item.setTitle(t("player.viewAlbum")).setIcon("disc").onClick(() => void this.openCurrentAlbum()));
+    menu.addItem(item => item.setTitle(t("player.viewSource")).setIcon("link").onClick(() => void this.openSource()));
+    menu.showAtPosition({x:event.clientX,y:event.clientY});
+  }
+
   private currentArtistContext(): string {
     return `${this.now.active}|${this.now.source}|${this.now.songId || 0}|${this.plugin.settings.neteaseCookie}`;
   }
@@ -970,7 +991,7 @@ export class MusicPlayerView extends ItemView {
     if (artists.length === 1) await open(0);
     else if (artists.length > 1) {
       this.artistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"),
-        artists.map(artist => ({ label: artist.name, icon: "mic" })),
+        artists.map(artist => ({ label: artist.name, icon: "user-round" })),
         index => { void open(index).catch(() => new Notice(t("library.failed"))); });
       this.artistPicker.open();
     }

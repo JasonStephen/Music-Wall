@@ -3830,7 +3830,7 @@ export class MusicWallView extends FileView implements WallHost {
         const open = async (index: number) => { if (valid()) await this.plugin.openLibraryArtist({ ...artists[index], cover: "" }); };
         if (artists.length === 1) await open(0);
         else if (artists.length > 1) {
-          this.detailArtistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(artist => ({ label: artist.name, icon: "mic" })),
+          this.detailArtistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(artist => ({ label: artist.name, icon: "user-round" })),
             index => { void open(index).catch(() => new Notice(t("library.failed"))); });
           this.detailArtistPicker.open();
         }
@@ -4134,3 +4134,4 @@ export class MusicWallView extends FileView implements WallHost {
     ]);
   }
 }
+

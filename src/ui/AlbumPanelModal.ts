@@ -83,7 +83,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): ()
         };
         if (artists.length === 1) await open(0);
         else if (artists.length > 1) {
-          picker = new PickerModal(app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "mic" })),
+          picker = new PickerModal(app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "user-round" })),
             index => { void open(index).catch(() => new Notice(t("library.failed"))); });
           picker.open();
         }
@@ -278,3 +278,4 @@ export class AlbumPanelModal extends Modal {
     this.contentEl.empty();
   }
 }
+

@@ -194,7 +194,7 @@ export class MusicLibraryView extends ItemView {
   }
   private renderSearchTabs(): void {
     const tabs = this.body.createDiv({ cls: "mw-cloud__tabs", attr: { role: "tablist", "aria-label": t("library.search") } });
-    for (const [kind, icon] of [["songs", "music"], ["artists", "mic"], ["albums", "disc"], ["playlists", "list-music"]] as const) {
+    for (const [kind, icon] of [["songs", "music"], ["artists", "user-round"], ["albums", "disc"], ["playlists", "list-music"]] as const) {
       const button = svgAction(tabs, icon, t(`library.${kind}`), () => { this.searchKind = kind; this.offset = 0; this.results = emptySearch(); return this.loadContent(); }, true);
       button.dataset.searchKind = kind; button.setAttr("role", "tab"); button.setAttr("aria-selected", String(this.searchKind === kind));
     }
@@ -226,19 +226,31 @@ export class MusicLibraryView extends ItemView {
       button.dataset.historyKind = key; button.setAttr("aria-pressed", String(key === kind));
     }
     const entries = this.plugin.historyStore?.list(scope, kind) || [];
-    const clear = svgAction(bar, "trash-2", t("history.clearKind"), () => new ConfirmModal(this.app, {
-      title: t("history.clearKind"), message: t("history.clearConfirm"), danger: true,
-      onConfirm: () => { void this.plugin.historyStore.clear(scope, kind).catch(() => new Notice(t("library.failed"))); },
-    }).open(), true);
-    clear.disabled = entries.length === 0;
     if (!entries.length) { this.empty(this.body); return; }
-    if (kind === "songs") { this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return; }
+    const addClear = (layout: HTMLElement) => {
+      const clear = svgAction(layout, "trash-2", t("history.clearKind"), () => new ConfirmModal(this.app, {
+        title: t("history.clearKind"), message: t("history.clearConfirm"), danger: true,
+        onConfirm: () => { void this.plugin.historyStore.clear(scope, kind).catch(() => new Notice(t("library.failed"))); },
+      }).open());
+      clear.disabled = entries.length === 0;
+    };
+    if (kind === "songs") {
+      this.layoutControls(this.body);
+      addClear(this.body.querySelector<HTMLElement>(".mw-cloud__layouts")!);
+      this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return;
+    }
     const grid = this.cardContainer(this.body);
+    addClear(this.body.querySelector<HTMLElement>(".mw-cloud__layouts")!);
     for (const entry of entries) {
       const meta = entry.collection!, card = grid.createDiv({ cls: "mw-history-card" });
       const button = this.card(card, meta.name, meta.artist, meta.cover);
       button.addEventListener("click", () => void this.showCollection(meta));
-      svgAction(card, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(scope, kind, entry.id)).dataset.historyDelete = String(entry.id);
+      const actions = card.createDiv({cls:"mw-cloud__actions"});
+      const historyActions = () => kind === "albums" ? this.albumActions({albumId:meta.albumId,name:meta.name,artist:meta.artist,cover:meta.cover,trackCount:meta.trackCount}) : this.playlistActions({id:meta.playlistId || 0,name:meta.name,creator:meta.artist,cover:meta.cover,count:meta.trackCount,owner:0,special:0});
+      const menu = this.context(card, historyActions);
+      svgAction(actions, "play", t("panel.play"), () => this.play(meta, 0));
+      const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r=more.getBoundingClientRect(); menu.open(r.right,r.bottom); });
+      svgAction(actions, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(scope, kind, entry.id)).dataset.historyDelete = String(entry.id);
     }
   }
   clearStatsMemory(): void { this.statsCache.clear(); this.resetCardStats(); }
@@ -407,6 +419,8 @@ export class MusicLibraryView extends ItemView {
     info.createEl("h3", { text: collection.name });
     info.createDiv({ cls: "mw-cloud__summary", text: collectionSummary(collection) });
     svgAction(head, "play", t("panel.play"), () => this.play(collection, 0));
+    svgAction(head, "link", t("libraryDetails.copyLink"), () => this.copy(collection.playlistId ? "playlist" : "album", collection.playlistId || collection.albumId));
+    if (collection.albumId > 0 && !collection.playlistId) svgAction(head, "folder-plus", t("library.addToWall"), () => this.plugin.addLibraryAlbum(collection));
     svgAction(head, "list-plus", t(this.albumItem ? "queue.add" : "queue.addPlaylist"), async () => {
       if (!(await this.authorizeInternal())) return;
       if (this.albumItem) await this.plugin.enqueueAlbum(collection);
@@ -481,10 +495,13 @@ export class MusicLibraryView extends ItemView {
     if (tab === "home" || tab === "history" || (tab === "search" && !this.keyword) || (!cookie && tab !== "search")) { ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
     if (tab === "search") {
       const offset = more ? this.offset + 30 : 0, kind = this.searchKind, keyword = this.keyword;
-      return this.request(() => this.plugin.libraryApi.searchContent(keyword, kind, cookie, offset), result => {
+      const scroll = more ? this.body.scrollTop : 0;
+      await this.request(() => this.plugin.libraryApi.searchContent(keyword, kind, cookie, offset), result => {
         this.results = more ? { more: result.more, songs: [...this.results.songs, ...result.songs], artists: [...this.results.artists, ...result.artists], albums: [...this.results.albums, ...result.albums], playlists: [...this.results.playlists, ...result.playlists] } : result;
         this.offset = offset;
       }, () => this.loadContent(more));
+      if (more) this.body.scrollTop = scroll;
+      return;
     }
     const uid = Number(this.plugin.settings.neteaseUserId);
     if (!(uid > 0)) { this.loading = false; this.retry = () => this.signIn(); this.render(); return; }
@@ -512,9 +529,11 @@ export class MusicLibraryView extends ItemView {
   private async loadArtistAlbums(): Promise<void> {
     const artist = this.artist; if (!artist) return;
     const offset = this.artistOffset + 30;
-    return this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, offset), page => {
+    const scroll = this.body.scrollTop;
+    await this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, offset), page => {
       this.artist = { ...artist, albums: [...artist.albums, ...page.albums], more: page.more }; this.artistOffset = offset;
     }, () => this.loadArtistAlbums());
+    this.body.scrollTop = scroll;
   }
   private clearMenus(): void { this.menuCleanups.splice(0).forEach(cleanup => cleanup()); }
   private context(host: HTMLElement, actions: () => LibraryMenuAction[]) {
@@ -538,7 +557,7 @@ export class MusicLibraryView extends ItemView {
     const artists = [...new Map(refs.filter(a => a.id > 0).map(a => [a.id, a])).values()];
     if (artists.length === 1) await this.openArtist({ ...artists[0], cover: "" });
     else if (artists.length > 1) {
-      this.artistPicker?.close(); this.artistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "mic" })), index => {
+      this.artistPicker?.close(); this.artistPicker = new PickerModal(this.app, t("libraryDetails.chooseArtist"), artists.map(a => ({ label: a.name, icon: "user-round" })), index => {
         if (this.current(token, cookie)) void this.openArtist({ ...artists[index], cover: "" });
       }); this.artistPicker.open();
     }
@@ -551,7 +570,7 @@ export class MusicLibraryView extends ItemView {
       { label: t("panel.play"), icon: "play", run: () => collection ? this.play(collection, index) : this.single(track, true) },
       { label: t("library.playNext"), icon: "list-plus", run: () => this.single(track, false) },
       { label: t("libraryDetails.viewAlbum"), icon: "disc", run: () => this.trackAlbum(track, collection) },
-      { label: t("libraryDetails.viewArtist"), icon: "mic", run: () => this.trackArtist(track) },
+      { label: t("libraryDetails.viewArtist"), icon: "user-round", run: () => this.trackArtist(track) },
       { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("song", track.id) },
     ];
   }
@@ -581,7 +600,7 @@ export class MusicLibraryView extends ItemView {
   }
   private artistActions(artist: CloudArtist): LibraryMenuAction[] {
     return [
-      { label: t("libraryDetails.viewDetails"), icon: "mic", run: () => this.openArtist(artist) },
+      { label: t("libraryDetails.viewDetails"), icon: "user-round", run: () => this.openArtist(artist) },
       { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("artist", artist.id) },
     ];
   }

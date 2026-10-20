@@ -33,7 +33,7 @@ export class PlayerLyrics {
     this.translate = svgAction(bar, "languages", t("lyrics.translation"), async () => {
       this.plugin.settings.lyricsTranslation = !this.plugin.settings.lyricsTranslation;
       this.updateTranslation(); this.updateActive(true); await this.plugin.saveData(this.plugin.settings);
-    }, true);
+    }, false);
     this.viewport = root.createDiv({ cls: "mw-lyrics__viewport", attr: { tabindex: "0" } });
     this.track = this.viewport.createDiv({ cls: "mw-lyrics__track" });
     this.retry = svgAction(root, "refresh-cw", t("library.retry"), () => this.load(true), true); this.retry.addClass("is-hidden");

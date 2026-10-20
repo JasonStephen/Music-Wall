@@ -137,7 +137,7 @@ export const zhTW: typeof zhCN = {
       "collapseNav": "收起側邊欄",
       "closeNav": "關閉側邊欄"
   },
-  queue: {"add":"加入專輯佇列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌單播放","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
+  queue: {"switchCurrent": "切換到目前隊列", "clearSongs": "清空歌曲列表", "removeSong": "移出歌曲列表", "add":"加入專輯佇列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌曲列表","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
   labels: {
     style: {
       vinyl: "黑膠",
@@ -635,6 +635,7 @@ export const zhTW: typeof zhCN = {
   },
 
   player: {
+    menu: "更多操作", viewArtist: "查看藝術家", viewAlbum: "查看專輯", viewSource: "查看來源",
     displayName: "音樂播放器",
     styleBg: "樣式與背景",
     style: "樣式",

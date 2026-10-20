@@ -48,6 +48,9 @@ export class InternalPlayer implements NowPlayingProvider {
   albumQueue: AlbumQueueEntry[] = [];
   currentEntryId = "";
   queuedPlaylist: AlbumMeta | null = null;
+  /** Independent song list; never aliases an album queue entry. */
+  songQueue: AlbumTrackSnapshot[] = [];
+  private prioritySongs: number[] = [];
   private savedPlaylist: { index: number; positionMs: number } | null = null;
   private entrySerial = 0;
   private savedAlbum: { id: string; index: number; positionMs: number } | null = null;
@@ -115,24 +118,25 @@ export class InternalPlayer implements NowPlayingProvider {
     if (!entry) return false;
     if (this.contentKind === "playlist" && this.album) { this.queuedPlaylist = this.album; this.savedPlaylist = { index: this.index, positionMs: this.state.positionMs }; }
     this.contentKind = "album"; if (this.order === "shuffle") this.order = "order";
-    this.priorityNext = []; this.currentEntryId = id; ++this.revision; this.album = entry.album; this.resetRandom();
+    this.priorityNext = []; this.prioritySongs = []; this.currentEntryId = id; ++this.revision; this.album = entry.album; this.songQueue = entry.album.tracks?.map(track => ({...track})) || []; this.resetRandom();
     const saved = this.savedAlbum?.id === id ? this.savedAlbum : null; this.savedAlbum = null;
     return this.select(saved?.index || 0, saved ? { positionMs: saved.positionMs, playing: true } : undefined);
   }
   async playPlaylist(collection: AlbumMeta, index = 0, restore?: { positionMs: number; playing: boolean }): Promise<boolean> {
     if (!collection.tracks?.length || index < 0 || index >= collection.tracks.length) return false;
     if (this.contentKind === "album" && this.album) this.savedAlbum = { id: this.currentEntryId, index: this.index, positionMs: this.state.positionMs };
-    this.priorityNext = []; this.contentKind = "playlist"; ++this.revision; this.album = { ...collection, tracks: collection.tracks.map(track => ({ ...track })) };
+    this.priorityNext = []; this.prioritySongs = []; this.contentKind = "playlist"; ++this.revision; this.album = { ...collection, tracks: collection.tracks.map(track => ({ ...track })) };
+    this.songQueue = this.album.tracks?.map(track => ({...track})) || [];
     this.queuedPlaylist = this.album; this.savedPlaylist = null;
     this.resetRandom(); return this.select(index, restore);
   }
   enqueuePlaylist(collection: AlbumMeta): number {
     if (!collection.tracks?.length) return 0;
-    const current = this.queuedPlaylist;
-    const seen = new Set(current?.tracks?.map(track => track.id));
-    const added = collection.tracks.filter(track => !seen.has(track.id)).map(track => ({ ...track }));
+    const seen = new Set(this.songQueue.map(track => track.id));
+    const added = collection.tracks.filter(track => !seen.has(track.id)).map(track => ({...track}));
     if (!added.length) return 0;
-    this.queuedPlaylist = current ? { ...current, name: t("queue.playlistQueue"), tracks: [...current.tracks || [], ...added], trackCount: (current.tracks?.length || 0) + added.length } : { ...collection, tracks: added, trackCount: added.length };
+    this.songQueue = [...this.songQueue, ...added];
+    this.queuedPlaylist = { ...collection, name: t("queue.playlistQueue"), tracks: this.songQueue.map(track => ({...track})), trackCount: this.songQueue.length };
     if (this.contentKind === "playlist") { ++this.revision; this.album = this.queuedPlaylist; this.randomBag = []; }
     this.emit();
     if (!this.album) void this.playPlaylist(this.queuedPlaylist);
@@ -143,27 +147,40 @@ export class InternalPlayer implements NowPlayingProvider {
     if (!playlist) return false;
     return this.playPlaylist(playlist, saved?.index || 0, saved ? { positionMs: saved.positionMs, playing: true } : undefined);
   }
-  /** Only player-owned snapshots change: source walls and account playlists stay untouched. */
+  /** Single tracks live in their own queue and never mutate an album queue. */
   async insertTrack(track: AlbumTrackSnapshot, playNow = false): Promise<boolean> {
     if (!(track.id > 0)) return false;
-    if (!this.album?.tracks?.length) return this.playPlaylist({ albumId: 0, name: t("queue.playlistQueue"), artist: "", cover: track.cover || "", trackCount: 1, tracks: [track] });
-    const target = Math.max(0, this.index + 1);
-    // Mutate the owned array so an in-flight loader sees inserted songs as well.
-    this.album.tracks.splice(target, 0, { ...track }); this.album.trackCount = this.album.tracks.length;
-    const shift = (index: number) => index >= target ? index + 1 : index;
-    this.history = this.history.map(shift); this.randomBag = this.randomBag.map(shift);
-    this.skipped = new Set([...this.skipped].map(shift));
-    this.priorityNext = [target, ...this.priorityNext.map(shift)];
-    ++this.revision; this.emit();
-    return playNow ? this.playInserted(target) : true;
-  }
-  private playInserted(index: number): Promise<boolean> {
-    if (this.order === "shuffle") {
-      this.history = this.history.slice(0, this.historyIndex + 1); this.history.push(index); this.historyIndex = this.history.length - 1;
-      this.randomBag = this.randomBag.filter(candidate => candidate !== index);
+    let index = this.songQueue.findIndex(item => item.id === track.id);
+    if (index < 0) {
+      const target = this.album ? Math.min(this.songQueue.length, Math.max(0, this.index + 1)) : this.songQueue.length;
+      this.songQueue.splice(target, 0, {...track}); index = target;
     }
-    return this.loadTrack(index);
+    if (playNow) {
+      const collection: AlbumMeta = { albumId: 0, name: track.name, artist: track.artists || "", cover: track.cover || "", trackCount: this.songQueue.length, tracks: this.songQueue.map(item => ({...item})) };
+      return this.playPlaylist(collection, index);
+    }
+    this.prioritySongs = this.prioritySongs.filter(id => id !== track.id); this.prioritySongs.push(track.id);
+    ++this.revision; this.emit(); return true;
   }
+  async removeSong(id: number): Promise<void> {
+    const index = this.songQueue.findIndex(track => track.id === id); if (index < 0) return;
+    this.songQueue.splice(index, 1); this.prioritySongs = this.prioritySongs.filter(songId => songId !== id);
+    if (this.contentKind === "playlist" && this.album?.albumId === 0) {
+      const currentId = this.album.tracks?.[this.index]?.id;
+      if (currentId === id) { if (this.songQueue.length) await this.playPlaylist({...this.album, tracks:this.songQueue.map(track=>({...track})), trackCount:this.songQueue.length}, Math.min(index, this.songQueue.length-1)); else this.stop(false); return; }
+      this.album = {...this.album, tracks:this.songQueue.map(track=>({...track})), trackCount:this.songQueue.length};
+      this.index = Math.min(this.index, Math.max(0, (this.album.tracks?.length || 1)-1));
+    }
+    ++this.revision; this.emit();
+  }
+  clearSongQueue(): void {
+    this.songQueue = []; this.prioritySongs = []; this.queuedPlaylist = null; this.savedPlaylist = null;
+    if (this.contentKind === "playlist" && this.album?.albumId === 0) this.stop(false);
+    else { ++this.revision; this.emit(); }
+  }
+
+  private playInserted(index: number): Promise<boolean> { return this.loadTrack(index); }
+
   async select(index: number, restore?: { positionMs: number; playing: boolean }): Promise<boolean> {
     if (this.order === "shuffle" && !restore) { this.history = [index]; this.historyIndex = 0; this.randomBag = []; }
     return this.loadTrack(index, restore);
@@ -172,6 +189,10 @@ export class InternalPlayer implements NowPlayingProvider {
     const tracks = this.album?.tracks || [];
     if (!tracks.length) return false;
     if (this.priorityNext.length) return this.playInserted(this.priorityNext[0]);
+    if (this.prioritySongs.length) {
+      const id = this.prioritySongs.shift()!, index = this.songQueue.findIndex(track => track.id === id);
+      if (index >= 0) return this.playPlaylist({ albumId: 0, name: this.songQueue[index].name, artist: this.songQueue[index].artists || "", cover: this.songQueue[index].cover || "", trackCount: this.songQueue.length, tracks: this.songQueue.map(track => ({...track})) }, index);
+    }
     if (automatic && this.order === "one") return this.loadTrack(this.index);
     if (this.order === "shuffle" && this.contentKind === "playlist") {
       if (this.historyIndex + 1 < this.history.length) return this.loadTrack(this.history[++this.historyIndex]);
@@ -225,7 +246,7 @@ export class InternalPlayer implements NowPlayingProvider {
     this.loadingAbort?.abort(); this.cancelPrefetch();
     this.release();
     if (clearQueues) { this.queuedPlaylist = null; this.savedPlaylist = null; }
-    this.priorityNext = []; this.albumQueue = []; this.currentEntryId = ""; this.savedAlbum = null; this.contentKind = "album";
+    this.priorityNext = []; this.prioritySongs = []; this.songQueue = []; this.albumQueue = []; this.currentEntryId = ""; this.savedAlbum = null; this.contentKind = "album";
     if (this.order === "shuffle") this.order = "order"; this.resetRandom();
     ++this.revision; this.album = null; this.index = -1; this.loading = false;
     this.trial = false; this.error = ""; this.phase = "none";
@@ -297,7 +318,8 @@ export class InternalPlayer implements NowPlayingProvider {
     if (!Number.isInteger(index) || index < 0 || index >= album.tracks.length) return false;
     if (this.contentKind === "playlist" && this.album) { this.queuedPlaylist = this.album; this.savedPlaylist = { index: this.index, positionMs: this.state.positionMs }; }
     this.contentKind = "album"; if (this.order === "shuffle") this.order = "order";
-    this.priorityNext = []; ++this.revision; this.album = { ...album, tracks: album.tracks.map((track) => ({ ...track })) };
+    this.priorityNext = []; this.prioritySongs = []; ++this.revision; this.album = { ...album, tracks: album.tracks.map((track) => ({ ...track })) };
+    this.songQueue = this.album.tracks?.map(track => ({...track})) || [];
     this.currentEntryId = String(++this.entrySerial); this.albumQueue = [{ id: this.currentEntryId, album: this.album }]; this.savedAlbum = null; this.resetRandom();
     return this.select(index);
   }
