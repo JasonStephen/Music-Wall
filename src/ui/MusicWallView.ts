@@ -549,6 +549,8 @@ export class MusicWallView extends FileView implements WallHost {
     });
     return wrap(this.plugin.getPlaybackDeps());
   }
+  get historyStore() { return this.plugin.historyStore; }
+  historyScope(): string { return this.plugin.historyScope(); }
   private albumPanelNavigation(): import("./AlbumPanelModal").AlbumPanelNavigation {
     return {
       openAlbum: meta => this.plugin.openLibraryCollection(meta),
@@ -788,7 +790,7 @@ export class MusicWallView extends FileView implements WallHost {
       });
     }
     this.renderGrid(grid);
-    this.miniPlayer = new MiniPlayer(box, this.plugin);
+    this.miniPlayer = new MiniPlayer(box, this.plugin, () => this.app.workspace?.activeLeaf === this.leaf);
     grid.scrollTop = prevScroll;
     if (layout === "shelf") {
       // 开盒详情 overlay（懒填充）：点唱片推镜放大后绕书脊 3D 翻开。

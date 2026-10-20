@@ -1,3 +1,4 @@
+import { verifyMiniKeyboard } from "./mini-keyboard-check";
 import { verifyHiddenZoom } from "./hidden-zoom-ui";
 import { MusicLibraryView } from '../src/ui/MusicLibraryView';
 import { InternalPlayer } from '../src/core/internalPlayer';
@@ -5,6 +6,7 @@ import { AlbumSearchPanel } from '../src/ui/AlbumSearchPanel';
 import { setLanguage, t } from '../src/i18n';
 import { collectionSummary, statsSummary } from '../src/ui/collectionSummary';
 import { CollectionStatsCache } from '../src/core/collectionStatsCache';
+import { HistoryStore } from '../src/core/history';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { WorkspaceLeaf, installDomHelpers, probeCoverUri, MENU_LOG } from './obsidian-shim';
 installDomHelpers();
@@ -27,8 +29,10 @@ let dispose=async()=>{};
  let throwError=config.page==='error',blocked:((value:any)=>void)|null=null,apiCalls=0,wallAdded=0,tabTitle='';
  const searchCalls:any[]=[];
  const engine=new InternalPlayer({resolve:async()=>({url:'x',quality:'standard',trial:false}),load:async()=>new Blob(['x']),audio:()=>new TestAudio() as never,notice(){}});
+ let historyDisk='';const historyStore=new HistoryStore({exists:async()=>!!historyDisk,read:async()=>historyDisk,write:async(_,value)=>{historyDisk=value;}},'history');await historyStore.ready();
  if(config.playing)await engine.playPlaylist(collection);
  const plugin:any={settings:{...DEFAULT_SETTINGS,neteaseCookie:config.page==='signedout'?'':'test-cookie',neteaseUserId:'42',neteaseNickname:'Music Wall 用户',zoomScale:config.zoom||1},
+  historyStore,historyScope(){return this.settings.neteaseUserId||'guest';},
   internalPlayer:engine,nowPlaying:engine,async ensureNeteaseLogin(){return !!this.settings.neteaseCookie;},async openPlayerView(){},saveZoom(){},
   getPlaybackDeps(){return {isCurrent:()=>true,playInside:(meta:any)=>engine.playAlbum(meta)};},async fetchAlbumDetail(id:number){return {...(albums.find(a=>a.albumId===id)||albums[0]),albumId:id,trackCount:3,tracks:tracks.slice(0,3)};},async enqueueAlbum(meta:any){engine.enqueueAlbum(meta);},addLibraryAlbum(){wallAdded++;},
   libraryApi:{clear(){},async userPlaylists(){apiCalls++;if(throwError)throw Error();return config.page==='empty'?[]:items;},
@@ -36,7 +40,7 @@ let dispose=async()=>{};
    async artistDetail(artist:any){return {artist,tracks:tracks.slice(0,3),albums,more:true};},async artistAlbums(){return {albums,more:false};},
    async playlistStats(){return {count:24,duration:6240000};},async songs(ids:number[]){return tracks.filter(track=>ids.includes(track.id));},async liked(){return collection;},async detail(){if(config.stale)return new Promise(resolve=>{blocked=resolve;});return collection;}}
  };
- const leaf:any=new WorkspaceLeaf({});const view=new MusicLibraryView(leaf,plugin);leaf.updateHeader=()=>{tabTitle=view.getDisplayText();};
+ const leaf:any=new WorkspaceLeaf({workspace:{activeLeaf:null}});const view=new MusicLibraryView(leaf,plugin);leaf.updateHeader=()=>{tabTitle=view.getDisplayText();};
  mount.appendChild(view.contentEl);await view.onOpen();const v=view as any;
  check(apiCalls===0&&view.getDisplayText()===t('library.home'),'Opening goes home without fetching private playlists');
  check(plugin.settings.libraryAppearance==='system'&&view.contentEl.dataset.libraryTheme===(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),'library defaults to actual system appearance');
@@ -58,7 +62,7 @@ let dispose=async()=>{};
  const overlay=root.querySelector<HTMLButtonElement>('.mw-cloud__overlay')!,menu=root.querySelector<HTMLButtonElement>('.mw-cloud__menu')!;
  check(getComputedStyle(overlay).display==='none'&&overlay.getClientRects().length===0,'Closed drawer overlay is invisible and takes no space');
  check(v.narrow?getComputedStyle(menu).display!=='none':getComputedStyle(menu).display==='none','Header drawer button appears only in narrow layout');
- check([...sidebar.querySelectorAll<HTMLButtonElement>('[data-section]')].map(b=>b.dataset.section).join(',')==='search,likes,created,collected','Sidebar order matches requested sections');
+ check([...sidebar.querySelectorAll<HTMLButtonElement>('[data-section]')].map(b=>b.dataset.section).join(',')==='search,likes,created,collected,history','Sidebar order matches requested sections');
  for(const icon of root.querySelectorAll<HTMLElement>('.mw-svg-action')){
   check(!!icon.querySelector('svg'),'Each new action has an SVG');const svg=icon.querySelector('svg')!;
   if(icon.getClientRects().length){const r=svg.getBoundingClientRect();check(r.width>=17*(config.zoom||1)&&r.height>=17*(config.zoom||1),'Tablet styles cannot shrink SVG actions');}
@@ -286,6 +290,42 @@ let dispose=async()=>{};
   let release:any;plugin.libraryApi.searchContent=()=>new Promise(resolve=>release=resolve);v.keyword='pending';await v.navigate('home');const searching=v.navigate('search');await wait(0);await v.navigate('home');release({songs:tracks,artists:[],albums:[],playlists:[],more:false});await searching;
   return accountSafe&&!!root.querySelector('.mw-cloud__home')&&!root.querySelector('.mw-cloud__track');
  };
+ (window as any).verifyMiniKeyboard=()=>verifyMiniKeyboard(root,plugin,active=>{(view.app as any).workspace.activeLeaf=active?leaf:null;});
  (window as any).verifyHiddenZoom=()=>verifyHiddenZoom(root,scale=>{plugin.settings.zoomScale=scale;view.syncZoomBox();});
+ (window as any).verifyHistoryUI=async()=>{
+  let checks=0;const fail:string[]=[];const expect=(value:unknown,label:string)=>{checks++;if(!value)fail.push(label);};
+  await historyStore.record('42','songs',tracks[0]);await historyStore.record('42','songs',tracks[1]);
+  await historyStore.record('42','albums',{...albums[0]});await historyStore.record('42','playlists',collection);
+  await v.navigate('history');
+  expect(root.querySelectorAll('[data-history-kind]').length===3&&root.querySelectorAll('[data-history-delete]').length===2,'history has three categories and individual song deletion');
+  expect(root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,'history fits narrow panes');
+  root.querySelector<HTMLButtonElement>('[data-history-delete="1"]')!.click();await wait();expect(historyStore.list('42','songs').length===1,'song deletion updates store and UI');
+  root.querySelector<HTMLButtonElement>('[data-history-kind="albums"]')!.click();await wait();
+  expect(root.querySelectorAll('.mw-history-card').length===1,'album history renders metadata cards');
+  root.querySelector<HTMLButtonElement>('.mw-cloud__tabs button:last-child')!.click();await wait();
+  expect(historyStore.list('42','albums').length===1,'clear history requires confirmation');
+  document.querySelector<HTMLButtonElement>('.mw-confirm .mod-warning')!.click();await wait();
+  expect(historyStore.list('42','albums').length===0&&historyStore.list('42','playlists').length===1&&historyStore.list('42','songs').length===1,'category clearing preserves other histories');
+  await v.navigate('home');const input=root.querySelector<HTMLInputElement>('form input')!;input.value='Search history probe';input.closest('form')!.requestSubmit();await wait();
+  expect(historyStore.searches('42','library')[0]==='Search history probe','submitted search is persisted');
+  const current=root.querySelector<HTMLInputElement>('form input')!;current.focus();await wait();
+  expect(!root.querySelector<HTMLElement>('.mw-search-history')!.hidden,'search input shows recent queries');
+  root.querySelector<HTMLButtonElement>('.mw-search-history__row button:last-child')!.click();await wait();expect(historyStore.searches('42','library').length===0,'one search history entry can be deleted');
+  expect(!root.textContent?.includes('queue.add'),'no raw album-queue localization key is shown');
+  await historyStore.search('42','wall','Wall album keyword');
+  const wallHost=document.createElement('div');wallHost.className='mw-view';mount.append(wallHost);
+  const wallPanel=new AlbumSearchPanel({historyStore,historyScope:()=> '42',searchAlbums:async()=>albums,fetchAlbumDetail:plugin.fetchAlbumDetail,getExistingIds:()=>new Set(),addAlbum(){},confirmAdd(){}});
+  wallPanel.mount(wallHost);const wallInput=wallHost.querySelector<HTMLInputElement>('input')!;wallInput.focus();await wait();
+  expect(wallHost.querySelector('.mw-search-history__pick')?.textContent==='Wall album keyword','wall search has an independent search history');
+  wallHost.querySelector<HTMLButtonElement>('.mw-search-history__pick')!.click();await wait();
+  expect(wallHost.querySelector<HTMLElement>('.mw-search-history')!.hidden&&!!wallHost.querySelector('.mw-search-row'),'submitting wall history dismisses suggestions and searches');
+  let copied='';const originalClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard');Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{copied=value;}}});
+  wallHost.querySelector('.mw-search-row')!.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}));
+  const copy=MENU_LOG.at(-1)!.items.find(item=>item.title===t('libraryDetails.copyLink'));await copy?.run?.();await wait();
+  expect(copied===`https://music.163.com/album?id=${albums[0].albumId}`,'wall album search context menu copies correct album URL');
+  if(originalClipboard)Object.defineProperty(navigator,'clipboard',originalClipboard);else delete (navigator as any).clipboard;
+  wallPanel.dispose();wallHost.remove();
+  return {checks,fail};
+ };
  dispose=async()=>{engine.stop();await view.onClose();};return {checks,fail};
 };

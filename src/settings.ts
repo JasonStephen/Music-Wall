@@ -18,6 +18,8 @@ import {
   type LanguagePref,
 } from "./i18n";
 import { ALL_STYLES } from "./ui/disc";
+import { ConfirmModal } from "./ui/ConfirmModal";
+import { coverToneCacheCount, coverToneCacheUsage } from "./ui/accent";
 import { hasLoginCookie } from "./core/playlist";
 
 export class MusicWallSettingTab extends PluginSettingTab {
@@ -41,7 +43,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
     containerEl.addClass("mw-settings");
     const tabs = containerEl.createDiv({ cls: "mw-settings__tabs", attr: { role: "tablist", "aria-label": t("settingsCategories.title") } });
     const panel = containerEl.createDiv({ cls: "mw-settings__panel", attr: { role: "tabpanel", id: "mw-settings-panel", "aria-labelledby": `mw-settings-tab-${this.activeTab}` } });
-    const keys = ["general", "wall", "player", "account", "sync"] as const;
+    const keys = ["general", "wall", "player", "cache", "account", "sync"] as const;
     for (const key of keys) {
       const selected = key === this.activeTab;
       const button = tabs.createEl("button", { cls: "mw-settings__tab", attr: { type: "button", role: "tab", id: `mw-settings-tab-${key}`, "aria-controls": "mw-settings-panel", "aria-selected": String(selected), tabindex: selected ? "0" : "-1" } });
@@ -58,6 +60,47 @@ export class MusicWallSettingTab extends PluginSettingTab {
     }
     this.renderCategory(panel, generation);
     containerEl.scrollTop = this.scrollPositions[this.activeTab] || 0;
+  }
+
+  private renderCacheManagement(container: HTMLElement, generation: number): void {
+    const format = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+    const run = async (kind: "audio" | "lyrics" | "stats" | "cover" | "playback" | "search" | "all") => {
+      try {
+        if (kind === "audio") await this.plugin.audioTransport?.clear();
+        else await this.plugin.clearManagedCache(kind);
+        new Notice(t("cacheManager.done")); this.display();
+      } catch { new Notice(t("cacheManager.failed")); }
+    };
+    const summary = new Setting(container).setName(t("cacheManager.total")).setDesc("—").addButton(button => button.setButtonText(t("cacheManager.all")).onClick(() => {
+      new ConfirmModal(this.app, {title:t("cacheManager.all"),message:t("cacheManager.confirm"),details:[t("cacheManager.warning")],danger:true,confirmText:t("cacheManager.all"),onConfirm:()=>{ void run("all"); }}).open();
+    }));
+    summary.settingEl.addClass("mw-cache-summary");
+    const rows = new Map<string, Setting>();
+    for (const kind of ["audio", "lyrics", "stats", "cover", "playback", "search"] as const) {
+      const row = new Setting(container).setName(t(`cacheManager.${kind}`)).setDesc("—").addButton(button => {
+        const el = button.buttonEl;
+        el.setAttribute("aria-label", `${t("cacheManager.clear")} · ${t(`cacheManager.${kind}`)}`);
+        button.setTooltip(kind === "cover" ? t("cacheManager.coverDesc", {count: coverToneCacheCount()}) : t("cacheManager.clear"));
+        el.addClass("mw-cache-trash");
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("width", "18"); svg.setAttribute("height", "18"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"); svg.appendChild(path); el.appendChild(svg);
+        button.setDisabled(kind === "audio" && !this.plugin.audioTransport?.supported).onClick(async () => {
+          if (kind === "playback" || kind === "search") new ConfirmModal(this.app, {title:t(`cacheManager.${kind}`),message:t("cacheManager.historyDesc"),danger:true,onConfirm:()=>{ void run(kind); }}).open();
+          else { button.setDisabled(true); await run(kind); if (generation === this.displayGeneration) button.setDisabled(false); }
+        });
+      });
+      row.settingEl.addClass("mw-cache-item"); rows.set(kind, row);
+    }
+    const update = async () => {
+      const audio = this.plugin.audioTransport?.supported ? await this.plugin.audioTransport.usage() : 0;
+      if (generation !== this.displayGeneration) return;
+      const sizes = {audio, lyrics:this.plugin.lyrics?.usage() || 0, stats:this.plugin.collectionStatsCache?.usage() || 0, cover:coverToneCacheUsage(), playback:this.plugin.historyStore?.usage("playback") || 0, search:this.plugin.historyStore?.usage("search") || 0};
+      summary.setDesc(format(Object.values(sizes).reduce((a,b)=>a+b,0)));
+      for (const [kind, size] of Object.entries(sizes)) rows.get(kind)?.setDesc(kind === "audio" ? format(size) : t("cacheManager.estimated", {size:format(size)}));
+    };
+    void update().catch(() => {});
+    this.usageTimer = setInterval(() => { void update().catch(() => {}); }, 2000);
   }
 
   private selectTab(key: SettingsCategory): void {
@@ -212,8 +255,11 @@ export class MusicWallSettingTab extends PluginSettingTab {
           this.plugin.refreshOpenViews();
         })
       );
+    }
+
+    if (this.activeTab === "cache") {
     if (this.plugin.audioTransport?.supported) {
-      containerEl.createEl("h3", { text: t("settingsCategories.cache") });
+      containerEl.createEl("h3", { text: t("cacheManager.audio") });
       let updateUsage = async () => {};
       const capacity = new Setting(containerEl).setName(t("buffering.cacheLimit")).addText(input => {
         input.inputEl.type = "number"; input.inputEl.min = "0"; input.inputEl.max = "65536"; input.inputEl.step = "128";
@@ -223,20 +269,9 @@ export class MusicWallSettingTab extends PluginSettingTab {
         });
       });
       capacity.settingEl?.addClass("mw-audio-setting");
-      const cache = new Setting(containerEl).setName(t("buffering.cacheUsed"));
-      cache.settingEl?.addClass("mw-audio-setting");
-      const update = async () => { const size = await this.plugin.audioTransport?.usage() || 0; if (generation === this.displayGeneration) cache.setDesc(`${(size / 1024 / 1024).toFixed(1)} MB`); };
-      updateUsage = update;
-      void update().catch(() => cache.setDesc("—"));
-      this.usageTimer = setInterval(() => { void update().catch(() => {}); }, 2000);
-      cache.addButton(button => button.setButtonText(t("buffering.clearCache")).onClick(async () => {
-        button.setDisabled(true);
-        try { await this.plugin.audioTransport?.clear(); await update(); }
-        catch { new Notice(t("buffering.cacheError")); }
-        finally { button.setDisabled(false); }
-      }));
+      updateUsage = async () => { if (generation === this.displayGeneration) this.display(); };
     }
-
+      this.renderCacheManagement(containerEl, generation);
     }
     if (this.activeTab === "account") {
       const hasLogin = hasLoginCookie(this.plugin.settings.neteaseCookie);
@@ -348,12 +383,13 @@ export class MusicWallSettingTab extends PluginSettingTab {
   }
 }
 
-type SettingsCategory = "general" | "wall" | "player" | "account" | "sync";
+type SettingsCategory = "general" | "wall" | "player" | "cache" | "account" | "sync";
 const SETTINGS_ICONS: Record<SettingsCategory, string[]> = {
   general: ["M4 6h16M4 12h16M4 18h16", "M8 3v6M16 9v6M10 15v6"],
   wall: ["M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z", "M6 6h1M17 6h1M6 17h1M17 17h1"],
   player: ["M9 5v14l11-7z", "M3 8v8"],
   account: ["M15.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0", "M4 21v-2a8 8 0 0 1 16 0v2"],
+  cache: ["M4 6c0-4 16-4 16 0s-16 4-16 0", "M4 6v12c0 4 16 4 16 0V6M4 12c0 4 16 4 16 0"],
   sync: ["M20 9a8 8 0 0 0-14-4L3 8m0-5v5h5", "M4 15a8 8 0 0 0 14 4l3-3m0 5v-5h-5"],
 };
 function settingsIcon(host: HTMLElement, category: SettingsCategory): void {

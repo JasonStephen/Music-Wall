@@ -25,6 +25,10 @@ const OUT_MIN_L = 0.36;
 const OUT_MAX_L = 0.62;
 
 /** url → 采样结果（失败也缓存，避免反复请求） */
+let cacheEpoch = 0;
+export function clearCoverToneCache(): void { cacheEpoch++; cache.clear(); inflight.clear(); }
+export function coverToneCacheCount(): number { return cache.size; }
+export function coverToneCacheUsage(): number { return cache.size ? new TextEncoder().encode(JSON.stringify([...cache])).byteLength : 0; }
 const cache = new Map<string, CoverTone>();
 /** 同一 URL 的并发请求合并 */
 const inflight = new Map<string, Promise<CoverTone>>();
@@ -136,11 +140,11 @@ export async function coverTone(url: string): Promise<CoverTone> {
   if (hit) return hit;
   const running = inflight.get(key);
   if (running) return running;
+  const epoch = cacheEpoch;
   const task = extract(key)
     .catch(() => EMPTY_TONE)
     .then((tone) => {
-      cache.set(key, tone);
-      inflight.delete(key);
+      if (epoch === cacheEpoch) { cache.set(key, tone); inflight.delete(key); }
       return tone;
     });
   inflight.set(key, task);

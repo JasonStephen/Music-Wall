@@ -1,0 +1,24 @@
+const assert = require('node:assert/strict'), {buildSync} = require('esbuild');
+const output = buildSync({entryPoints:['src/core/history.ts'],bundle:true,platform:'node',format:'cjs',write:false});
+const mod={exports:{}};new Function('module','exports',output.outputFiles[0].text)(mod,mod.exports);
+const {HistoryStore}=mod.exports;
+(async()=>{
+ let disk='';const storage={exists:async()=>!!disk,read:async()=>disk,write:async(_,value)=>{disk=value;}};
+ let store=new HistoryStore(storage,'history');await store.ready();
+ const song=id=>({id,name:'Song '+id,duration:1000,artists:'Artist',albumId:1,cookie:'must-not-persist'});
+ const album={albumId:1,name:'Album',artist:'Artist',cover:'',trackCount:1,tracks:[song(1)]};
+ await store.record('42','songs',song(1));await store.record('42','songs',song(2));await store.record('42','songs',song(1));
+ assert.deepEqual(store.list('42','songs').map(e=>e.id),[1,2]);assert.equal(store.list('43','songs').length,0);
+ await store.record('42','albums',album);await store.record('42','playlists',{...album,playlistId:3});
+ assert.ok(!disk.includes('must-not-persist'));assert.ok(!disk.includes('"tracks"'));
+ await store.search('42','library','one');await store.search('42','library','two');await store.search('42','library','one');
+ await store.search('42','wall','wall only');assert.deepEqual(store.searches('42','library'),['one','two']);
+ await store.remove('42','library','two');assert.deepEqual(store.searches('42','library'),['one']);
+ store=new HistoryStore(storage,'history');await store.ready();assert.deepEqual(store.list('42','songs').map(e=>e.id),[1,2]);
+ await store.clear('42','albums');assert.equal(store.list('42','albums').length,0);assert.equal(store.list('42','playlists').length,1);assert.equal(store.list('42','songs').length,2);
+ await store.clear(undefined,'search');assert.deepEqual(store.searches('42','wall'),[]);assert.equal(store.list('42','songs').length,2);
+ for(let i=1;i<=510;i++)await store.record('43','songs',song(i));assert.equal(store.list('43','songs').length,500);
+ await store.clear();const restarted=new HistoryStore(storage,'history');await restarted.ready();assert.equal(restarted.list('43','songs').length,0);assert.equal(restarted.list('42','playlists').length,0);
+ disk='{bad';await new HistoryStore(storage,'history').ready();
+ console.log('History persistence, account isolation, deduplication, category deletion, search partitions, limits, metadata sanitization and clear-all passed');
+})().catch(error=>{console.error(error);process.exitCode=1;});

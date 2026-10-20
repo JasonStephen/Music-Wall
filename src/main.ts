@@ -49,6 +49,8 @@ import { SongSourceResolver } from "./core/audioSource";
 import { isAudioQuality } from "./core/quality";
 import { AudioTransport } from "./core/audioTransport";
 import { CollectionStatsCache } from "./core/collectionStatsCache";
+import { HistoryStore } from "./core/history";
+import { clearCoverToneCache } from "./ui/accent";
 import { LyricsService } from "./core/lyrics";
 import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
 import {
@@ -68,7 +70,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.0";
+const BUILD_TAG = "1.3.1-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -85,6 +87,18 @@ export default class MusicWallPlugin extends Plugin {
   audioTransport: AudioTransport | null = null;
   libraryApi: MusicLibraryApi;
   collectionStatsCache: CollectionStatsCache;
+  historyStore: HistoryStore;
+  historyScope(): string { return this.settings.neteaseUserId || "guest"; }
+  async clearManagedCache(kind: "lyrics" | "stats" | "cover" | "playback" | "search" | "all"): Promise<void> {
+    if (kind === "lyrics" || kind === "all") await this.lyrics.clear();
+    if (kind === "stats" || kind === "all") {
+      await this.collectionStatsCache.clear();
+      for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) if (leaf.view instanceof MusicLibraryView) leaf.view.clearStatsMemory();
+    }
+    if (kind === "cover" || kind === "all") clearCoverToneCache();
+    if (kind === "playback" || kind === "search") await this.historyStore.clear(undefined, kind);
+    if (kind === "all") { await this.historyStore.clear(); await this.audioTransport?.clear(); this.audioSources?.clear(); this.libraryApi.clear(); }
+  }
   lyrics: LyricsService;
   private openingLibrary: Promise<void> | null = null;
   private playerReturn: { leaf: WorkspaceLeaf; view: unknown; restore: () => Promise<void> } | null = null;
@@ -165,6 +179,23 @@ export default class MusicWallPlugin extends Plugin {
     this.libraryApi = new MusicLibraryApi(this.requester);
     this.collectionStatsCache = new CollectionStatsCache(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/collection-stats-cache.json`);
     this.lyrics = new LyricsService(this.requester, this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/lyrics-cache.json`);
+    this.historyStore = new HistoryStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/history.json`);
+    await this.historyStore.ready();
+    let lastSong = "", lastCollection = "";
+    this.register(this.internalPlayer.on(() => {
+      const state = this.internalPlayer.state, album = this.internalPlayer.album;
+      if (!state.active || !album) { lastSong = ""; lastCollection = ""; return; }
+      if (state.status !== "playing" || !state.songId) return;
+      const scope = this.historyScope(), songKey = `${scope}/${state.songId}`;
+      const track = album.tracks?.[this.internalPlayer.index];
+      if (track && songKey !== lastSong) {
+        lastSong = songKey;
+        void this.historyStore.record(scope, "songs", { ...track, artists: track.artists || album.artist, cover: track.cover || album.cover, albumId: track.albumId || album.albumId, albumName: track.albumName || album.name }).catch(() => {});
+      }
+      const kind = this.internalPlayer.contentKind === "playlist" ? "playlists" : "albums";
+      const collectionKey = `${scope}/${kind}/${kind === "playlists" ? album.playlistId : this.internalPlayer.currentEntryId}`;
+      if (collectionKey !== lastCollection) { lastCollection = collectionKey; void this.historyStore.record(scope, kind, album).catch(() => {}); }
+    }));
 
     this.addRibbonIcon("library", t("cmd.createWall"), () => {
       void this.createNewWallCommand();
@@ -275,6 +306,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   onunload(): void {
+    void this.historyStore?.flush().catch(() => {});
     this.playerReturn = null;
     void this.collectionStatsCache?.flush();
     this.unloading = true;

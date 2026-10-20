@@ -33,6 +33,27 @@
 .mw-cloud__home h1 { margin: 0 0 24px; max-width: 100%; text-align: center; font-size: clamp(22px, 4cqw, 38px); font-weight: 600; overflow-wrap: anywhere; color: var(--mw-panel-fg); }
 .mw-cloud .mw-cloud__search { padding: 0; margin: 0 0 16px; width: 100%; min-width: 0; gap: 4px; flex-wrap: nowrap; border: 1px solid var(--mw-panel-line); border-radius: 12px; background: var(--mw-panel-bg); }
 .mw-cloud__home .mw-cloud__search { max-width: 620px; }
+/* Search suggestions belong to their input and stay independent of page navigation. */
+.mw-cloud .mw-cloud__search, .mw-search-panel__bar { position:relative; }
+.mw-search-history {
+  position:absolute; z-index:15; top:calc(100% + 5px); left:0; right:0;
+  max-height:min(320px,40vh); overflow-y:auto; min-width:0; padding:7px;
+  background:var(--mw-panel-bg,var(--background-primary)); color:var(--mw-panel-fg,var(--text-normal));
+  border:1px solid var(--mw-panel-line,var(--background-modifier-border)); border-radius:9px; box-shadow:0 8px 24px #0003;
+}
+.mw-search-history[hidden] { display:none; }
+.mw-search-history__heading { font-size:11px; color:var(--text-muted); padding:4px; }
+.mw-search-history__row { display:flex; align-items:center; min-width:0; gap:4px; }
+.mw-view .mw-search-history button.mw-search-history__pick {
+  display:block; flex:1; min-width:0; height:auto; min-height:34px; padding:6px;
+  color:inherit; background:transparent; border:0; box-shadow:none; text-align:left;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px;
+}
+.mw-view .mw-search-history button.mw-search-history__pick:hover { background:var(--mw-panel-hover); }
+.mw-history-card { position:relative; min-width:0; display:flex; flex-direction:column; gap:5px; }
+.mw-history-card > button.mw-svg-action { align-self:flex-end; }
+.mw-history-time { font-size:11px; color:var(--mw-panel-fg-dim); overflow-wrap:anywhere; }
+.mw-cloud__track-meta .mw-history-time { flex-basis:100%; }
 .mw-cloud .mw-cloud__search input { flex: 1; min-width: 0; border: 0; height: 44px; padding: 10px 12px; background: transparent; box-shadow: none; color: var(--mw-panel-fg); font-size: 14px; }
 .mw-cloud .mw-cloud__search .mw-svg-action { margin: 4px; }
 .mw-cloud .mw-cloud__tabs { padding: 0 0 16px; }

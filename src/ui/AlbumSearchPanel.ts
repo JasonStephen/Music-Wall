@@ -10,8 +10,13 @@ import { parseAlbumInput, sizedCover } from "../core/metadata";
 import { playAlbum, type PlaybackDeps } from "../core/playback";
 import { t } from "../i18n";
 import { svgAction } from "./svgAction";
+import { bindLibraryMenu } from "./libraryMenu";
+import { searchHistory } from "./searchHistory";
+import type { HistoryStore } from "../core/history";
 
 export interface WallHost {
+  historyStore?: HistoryStore;
+  historyScope?(): string;
   searchAlbums(keyword: string, offset: number): Promise<AlbumSummary[]>;
   fetchAlbumDetail(albumId: number): Promise<AlbumMeta>;
   getExistingIds(): Set<number>;
@@ -25,6 +30,8 @@ export interface WallHost {
 const PAGE = 20;
 
 export class AlbumSearchPanel {
+  private hideSearchHistory = () => {};
+  private menus: (() => void)[] = [];
   private host: WallHost;
   private keyword = "";
   private offset = 0;
@@ -53,6 +60,7 @@ export class AlbumSearchPanel {
       placeholder: t("search.inputPh"),
     });
     this.inputEl = input;
+    this.hideSearchHistory = searchHistory(input, bar, this.host.historyStore, () => this.host.historyScope?.() || "guest", "wall", keyword => { input.value = keyword; void this.doSearch(); });
     input.value = this.keyword;
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.doSearch();
@@ -97,6 +105,7 @@ export class AlbumSearchPanel {
 
   /** 面板被销毁：清掉引用，避免陈旧 DOM 被后续回调写到 */
   dispose(): void {
+    this.menus.splice(0).forEach(dispose => dispose());
     this.inputEl = null;
     this.listEl = null;
     this.statusEl = null;
@@ -105,6 +114,8 @@ export class AlbumSearchPanel {
   private async doSearch(): Promise<void> {
     const raw = this.inputEl?.value.trim() ?? "";
     if (!raw) return;
+    this.hideSearchHistory();
+    void this.host.historyStore?.search(this.host.historyScope?.() || "guest", "wall", raw).catch(() => {});
 
     // 分享链接快速路径（含 http / album?id= 的链接直接按 ID 拉取）
     // 裸 ID 不在这里拦：先当关键词搜，搜不到再兜底按 ID 取（见 loadMore）
@@ -180,6 +191,7 @@ export class AlbumSearchPanel {
   }
 
   private renderList(): void {
+    this.menus.splice(0).forEach(dispose => dispose());
     const list = this.listEl;
     if (!list) return;
     list.empty();
@@ -187,6 +199,9 @@ export class AlbumSearchPanel {
     for (const a of this.results) {
       const row = list.createDiv({ cls: "mw-search-row" });
       row.dataset.id = String(a.albumId);
+      this.menus.push(bindLibraryMenu(row, () => [{ label: t("libraryDetails.copyLink"), icon: "link", run: async () => {
+        await navigator.clipboard.writeText(`https://music.163.com/album?id=${a.albumId}`); new Notice(t("common.copied"));
+      } }]).dispose);
       const added = existing.has(a.albumId);
       if (added) row.addClass("is-added");
 

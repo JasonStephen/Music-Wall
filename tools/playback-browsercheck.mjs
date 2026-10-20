@@ -99,15 +99,29 @@ try {
     cases.splice(0,cases.length);
     for(const [width,height] of [[1280,800],[360,740]])for(const kind of ['wall','player','library'])cases.push({kind,width,height,theme:'dark',style:'vinyl',layout:'grid',panel:'playlist',page:'created',lang:'zh-CN'});
   }
+  if(process.argv.includes('--history')) {
+    cases.splice(0,cases.length);
+    for(const lang of ['zh-CN','zh-TW','en'])for(const theme of ['light','dark'])for(const [width,height,zoom] of [[1280,800,1],[360,740,1],[240,600,1],[360,740,2]])cases.push({kind:'library',page:'home',lang,theme,width,height,zoom});
+  }
+  if(process.argv.includes('--cache-settings')) {
+    cases.splice(0,cases.length);
+    for(const lang of ['zh-CN','zh-TW','en'])for(const theme of ['light','dark'])for(const width of [1280,360,240])cases.push({kind:'settings',lang,theme,width,height:800});
+  }
+  if(process.argv.includes('--mini-keyboard')) {
+    cases.splice(0,cases.length);
+    for(const kind of ['wall','library'])for(const width of [1280,360])for(const layout of kind==='wall'?['grid','list','shelf']:['grid'])cases.push({kind,width,height:800,theme:'dark',style:'cover',layout,page:'home',playing:true});
+  }
   const shotRoot=path.join(root,'tools/shots/playback');fs.mkdirSync(shotRoot,{recursive:true});
   let checks=0,failed=0;let savedFailures=0,keyboardChecked=false,playOrderChecked=false;
   for(let i=0;i<cases.length;i++) {
     const item=cases[i];
     if(item.kind==='library')await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:item.theme}]});
     await page('Emulation.setDeviceMetricsOverride',{width:item.width,height:item.height,deviceScaleFactor:1,mobile:false});
-    await page('Page.navigate',{url:pathToFileURL(path.join(root,item.kind==='library'?'tools/library-ui-e2e.html':'tools/playback-ui-e2e.html')).href});
+    await page('Page.navigate',{url:pathToFileURL(path.join(root,item.kind==='library'?'tools/library-ui-e2e.html':item.kind==='settings'?'tools/settings-e2e.html':'tools/playback-ui-e2e.html')).href});
     for(let attempt=0;attempt<100;attempt++){if(await value("typeof window.setupPlaybackUI === 'function'"))break;await new Promise(r=>setTimeout(r,10));}
     const result=await value('window.setupPlaybackUI('+JSON.stringify(item)+')');checks+=result.checks;
+    if(process.argv.includes('--mini-keyboard')){const keys=await value('window.verifyMiniKeyboard()');checks+=keys.checks;if(keys.fail.length){failed++;console.log('FAIL mini keyboard '+JSON.stringify(item)+' '+JSON.stringify(keys.fail));}}
+    if(process.argv.includes('--history')){const history=await value('window.verifyHistoryUI()');checks+=history.checks;if(history.fail.length){failed++;console.log('FAIL history '+JSON.stringify(item)+' '+JSON.stringify(history.fail));}}
     if(process.argv.includes('--hidden-zoom')) {
       const hidden=await value('window.verifyHiddenZoom()');checks+=hidden.checks;
       if(hidden.fail.length){failed++;console.log('FAIL hidden zoom '+item.kind+' '+item.width+' '+JSON.stringify(hidden.fail));}
@@ -231,7 +245,7 @@ try {
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
     }
-    if(!playOrderChecked&&item.kind!=='library'&&item.panel!=='height'&&!item.presets){
+    if(!playOrderChecked&&item.kind!=='library'&&item.kind!=='settings'&&item.panel!=='height'&&!item.presets){
       const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
       if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }

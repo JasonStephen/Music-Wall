@@ -3,6 +3,9 @@
 import type { zhCN } from "./zh-CN";
 
 export const en: typeof zhCN = {
+  history: {"songs": "Played songs", "albums": "Played albums", "playlists": "Played playlists", "search": "Search history", "remove": "Delete this history entry", "removeSearch": "Delete search: {name}", "clearKind": "Clear this category", "clearConfirm": "Clear history in this category? This cannot be undone."},
+  cacheManager: {"total": "Cache space used", "estimated": "Approx. {size}", "audio": "Audio cache", "lyrics": "Lyrics cache", "stats": "Album / playlist statistics cache", "cover": "Cover color cache", "playback": "Playback history", "search": "Search history", "clear": "Clear", "all": "Clear all", "confirm": "Delete everything? All content will need to be loaded again.", "warning": "Playback and search history will also be erased and cannot be recovered. Music wall files, sign-in information and preferences will be preserved.", "done": "Cleared successfully", "failed": "Could not clear data. Please try again.", "lyricsDesc": "Original lyrics and translations. Fetches again when needed; currently displayed lyrics remain available.", "statsDesc": "Song counts and total durations. Recalculated on demand after clearing.", "coverDesc": "Clears only plugin color and brightness memory cache ({count} entries), not browser image cache.", "historyDesc": "Local history for all accounts in this vault. Clearing cannot be undone.", "audioMobile": "Plugin audio disk caching is not enabled on this device.", "approx": "Approximately {size} KB"},
+
   githubAuth: {
     title: "GitHub account",
     description: "Sign in to GitHub in your browser and authorize Git Credential Manager, then select an account for this plugin. Credentials stay in the system credential manager; the plugin saves only the account name.",
@@ -105,7 +108,7 @@ export const en: typeof zhCN = {
   lyrics: {"title": "Lyrics", "translation": "Translation", "noTranslation": "No translation available", "follow": "Follow lyrics", "idle": "Play a song to show lyrics", "external": "Synced lyrics are unavailable for external playback", "loading": "Loading lyrics…", "failed": "Could not load lyrics. Please retry.", "empty": "No lyrics available", "instrumental": "Instrumental"},
   libraryDetails: {"durationLoading": "Calculating duration…", "durationUnavailable": "Duration unavailable","summary": "{count} songs · {duration}", "hours": "{value} hours", "minutes": "{value} minutes", "moreActions": "More actions", "chooseArtist": "Choose an artist", "viewAlbum": "View album", "viewArtist": "View artist", "copyLink": "Copy NetEase link", "viewDetails": "View details", "wallAlbum": "Wall album", "playlist": "Playlist", "album": "Album"},
   wallPicker: {"search": "Search wall names or folder paths", "clear": "Clear search", "count": "{count} music walls", "noResults": "No matching music walls"},
-  library: {
+  library: { history: "History",
       "title": "NetEase music library",
       "home": "Home",
       "created": "My playlists",
@@ -133,7 +136,7 @@ export const en: typeof zhCN = {
       "collapseNav": "Collapse sidebar",
       "closeNav": "Close sidebar"
   },
-  queue: {"playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Playlist","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
+  queue: {"add":"Add to album queue","playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Playlist","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
   labels: {
     style: {
       vinyl: "Vinyl",
@@ -286,7 +289,7 @@ export const en: typeof zhCN = {
   },
   wallAppearance: { title: "Appearance" },
   gitSyncExperimental: { warning: "This feature is experimental and may not work correctly. Use with caution.", showActions: "Show wall Git sync actions", showActionsDesc: "Show Git pull and push entries in the music wall menu. Off by default." },
-  settingsCategories: { playback: "Playback", appearance: "System controls", cache: "Audio cache", title: "Settings categories", general: "General", wall: "Music wall", player: "Player", account: "Account", sync: "Git sync" },
+  settingsCategories: { playback: "Playback", appearance: "System controls", cache: "Cache management", title: "Settings categories", general: "General", wall: "Music wall", player: "Player", account: "Account", sync: "Git sync" },
   settings: {
     lang: {
       name: "Interface language",

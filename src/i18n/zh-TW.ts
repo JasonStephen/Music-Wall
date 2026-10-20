@@ -3,6 +3,9 @@
 import type { zhCN } from "./zh-CN";
 
 export const zhTW: typeof zhCN = {
+  history: {"songs": "歷史播放單曲", "albums": "歷史播放專輯", "playlists": "歷史播放歌單", "search": "搜尋歷史", "remove": "刪除這筆歷史記錄", "removeSearch": "刪除搜尋記錄：{name}", "clearKind": "清空目前分類", "clearConfirm": "是否清空目前分類的歷史記錄？刪除後無法復原。"},
+  cacheManager: {"total": "快取已用空間", "estimated": "約 {size}", "audio": "音訊快取", "lyrics": "歌詞快取", "stats": "專輯／歌單統計快取", "cover": "封面取色快取", "playback": "播放歷史記錄", "search": "搜尋歷史記錄", "clear": "清理", "all": "清理全部", "confirm": "是否刪除全部？刪除後所有內容將需要重新載入？", "warning": "播放歷史和搜尋歷史也將被清空，無法復原。音樂牆檔案、帳號登入資訊和個人設定不會刪除。", "done": "清理完成", "failed": "清理失敗，請重試。", "lyricsDesc": "歌詞原文與翻譯。清理後重新取得，目前顯示的歌詞仍可繼續使用。", "statsDesc": "歌曲數與總時長。清理後按需重新計算。", "coverDesc": "僅清理外掛的封面取色與亮度記憶體快取（{count} 筆），不刪除瀏覽器圖片快取。", "historyDesc": "目前庫中各帳號的本機歷史記錄。清理後無法復原。", "audioMobile": "此裝置未啟用外掛音訊磁碟快取。", "approx": "約 {size} KB"},
+
   githubAuth: {
     title: "GitHub 帳號",
     description: "透過瀏覽器登入 GitHub 並授權 Git Credential Manager，授權後選擇本外掛使用的帳號。憑證由系統憑證管理員保存，外掛只儲存帳號名稱。",
@@ -105,7 +108,7 @@ export const zhTW: typeof zhCN = {
   lyrics: {"title": "歌詞", "translation": "翻譯", "noTranslation": "暫無翻譯", "follow": "返回目前歌詞", "idle": "播放歌曲後顯示歌詞", "external": "外部用戶端暫不支援同步歌詞", "loading": "正在載入歌詞…", "failed": "歌詞載入失敗，請重試", "empty": "暫無歌詞", "instrumental": "純音樂，請欣賞"},
   libraryDetails: {"durationLoading": "正在統計時長…", "durationUnavailable": "時長暫不可用","summary": "{count} 首 · {duration}", "hours": "{value}小時", "minutes": "{value}分鐘", "moreActions": "更多操作", "chooseArtist": "選擇藝術家", "viewAlbum": "查看所屬專輯", "viewArtist": "查看藝術家", "copyLink": "複製網易雲連結", "viewDetails": "查看詳情", "wallAlbum": "音樂牆專輯", "playlist": "歌單", "album": "專輯"},
   wallPicker: {"search": "搜尋音樂牆名稱或資料夾路徑", "clear": "清除搜尋", "count": "{count} 個音樂牆", "noResults": "找不到符合條件的音樂牆"},
-  library: {
+  library: { history: "歷史記錄",
       "title": "網易雲音樂庫",
       "home": "首頁",
       "created": "我建立的歌單",
@@ -133,7 +136,7 @@ export const zhTW: typeof zhCN = {
       "collapseNav": "收起側邊欄",
       "closeNav": "關閉側邊欄"
   },
-  queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌單播放","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
+  queue: {"add":"加入專輯佇列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循環","title":"專輯佇列","empty":"暫無待播專輯","albumMode":"專輯播放","playlistMode":"歌單播放","order":"順序播放","repeat":"佇列循環","one":"單曲循環","shuffle":"隨機播放","up":"向前移動","down":"向後移動","remove":"移除專輯","added":"已加入專輯佇列","duplicate":"此專輯已在佇列中","internalOnly":"請切換到外掛內播放後使用此功能"},
   labels: {
     style: {
       vinyl: "黑膠",
@@ -286,7 +289,7 @@ export const zhTW: typeof zhCN = {
   },
   wallAppearance: { title: "外觀" },
   gitSyncExperimental: { warning: "目前功能為實驗功能，不保證功能正常使用，請謹慎使用。", showActions: "顯示音樂牆 Git 同步入口", showActionsDesc: "在音樂牆的更多選單中顯示從 Git 拉取、推送至 Git 兩個入口。預設關閉。" },
-  settingsCategories: { playback: "播放", appearance: "系統控制", cache: "音訊快取", title: "設定分類", general: "一般", wall: "音樂牆", player: "播放器", account: "帳號", sync: "Git 同步" },
+  settingsCategories: { playback: "播放", appearance: "系統控制", cache: "快取管理", title: "設定分類", general: "一般", wall: "音樂牆", player: "播放器", account: "帳號", sync: "Git 同步" },
   settings: {
     lang: {
       name: "介面語言",

@@ -1,13 +1,31 @@
-import {MusicWallSettingTab} from '../src/settings';import {DEFAULT_SETTINGS} from '../src/types';import {setLanguage,t} from '../src/i18n';import {installDomHelpers} from './obsidian-shim';installDomHelpers();
-const wait=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-(window as any).setupSettings=async(config:any)=>{
- setLanguage(config.lang);document.body.className=`theme-${config.theme}`;document.body.style.zoom=String(config.zoom||1);const mount=document.getElementById('mount')!;mount.empty();let used=8*1024*1024,saves=0,trimmed=0;
- const plugin:any={settings:{...DEFAULT_SETTINGS},async saveData(){saves++;},async saveSettings(){},refreshOpenViews(){},audioTransport:{supported:true,async usage(){return used;},async trim(){trimmed++;used=Math.min(used,plugin.settings.audioCacheMB*1024*1024);},async clear(){used=0;}}};
- const tab=new MusicWallSettingTab({} as never,plugin);mount.appendChild(tab.containerEl);tab.display();await wait(20);const rows=tab.containerEl.querySelectorAll<HTMLElement>('.mw-audio-setting'),fail:string[]=[];
- if(rows.length!==4)fail.push('Four audio settings must exist');
- for(const row of rows){row.scrollIntoView();const r=row.getBoundingClientRect();if(r.right>innerWidth+1||row.scrollWidth>row.clientWidth+1)fail.push('Audio setting overflows the pane');for(const input of row.querySelectorAll<HTMLElement>('input,button')){const r=input.getBoundingClientRect();if(r.left<0||r.right>innerWidth+1)fail.push('Audio setting control leaves the viewport');}}
- const fades=rows[0].querySelector<HTMLInputElement>('input')!;fades.value='6';fades.dispatchEvent(new Event('input'));await wait(0);if(plugin.settings.pauseFadeSeconds!==6)fail.push('Fade does not save');
- const capacity=rows[2].querySelector<HTMLInputElement>('input')!;capacity.value='1';capacity.dispatchEvent(new Event('input'));await wait(10);if(plugin.settings.audioCacheMB!==1||trimmed!==1||!rows[3].textContent?.includes('1.0 MB'))fail.push('Cache limit does not trim and refresh usage');
- rows[3].querySelector<HTMLButtonElement>('button')!.click();await wait(10);if(used!==0||!rows[3].textContent?.includes('0.0 MB'))fail.push('Clear cache does not refresh usage');
- if(saves!==2)fail.push('Audio preferences are not persisted');tab.hide();return {checks:rows.length*3+4,fail};
+import { MusicWallSettingTab } from '../src/settings';
+import { DEFAULT_SETTINGS } from '../src/types';
+import { setLanguage, t } from '../src/i18n';
+import { installDomHelpers } from './settings-shim';
+installDomHelpers();const wait=(ms=20)=>new Promise(resolve=>setTimeout(resolve,ms));
+(window as any).setupPlaybackUI=async(config:any)=>{
+ document.body.className='theme-'+config.theme;setLanguage(config.lang||'zh-CN');
+ const mount=document.getElementById('mount')!;mount.empty();let checks=0;const fail:string[]=[];
+ const expect=(value:unknown,label:string)=>{checks++;if(!value)fail.push(label);};
+ let used=2*1024*1024,trimmed=0;const cleared:string[]=[];
+ const plugin:any={settings:{...DEFAULT_SETTINGS},async saveData(){},async saveSettings(){},refreshOpenViews(){},async clearManagedCache(kind:string){cleared.push(kind);},audioTransport:{supported:true,async usage(){return used;},async trim(){trimmed++;used=1024*1024;},async clear(){used=0;}}};
+ const tab=new MusicWallSettingTab({} as never,plugin);mount.appendChild(tab.containerEl);tab.display();
+ expect(tab.containerEl.querySelectorAll('[role=tab]').length===6,'six settings categories include cache management');
+ tab.containerEl.querySelector<HTMLButtonElement>('#mw-settings-tab-cache')!.click();await wait();
+ const rows=()=>[...tab.containerEl.querySelectorAll<HTMLElement>('.setting-item')];
+ for(const row of rows())expect(row.scrollWidth<=row.clientWidth+1,'cache setting has no horizontal overflow');
+ expect(rows().length===8,'audio capacity, audio usage, five separate data categories and clear-all are available');
+ const capacity=tab.containerEl.querySelector<HTMLInputElement>('input')!;capacity.value='1';capacity.dispatchEvent(new Event('input'));await wait();expect(trimmed===1,'audio capacity still trims cache');
+ const all=()=>rows().find(row=>row.querySelector('.setting-item-name')?.textContent===t('cacheManager.total'))!.querySelector<HTMLButtonElement>('button')!;
+ all().click();await wait();
+ expect(cleared.length===0,'opening clear-all does not delete data');
+ expect(document.querySelector('.mw-confirm__msg')?.textContent===t('cacheManager.confirm'),'clear-all has required confirmation message');
+ expect(document.querySelector('.mw-confirm__details')?.textContent?.includes(t('cacheManager.warning')),'clear-all explicitly warns that histories cannot be recovered');
+ document.querySelector<HTMLButtonElement>('.mw-confirm__buttons button')!.click();await wait();expect(cleared.length===0,'cancel preserves all caches');
+ all().click();document.querySelector<HTMLButtonElement>('.mw-confirm .mod-warning')!.click();await wait();expect(cleared.join()=== 'all','only confirming performs clear-all');
+ const lyrics=rows().find(row=>row.querySelector('.setting-item-name')?.textContent===t('cacheManager.lyrics'))!;lyrics.querySelector<HTMLButtonElement>('button')!.click();await wait();expect(cleared.join()=== 'all,lyrics','individual lyric clearing stays scoped');
+ expect(tab.containerEl.querySelectorAll('.mw-cache-trash svg').length===6,'every category uses a trash icon');
+ expect(tab.containerEl.querySelectorAll('.mw-cache-summary').length===1,'one summary and clear-all entry');
+ expect(rows().filter(row=>row.querySelector('.setting-item-name')?.textContent===t('cacheManager.all')).length===0,'no duplicate clear-all row');
+ tab.hide();return {checks,fail};
 };

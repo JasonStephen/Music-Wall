@@ -1,3 +1,4 @@
+import { verifyMiniKeyboard } from "./mini-keyboard-check";
 import { verifyHiddenZoom } from "./hidden-zoom-ui";
 import { InternalPlayer, CombinedNowPlayingProvider } from "../src/core/internalPlayer";
 import { EMPTY_NOW_PLAYING } from "../src/core/nowPlaying";
@@ -80,7 +81,7 @@ let close = async()=>{};
   };
   let activePlayer:MusicPlayerView|null=null;
   let settingsOpened=0;
-  const app={setting:{open(){settingsOpened++;},openTabById(id:string){if(id!=="music-wall")throw Error("Wrong settings tab");}},vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{on:()=>({}),getLeavesOfType:()=>[],getActiveViewOfType:()=>activePlayer}};
+  const app={setting:{open(){settingsOpened++;},openTabById(id:string){if(id!=="music-wall")throw Error("Wrong settings tab");}},vault:{on:()=>({}),getAbstractFileByPath:()=>null,async read(){return "{}";}},workspace:{activeLeaf:null as any,on:()=>({}),getLeavesOfType:()=>[],getActiveViewOfType:()=>activePlayer}};
   const views:(MusicWallView|MusicPlayerView)[]=[];
   const createWall=async()=>{
     const view=new MusicWallView(new WorkspaceLeaf(app),plugin as never);
@@ -90,6 +91,7 @@ let close = async()=>{};
   };
   if(config.kind==="wall") {
     const wall=await createWall();
+    (window as any).verifyMiniKeyboard=()=>verifyMiniKeyboard(wall.contentEl,plugin,active=>{app.workspace.activeLeaf=active?wall.leaf:null;});
     (window as any).verifyWallAlbumNavigation=async()=>{
       const failures:string[]=[];let checks=0;const expect=(ok:unknown,label:string)=>{checks++;if(!ok)failures.push(label);};
       const original=(wall as any).data.style,before=JSON.stringify((wall as any).data);
@@ -623,7 +625,9 @@ let close = async()=>{};
       list.click();
       if(config.panel==='queue') {
         root.querySelector<HTMLButtonElement>('[data-action="album-queue"]')!.click();await wait(20);
-        if(config.longQueue){const queue=root.querySelector<HTMLElement>('.mw-queue')!;check(queue.scrollHeight>queue.clientHeight,'Long album queues scroll inside the player panel');queue.scrollTop=queue.scrollHeight;const toolbar=queue.querySelector<HTMLElement>('.mw-queue__toolbar')!.getBoundingClientRect();check(toolbar.top>=queue.getBoundingClientRect().top-1&&toolbar.bottom<=queue.getBoundingClientRect().bottom+1,'Queue view tabs remain reachable when scrolled');const last=queue.querySelector<HTMLElement>('.mw-queue__row:last-child')!;check(last.getBoundingClientRect().bottom<=queue.getBoundingClientRect().bottom+1,'Last queued album remains accessible');}
+        const queueToolbar=root.querySelector<HTMLElement>('.mw-queue__toolbar')!;
+        check(getComputedStyle(queueToolbar).backgroundColor==='rgba(0, 0, 0, 0)','Queue toolbar shares the overlay without a second dark background');
+        if(config.longQueue){const queue=root.querySelector<HTMLElement>('.mw-queue')!,list=queue.querySelector<HTMLElement>('.mw-queue__list')!;check(list.scrollHeight>list.clientHeight,'Long album rows scroll inside their own viewport');list.scrollTop=list.scrollHeight;const toolbar=queueToolbar.getBoundingClientRect();check(toolbar.top>=queue.getBoundingClientRect().top-1&&toolbar.bottom<=queue.getBoundingClientRect().bottom+1,'Queue view tabs remain reachable when scrolled');check(list.getBoundingClientRect().top>=toolbar.bottom-1,'Scrolling albums never pass behind transparent toolbar');const last=queue.querySelector<HTMLElement>('.mw-queue__row:last-child')!;check(last.getBoundingClientRect().bottom<=list.getBoundingClientRect().bottom+1,'Last queued album remains accessible');}
       }
       const panel=root.querySelector<HTMLElement>(".mw-player__playlist")!;
       const name=panel.querySelector<HTMLElement>(".mw-np__trackName")!;

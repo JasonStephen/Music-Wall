@@ -7,6 +7,7 @@ const validStats = (value: any): value is CachedCollectionStats => !!value && Nu
 
 /** Small local metadata file. Never stores credentials, artwork or track lists. */
 export class CollectionStatsCache {
+  revision = 0;
   private entries = new Map<string, Entry>();
   private loading: Promise<void> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -36,9 +37,9 @@ export class CollectionStatsCache {
     const ttl = entry.stats.duration === undefined ? 5 * 60000 : collection.startsWith("album:") ? 30 * 86400000 : 6 * 3600000;
     return { stats: { ...entry.stats }, fresh: entry.observedCount === observedCount && this.now() - entry.updated < ttl };
   }
-  async put(scope: string, collection: string, observedCount: number, stats: CachedCollectionStats): Promise<void> {
+  async put(scope: string, collection: string, observedCount: number, stats: CachedCollectionStats, revision = this.revision): Promise<void> {
     const key = this.key(scope, collection); if (!key || !validStats(stats) || !Number.isSafeInteger(observedCount) || observedCount < 0) return;
-    await this.ready(); this.entries.delete(key);
+    await this.ready(); if (revision !== this.revision) return; this.entries.delete(key);
     this.entries.set(key, { key, stats: { count: stats.count, duration: stats.duration }, observedCount, updated: this.now() });
     while (this.entries.size > LIMIT) this.entries.delete(this.entries.keys().next().value!);
     if (this.timer) clearTimeout(this.timer);
@@ -48,7 +49,14 @@ export class CollectionStatsCache {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     await this.ready();
     const content = JSON.stringify({ version: 1, entries: [...this.entries.values()] });
-    this.writes = this.writes.then(async () => { try { await this.storage.write(this.path, content); } catch { /* Best effort; retry on the next update. */ } });
+    this.writes = this.writes.catch(() => {}).then(async () => { try { await this.storage.write(this.path, content); } catch { /* Best effort; retry on the next update. */ } });
     await this.writes;
   }
+  usage(): number { return new TextEncoder().encode(JSON.stringify([...this.entries])).byteLength; }
+  async clear(): Promise<void> {
+    ++this.revision; await this.ready(); if (this.timer) clearTimeout(this.timer); this.timer = null; this.entries.clear();
+    this.writes = this.writes.catch(() => {}).then(async () => { await this.storage.write(this.path, JSON.stringify({version:1,entries:[]})); });
+    await this.writes;
+  }
+
 }

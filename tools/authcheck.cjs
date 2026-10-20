@@ -43,8 +43,9 @@ class Component {
 }
 class Modal extends Component {
   constructor(app) { super(app); this.modalEl = new Element(); }
-  open() { modals.push(this); this.onOpen(); }
-  close() { this.onClose(); }
+  get doc() { return document; }
+  open() { this.win = window; modals.push(this); this.onOpen(); }
+  close() { this.win = null; this.onClose(); }
 }
 class Plugin extends Component {
   async saveData(settings) { this.saved = JSON.parse(JSON.stringify(settings)); }
@@ -543,7 +544,7 @@ async function main() {
       assert.equal(settings.length, 3);
       assert.deepEqual(settings.map(setting=>setting.name), [api.t("settings.lang.name"), api.t("wallAppearance.title"), api.t("settings.zoom.name")]);
       const tabs = tab.containerEl.children[0];
-      assert.equal(tabs.children.length, 5);
+      assert.equal(tabs.children.length, 6);
       assert.equal(tabs.children[0].children[0].tag, "svg");
       tab.selectTab("wall");
       assert.ok(!settings.some(setting=>setting.name===api.t("settings.colWidth.name")));

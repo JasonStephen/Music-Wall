@@ -1,6 +1,9 @@
 // 简体中文（基准/回退语言：结构变更以此为源，zh-TW 与 en 用 typeof 约束对齐）。
 
 export const zhCN = {
+  history: {"songs": "历史播放单曲", "albums": "历史播放专辑", "playlists": "历史播放歌单", "search": "搜索历史", "remove": "删除这条历史记录", "removeSearch": "删除搜索记录：{name}", "clearKind": "清空当前分类", "clearConfirm": "是否清空当前分类的历史记录？删除后无法恢复。"},
+  cacheManager: {"total": "缓存已用空间", "estimated": "约 {size}", "audio": "音频缓存", "lyrics": "歌词缓存", "stats": "专辑／歌单统计缓存", "cover": "封面取色缓存", "playback": "播放历史记录", "search": "搜索历史记录", "clear": "清理", "all": "清理全部", "confirm": "是否删除全部？删除后所有内容将需要重新加载？", "warning": "播放历史和搜索历史也将被清空，无法恢复。音乐墙文件、账号登录信息和个人设置不会删除。", "done": "清理完成", "failed": "清理失败，请重试。", "lyricsDesc": "歌词原文与翻译。清理后重新获取，当前显示的歌词仍可继续使用。", "statsDesc": "歌曲数与总时长。清理后按需重新计算。", "coverDesc": "仅清理插件的封面取色与亮度内存缓存（{count} 项），不删除浏览器图片缓存。", "historyDesc": "当前库中各账号的本地历史记录。清理后无法恢复。", "audioMobile": "此设备未启用插件音频磁盘缓存。", "approx": "约 {size} KB"},
+
   githubAuth: {
     title: "GitHub 账号",
     description: "通过浏览器登录 GitHub 并授权 Git Credential Manager，授权后选择本插件使用的账号。凭据由系统凭据管理器保存，插件只保存账号名。",
@@ -103,7 +106,7 @@ export const zhCN = {
   lyrics: {"title": "歌词", "translation": "翻译", "noTranslation": "暂无翻译", "follow": "返回当前歌词", "idle": "播放歌曲后显示歌词", "external": "外部客户端暂不支持同步歌词", "loading": "正在加载歌词…", "failed": "歌词加载失败，请重试", "empty": "暂无歌词", "instrumental": "纯音乐，请欣赏"},
   libraryDetails: {"durationLoading": "正在统计时长…", "durationUnavailable": "时长暂不可用","summary": "{count} 首 · {duration}", "hours": "{value}小时", "minutes": "{value}分钟", "moreActions": "更多操作", "chooseArtist": "选择艺术家", "viewAlbum": "查看所属专辑", "viewArtist": "查看艺术家", "copyLink": "复制网易云链接", "viewDetails": "查看详情", "wallAlbum": "音乐墙专辑", "playlist": "歌单", "album": "专辑"},
   wallPicker: {"search": "搜索音乐墙名称或文件夹路径", "clear": "清空搜索", "count": "{count} 个音乐墙", "noResults": "未找到匹配的音乐墙"},
-  library: {
+  library: { history: "历史记录",
       "title": "网易云音乐库",
       "home": "首页",
       "created": "我创建的歌单",
@@ -131,7 +134,7 @@ export const zhCN = {
       "collapseNav": "收起侧边栏",
       "closeNav": "关闭侧边栏"
   },
-  queue: {"playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌单播放","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
+  queue: {"add":"加入专辑队列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌单播放","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
   labels: {
     style: {
       vinyl: "黑胶",
@@ -284,7 +287,7 @@ export const zhCN = {
   },
   wallAppearance: { title: "外观" },
   gitSyncExperimental: { warning: "当前功能为实验功能，不保证功能正常使用，谨慎使用。", showActions: "显示音乐墙 Git 同步入口", showActionsDesc: "在音乐墙的更多菜单中显示从 Git 拉取、推送至 Git 两个入口。默认关闭。" },
-  settingsCategories: { playback: "播放", appearance: "系统控制", cache: "音频缓存", title: "设置分类", general: "常规", wall: "音乐墙", player: "播放器", account: "账号", sync: "Git 同步" },
+  settingsCategories: { playback: "播放", appearance: "系统控制", cache: "缓存管理", title: "设置分类", general: "常规", wall: "音乐墙", player: "播放器", account: "账号", sync: "Git 同步" },
   settings: {
     lang: {
       name: "界面语言",

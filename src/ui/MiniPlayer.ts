@@ -49,7 +49,7 @@ export class MiniPlayer {
   private height = -1;
   private visible = false;
 
-  constructor(private parent: HTMLElement, private plugin: MusicWallPlugin) {
+  constructor(private parent: HTMLElement, private plugin: MusicWallPlugin, private isActive: () => boolean) {
     this.root = parent.createDiv({ cls: "mw-mini is-hidden", attr: { role: "region", "aria-label": t("player.displayName") } });
     this.seek = this.root.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.1", "aria-label": t("internal.seek") } });
     decorateRange(this.seek);
@@ -114,6 +114,7 @@ export class MiniPlayer {
     this.volume.addEventListener("input", () => plugin.internalPlayer.setVolume(Number(this.volume.value)));
     parent.ownerDocument.addEventListener("pointerdown", this.outside);
     parent.ownerDocument.addEventListener("keydown", this.escape);
+    parent.ownerDocument.addEventListener("keydown", this.space);
     parent.ownerDocument.addEventListener("pointerup", this.releaseSeek);
     parent.ownerDocument.addEventListener("pointercancel", this.releaseSeek);
     this.off = plugin.nowPlaying.on(() => this.update());
@@ -140,6 +141,21 @@ export class MiniPlayer {
       const button = this.buttons[this.openPanel]; this.showPanel(null);
       (button.getClientRects().length ? button : this.buttons.more).focus();
     }
+  };
+  private space = (event: KeyboardEvent) => {
+    if ((event.code !== "Space" && event.key !== " ") || event.defaultPrevented || event.isComposing
+      || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey
+      || !this.visible || !this.isActive() || !this.root.getClientRects().length
+      || !this.plugin.internalPlayer.state.canToggle) return;
+    const doc = this.parent.ownerDocument, host = this.parent.closest(".mw-view");
+    const target = (event.target as Node | null)?.nodeType === 1 ? event.target as Element : doc.activeElement;
+    const interactive = "input,textarea,select,button,a[href],summary,[contenteditable]:not([contenteditable='false']),[role='textbox'],[role='button'],[role='slider'],[role='checkbox'],[role='switch'],.modal-container,.prompt,.menu";
+    if (!target || target.closest(interactive)
+      || !(host?.contains(target) || target === doc.body || target === doc.documentElement)) return;
+    if (Array.from(doc.querySelectorAll<HTMLElement>(".modal-container,.prompt,.menu"))
+      .some(el => el.getClientRects().length && doc.defaultView?.getComputedStyle(el).visibility !== "hidden")) return;
+    event.preventDefault();
+    if (!event.repeat) void this.control("toggle");
   };
   private releaseSeek = (event: PointerEvent) => {
     if (event.pointerId === this.seekPointer) this.finishSeek(event.type === "pointerup");
@@ -256,6 +272,7 @@ export class MiniPlayer {
     this.parent.ownerDocument.removeEventListener("pointerup", this.releaseSeek);
     this.parent.ownerDocument.removeEventListener("pointercancel", this.releaseSeek);
     this.parent.ownerDocument.removeEventListener("keydown", this.escape);
+    this.parent.ownerDocument.removeEventListener("keydown", this.space);
     this.parent.style.removeProperty("--mw-mini-height"); this.root.remove();
   }
 }

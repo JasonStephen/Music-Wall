@@ -15,14 +15,18 @@ import { PickerModal } from "./smallModals";
 import { bindLibraryMenu, type LibraryMenuAction } from "./libraryMenu";
 import { collectionSummary, collectionStats, statsSummary, type CollectionStats } from "./collectionSummary";
 import { svgAction } from "./svgAction";
+import { searchHistory } from "./searchHistory";
+import { ConfirmModal } from "./ConfirmModal";
+import type { HistoryKind, HistoryEntry } from "../core/history";
 
-type Tab = "home" | "created" | "collected" | "likes" | "search";
+type Tab = "home" | "created" | "collected" | "likes" | "search" | "history";
 const emptySearch = (): LibrarySearchResult => ({ songs: [], artists: [], albums: [], playlists: [], more: false });
 
 export class MusicLibraryView extends ItemView {
   private albumItem: AlbumSummary | null = null;
   private artistSection: "songs" | "albums" = "songs";
   private history: (() => void)[] = [];
+  private historyKind: HistoryKind = "songs";
   private menuCleanups: (() => void)[] = [];
   private artistPicker: PickerModal | null = null;
   private statsObserver: IntersectionObserver | null = null;
@@ -80,11 +84,12 @@ export class MusicLibraryView extends ItemView {
     const main = this.layout.createDiv({ cls: "mw-cloud__main" });
     this.head = main.createDiv({ cls: "mw-cloud__head" });
     this.body = main.createDiv({ cls: "mw-cloud__body" });
-    this.miniPlayer = new MiniPlayer(box, this.plugin);
+    this.miniPlayer = new MiniPlayer(box, this.plugin, () => this.app.workspace?.activeLeaf === this.leaf);
     this.registerDomEvent(root, "wheel", (event: WheelEvent) => handleZoomWheel(event, this.plugin, root), { capture: true, passive: false });
     this.registerDomEvent(root, "keydown", (event: KeyboardEvent) => { if (event.key === "Escape" && this.drawer) { event.preventDefault(); this.closeDrawer(); } });
     if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateLayout()); this.resize.observe(root); }
     this.render(); this.stopInset = watchHostInset(root);
+    if (this.plugin.historyStore) this.register(this.plugin.historyStore.on(() => { if (this.tab === "history" && !this.collection && !this.artist && !this.closed) this.render(); }));
   }
   async onClose(): Promise<void> {
     this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null;
@@ -130,7 +135,7 @@ export class MusicLibraryView extends ItemView {
     this.sidebar.empty();
     const toggle = svgAction(this.sidebar, this.wideExpanded ? "chevrons-left" : "chevrons-right", t(this.narrow ? "library.closeNav" : this.wideExpanded ? "library.collapseNav" : "library.expandNav"), () => this.toggleNav(), true);
     toggle.dataset.navToggle = "true";
-    for (const [tab, icon] of [["search", "search"], ["likes", "heart"], ["created", "list-music"], ["collected", "bookmark"]] as const) {
+    for (const [tab, icon] of [["search", "search"], ["likes", "heart"], ["created", "list-music"], ["collected", "bookmark"], ["history", "history"]] as const) {
       const button = svgAction(this.sidebar, icon, t(`library.${tab}`), () => this.navigate(tab), true);
       button.dataset.section = tab; if (this.tab === tab) button.setAttr("aria-current", "page");
     }
@@ -162,6 +167,7 @@ export class MusicLibraryView extends ItemView {
       else if (["created", "collected", "likes"].includes(this.tab) && !this.plugin.settings.neteaseCookie) this.renderSignIn(this.body);
       else if (this.collection) this.renderCollection(this.collection);
       else if (this.artist) this.renderArtist(this.artist);
+      else if (this.tab === "history") this.renderHistory();
       else if (this.tab === "search") this.renderResults();
       else this.renderLists(this.body, this.lists);
     }
@@ -177,9 +183,11 @@ export class MusicLibraryView extends ItemView {
     const form = parent.createEl("form", { cls: "mw-cloud__search" });
     const input = form.createEl("input", { attr: { type: "search", placeholder: t("library.searchPlaceholder"), "aria-label": t("library.search"), maxlength: "200" } });
     input.value = this.keyword;
+    searchHistory(input, form, this.plugin.historyStore, () => this.plugin.historyScope(), "library", keyword => { input.value = keyword; form.requestSubmit(); });
     svgAction(form, "search", t("library.search"), () => form.requestSubmit());
     form.addEventListener("submit", event => {
       event.preventDefault(); const keyword = input.value.trim(); if (!keyword) { input.focus(); return; }
+      void this.plugin.historyStore?.search(this.plugin.historyScope(), "library", keyword).catch(() => {});
       this.keyword = keyword; this.results = emptySearch(); this.offset = 0; this.tab = "search"; this.history = []; this.albumItem = null;
       this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.closeDrawer(); void this.loadContent();
     });
@@ -191,6 +199,31 @@ export class MusicLibraryView extends ItemView {
       button.dataset.searchKind = kind; button.setAttr("role", "tab"); button.setAttr("aria-selected", String(this.searchKind === kind));
     }
   }
+  private renderHistory(): void {
+    const scope = this.plugin.historyScope?.() || "guest", kind = this.historyKind;
+    const bar = this.body.createDiv({ cls: "mw-cloud__tabs" });
+    for (const [key, icon] of [["songs", "music"], ["albums", "disc"], ["playlists", "list-music"]] as const) {
+      const button = svgAction(bar, icon, t(`history.${key}`), () => { this.historyKind = key; this.render(); }, true);
+      button.dataset.historyKind = key; button.setAttr("aria-pressed", String(key === kind));
+    }
+    const entries = this.plugin.historyStore?.list(scope, kind) || [];
+    const clear = svgAction(bar, "trash-2", t("history.clearKind"), () => new ConfirmModal(this.app, {
+      title: t("history.clearKind"), message: t("history.clearConfirm"), danger: true,
+      onConfirm: () => { void this.plugin.historyStore.clear(scope, kind).catch(() => new Notice(t("library.failed"))); },
+    }).open(), true);
+    clear.disabled = entries.length === 0;
+    if (!entries.length) { this.empty(this.body); return; }
+    if (kind === "songs") { this.renderTracks(this.body, entries.map(e => e.track!), undefined, entries); return; }
+    const grid = this.body.createDiv({ cls: "mw-cloud__grid" });
+    for (const entry of entries) {
+      const meta = entry.collection!, card = grid.createDiv({ cls: "mw-history-card" });
+      const button = this.card(card, meta.name, meta.artist, meta.cover);
+      button.addEventListener("click", () => void this.showCollection(meta));
+      card.createDiv({ cls: "mw-history-time", text: new Date(entry.at).toLocaleString() });
+      svgAction(card, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(scope, kind, entry.id)).dataset.historyDelete = String(entry.id);
+    }
+  }
+  clearStatsMemory(): void { this.statsCache.clear(); this.resetCardStats(); }
   private renderResults(): void {
     if (!this.keyword) { this.body.createDiv({ cls: "mw-cloud__empty", text: t("library.searchPlaceholder") }); return; }
     if (this.searchKind === "songs") this.renderTracks(this.body, this.results.songs);
@@ -274,7 +307,7 @@ export class MusicLibraryView extends ItemView {
   }
   private cardStats(card: HTMLElement, key: string, count: number, load: () => Promise<CollectionStats>): void {
     const label = card.createSpan({ cls: "mw-cloud__card-stats", text: statsSummary({ count }, true) });
-    const epoch = this.statsEpoch, cookie = this.plugin.settings.neteaseCookie;
+    const epoch = this.statsEpoch, cookie = this.plugin.settings.neteaseCookie, cacheRevision = this.plugin.collectionStatsCache?.revision;
     const scope = this.plugin.settings.neteaseUserId || (cookie ? "" : "public");
     const valid = () => !this.closed && epoch === this.statsEpoch && cookie === this.plugin.settings.neteaseCookie && label.isConnected;
     const enqueue = () => {
@@ -291,7 +324,7 @@ export class MusicLibraryView extends ItemView {
         }
         try {
           const stats = await result;
-          if (cookie === this.plugin.settings.neteaseCookie) await this.plugin.collectionStatsCache?.put(scope, key, count, stats);
+          if (cookie === this.plugin.settings.neteaseCookie) await this.plugin.collectionStatsCache?.put(scope, key, count, stats, cacheRevision);
           if (this.plugin.collectionStatsCache && this.statsCache.get(key) === result) this.statsCache.delete(key);
           if (valid()) { label.textContent = statsSummary(stats); label.title = label.textContent; }
         } catch {
@@ -322,7 +355,7 @@ export class MusicLibraryView extends ItemView {
   }
   /** Runtime snapshot used only if the source tab was closed while playing. */
   captureReturnState(): (target: MusicLibraryView) => Promise<void> {
-    const state = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset, keyword: this.keyword, searchKind: this.searchKind, offset: this.offset, results: this.results, lists: this.lists };
+    const state = { historyKind: this.historyKind, tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset, keyword: this.keyword, searchKind: this.searchKind, offset: this.offset, results: this.results, lists: this.lists };
     const scroll = this.body.scrollTop, auth = this.auth;
     return async target => {
       if (target.closed || target.plugin.settings.neteaseCookie !== auth) return;
@@ -363,7 +396,7 @@ export class MusicLibraryView extends ItemView {
     });
     this.renderTracks(this.body, collection.tracks || [], collection);
   }
-  private renderTracks(parent: HTMLElement, tracks: AlbumTrackSnapshot[], collection?: AlbumMeta): void {
+  private renderTracks(parent: HTMLElement, tracks: AlbumTrackSnapshot[], collection?: AlbumMeta, historyEntries?: HistoryEntry[]): void {
     if (!tracks.length) { this.empty(parent); return; }
     const list = parent.createDiv({ cls: "mw-cloud__tracks" });
     list.style.setProperty("--mw-track-digits", String(Math.max(2, String(tracks.length).length)));
@@ -373,8 +406,10 @@ export class MusicLibraryView extends ItemView {
       const detail = row.createDiv({ cls: "mw-cloud__track-info" }); detail.createSpan({ cls: "mw-cloud__name", text: track.name }); const metadata = detail.createDiv({ cls: "mw-cloud__track-meta" });
       if (track.albumName || collection && !collection.playlistId) this.link(metadata, track.albumName || collection!.name, () => this.trackAlbum(track, collection), "album");
       if (track.artists) this.link(metadata, track.artists, () => this.trackArtist(track), "artist");
+      if (historyEntries) metadata.createSpan({ cls: "mw-history-time", text: new Date(historyEntries[index].at).toLocaleString() });
       row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       const actions = row.createDiv({ cls: "mw-cloud__actions" });
+      if (historyEntries) svgAction(actions, "trash-2", t("history.remove"), () => this.plugin.historyStore.remove(this.plugin.historyScope(), "songs", track.id)).dataset.historyDelete = String(track.id);
       const play = svgAction(actions, "play", t("internal.playTrack", { name: track.name }), () => collection ? this.play(collection, index) : this.single(track, true));
       play.dataset.trackAction = "play";
       row.addEventListener("dblclick", event => {
@@ -426,7 +461,7 @@ export class MusicLibraryView extends ItemView {
   }
   private async loadContent(more = false): Promise<void> {
     const cookie = this.plugin.settings.neteaseCookie, tab = this.tab;
-    if (tab === "home" || (tab === "search" && !this.keyword) || (!cookie && tab !== "search")) { ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
+    if (tab === "home" || tab === "history" || (tab === "search" && !this.keyword) || (!cookie && tab !== "search")) { ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
     if (tab === "search") {
       const offset = more ? this.offset + 30 : 0, kind = this.searchKind, keyword = this.keyword;
       return this.request(() => this.plugin.libraryApi.searchContent(keyword, kind, cookie, offset), result => {

@@ -24,10 +24,10 @@ export class NeteaseLoginModal extends Modal {
   private inFlight = new Set<number>();
   private suspension = 0;
   private resumeRequested = false;
-  private doc: Document;
-  private win: Window;
+  private loginDoc: Document;
+  private loginWindow: Window;
   private readonly resume = () => {
-    if (this.doc.hidden) {
+    if (this.loginDoc.hidden) {
       ++this.suspension;
       this.clearTimer();
       return;
@@ -72,11 +72,11 @@ export class NeteaseLoginModal extends Modal {
     });
     buttons.createEl("button", { text: t("common.cancel"), attr: { type: "button" } })
       .addEventListener("click", () => this.close());
-    this.doc = this.contentEl.ownerDocument ?? document;
-    this.win = this.doc.defaultView ?? window;
-    this.doc.addEventListener("visibilitychange", this.resume);
-    this.win.addEventListener("focus", this.resume);
-    this.win.addEventListener("pageshow", this.resume);
+    this.loginDoc = this.contentEl.ownerDocument ?? document;
+    this.loginWindow = this.loginDoc.defaultView ?? window;
+    this.loginDoc.addEventListener("visibilitychange", this.resume);
+    this.loginWindow.addEventListener("focus", this.resume);
+    this.loginWindow.addEventListener("pageshow", this.resume);
     void this.generate();
   }
 
@@ -118,12 +118,12 @@ export class NeteaseLoginModal extends Modal {
 
   private schedule(generation: number): void {
     this.clearTimer();
-    if (!this.alive(generation) || this.doc.hidden || this.stopped) return;
+    if (!this.alive(generation) || this.loginDoc.hidden || this.stopped) return;
     this.timer = setTimeout(() => void this.poll(generation), this.failures ? 3000 : 1500);
   }
 
   private async poll(generation: number): Promise<void> {
-    if (!this.alive(generation) || !this.session || this.doc.hidden || this.inFlight.has(generation)) return;
+    if (!this.alive(generation) || !this.session || this.loginDoc.hidden || this.inFlight.has(generation)) return;
     this.clearTimer();
     this.inFlight.add(generation);
     const session = this.session;
@@ -149,7 +149,7 @@ export class NeteaseLoginModal extends Modal {
         // Once authorized, retain the credential and never poll the spent QR again.
         this.phase = "verify";
       }
-      if (!this.doc.hidden) {
+      if (!this.loginDoc.hidden) {
         this.refreshButton.disabled = true;
         this.imageEl.hidden = true;
         this.statusEl.setText(t("auth.verifying"));
@@ -163,7 +163,7 @@ export class NeteaseLoginModal extends Modal {
     } catch (error) {
       if (!this.alive(generation)) return;
       const retryable = !(error instanceof LoginDiagnosticError) || error.retryable;
-      if (retryable && (this.doc.hidden || suspension !== this.suspension)) {
+      if (retryable && (this.loginDoc.hidden || suspension !== this.suspension)) {
         // App suspension is not a failed foreground attempt.
         this.schedule(generation);
       } else if (retryable && this.failures < 2 && (this.phase === "verify" || Date.now() < session.expiresAt)) {
@@ -177,7 +177,7 @@ export class NeteaseLoginModal extends Modal {
       this.inFlight.delete(generation);
       if (this.alive(generation) && this.resumeRequested) {
         this.resumeRequested = false;
-        if (!this.stopped && !this.doc.hidden) { this.clearTimer(); void this.poll(generation); }
+        if (!this.stopped && !this.loginDoc.hidden) { this.clearTimer(); void this.poll(generation); }
       }
     }
   }
@@ -196,9 +196,9 @@ export class NeteaseLoginModal extends Modal {
     ++this.generation;
     this.clearTimer();
     this.session = undefined;
-    this.doc?.removeEventListener("visibilitychange", this.resume);
-    this.win?.removeEventListener("focus", this.resume);
-    this.win?.removeEventListener("pageshow", this.resume);
+    this.loginDoc?.removeEventListener("visibilitychange", this.resume);
+    this.loginWindow?.removeEventListener("focus", this.resume);
+    this.loginWindow?.removeEventListener("pageshow", this.resume);
     this.imageEl?.removeAttribute("src");
     this.contentEl.empty();
     this.settle(this.completed);

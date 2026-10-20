@@ -37,6 +37,7 @@ export function lyricIndexAt(lines: LyricLine[], positionMs: number): number {
 
 /** Public lyrics only: no cookies or account information in requests or persisted entries. */
 export class LyricsService {
+  private epoch = 0;
   private cache = new Map<number, { time: number; value: Lyrics }>();
   private pending = new Map<number, Promise<Lyrics>>();
   private ready: Promise<void> | null = null;
@@ -57,6 +58,7 @@ export class LyricsService {
   }
   async get(id: number, refresh = false): Promise<Lyrics> {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Invalid song ID");
+    const epoch = this.epoch;
     await this.load(); const hit = this.cache.get(id);
     const ttl = hit?.value.lines.length ? 7 * 86400000 : 3600000;
     if (!refresh && hit && this.now() - hit.time < ttl) return hit.value;
@@ -70,15 +72,23 @@ export class LyricsService {
         ]).finally(() => { if (timer) clearTimeout(timer); });
         if (body.code !== 200 || !body.lrc && body.nolyric !== true && body.uncollected !== true && body.pureMusic !== true) throw new Error("Lyrics unavailable");
         const value = parseLyrics(body);
+        if (epoch !== this.epoch) return value;
         this.cache.delete(id); this.cache.set(id, { time: this.now(), value });
         while (this.cache.size > 150) this.cache.delete(this.cache.keys().next().value!);
         if (this.disk) {
           const content = JSON.stringify({ version: 1, entries: [...this.cache].map(([id, entry]) => ({ id, ...entry })) });
-          this.writing = this.writing.then(async () => { try { await this.disk!.write(this.path, content); } catch {} });
+          this.writing = this.writing.catch(() => {}).then(async () => { try { await this.disk!.write(this.path, content); } catch {} });
         }
         return value;
       } catch (error) { if (hit && !refresh) return hit.value; throw error; }
-      finally { this.pending.delete(id); }
+      finally { if (epoch === this.epoch) this.pending.delete(id); }
     })(); this.pending.set(id, work); return work;
   }
+  usage(): number { return new TextEncoder().encode(JSON.stringify([...this.cache])).byteLength; }
+  async clear(): Promise<void> {
+    ++this.epoch; await this.load(); this.cache.clear(); this.pending.clear();
+    this.writing = this.writing.catch(() => {}).then(async () => { if (this.disk) await this.disk.write(this.path, JSON.stringify({version:1,entries:[]})); });
+    await this.writing;
+  }
+
 }
