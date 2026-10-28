@@ -1,4 +1,14 @@
 /* Explicit icon geometry; clickable-icon also avoids Obsidian's tablet button padding. */
+.mw-artist-filters { position:fixed; z-index:var(--layer-popover, 100); width:min(380px, calc(100vw - 16px)); box-sizing:border-box; padding:14px; overflow:auto; border:1px solid var(--background-modifier-border); border-radius:10px; background:var(--background-primary); color:var(--text-normal); box-shadow:var(--shadow-s); }
+.mw-artist-filters h4 { margin:0 0 8px; }
+.mw-artist-filters .setting-item { padding:10px 0; gap:12px; }
+.mw-artist-filters .setting-item-info { margin:0; min-width:0; }
+.mw-artist-filters .setting-item-name { font-size:var(--font-ui-small); }
+.mw-artist-filters .setting-item-control { flex-shrink:0; }
+.mw-artist-filters input[type="number"] { width:72px; }
+.mw-artist-filters__keywords { flex-direction:column; align-items:stretch; }
+.mw-artist-filters__keywords .setting-item-control, .mw-artist-filters__keywords textarea { width:100%; }
+.mw-artist-filters__keywords textarea { min-height:65px; resize:vertical; box-sizing:border-box; }
 .mw-view button.mw-svg-action {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   flex: 0 0 auto; min-width: 32px; min-height: 32px; height: auto; width: auto;

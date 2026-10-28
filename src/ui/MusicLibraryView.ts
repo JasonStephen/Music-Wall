@@ -5,6 +5,8 @@ import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
 import { LIBRARY_VIEW_TYPE } from "../types";
 import type { ArtistContent, CloudArtist, CloudPlaylist, LibrarySearchKind, LibrarySearchResult } from "../core/library";
 import { t } from "../i18n";
+import { artistAlbumFilterKey } from "../core/library";
+import { showArtistAlbumMenu } from "./artistAlbumSettings";
 import { sizedCover } from "../core/metadata";
 import { playAlbum } from "../core/playback";
 import { DEFAULT_COVER } from "./defaultCover";
@@ -46,7 +48,6 @@ export class MusicLibraryView extends ItemView {
   private playlistItem: CloudPlaylist | null = null;
   private artist: ArtistContent | null = null;
   private artistItem: CloudArtist | null = null;
-  private artistOffset = 0;
   private loading = false;
   private retry: (() => Promise<void>) | null = null;
   private stopInset: (() => void) | null = null;
@@ -110,6 +111,9 @@ export class MusicLibraryView extends ItemView {
       this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.lists = []; this.results = emptySearch(); this.offset = 0;
       this.loading = false; this.retry = null; this.tab = "home";
     }
+    if (this.artist && this.artist.filterKey !== artistAlbumFilterKey(this.plugin.settings)) {
+      void this.reloadArtistAlbums(); return;
+    }
     this.render();
   }
   private updateLayout(): void {
@@ -142,6 +146,9 @@ export class MusicLibraryView extends ItemView {
   }
   private render(): void {
     if (this.closed || !this.body) return;
+    if (this.artist && !this.loading && !this.retry && this.artist.filterKey !== artistAlbumFilterKey(this.plugin.settings)) {
+      void this.reloadArtistAlbums(); return;
+    }
     this.resetCardStats();
     this.clearMenus(); this.renderNav(); this.head.empty(); this.body.empty();
     const nav = svgAction(this.head, "menu", t("library.expandNav"), () => this.toggleNav()); nav.dataset.navToggle = "true"; nav.addClass("mw-cloud__menu");
@@ -200,8 +207,18 @@ export class MusicLibraryView extends ItemView {
     }
   }
   private listLayout(): boolean { return this.plugin.settings.libraryLayout === "list"; }
-  private layoutControls(parent: HTMLElement): void {
+  private layoutControls(parent: HTMLElement, artistFilters = false): void {
     const bar = parent.createDiv({cls:"mw-cloud__layouts", attr:{role:"group", "aria-label":t("libraryLayout.title")}});
+    if (artistFilters) {
+      let menu: ReturnType<typeof showArtistAlbumMenu> | null = null;
+      const filter = svgAction(bar, "settings-2", t("artistAlbumFilters.title"), () => {
+        if (filter.getAttribute("aria-expanded") === "true") { menu?.hide(); return; }
+        menu = showArtistAlbumMenu(this.plugin, filter);
+      });
+      this.menuCleanups.push(() => menu?.hide());
+      filter.setAttr("aria-haspopup", "dialog");
+      filter.setAttr("aria-expanded", "false");
+    }
     for (const [mode, icon] of [["grid", "layout-grid"], ["list", "list"]] as const) {
       const button = svgAction(bar, icon, t(`libraryLayout.${mode}`), async () => {
         this.plugin.settings.libraryLayout = mode;
@@ -211,8 +228,8 @@ export class MusicLibraryView extends ItemView {
       button.dataset.libraryLayout = mode; button.setAttr("aria-pressed", String(this.listLayout() === (mode === "list")));
     }
   }
-  private cardContainer(parent: HTMLElement): HTMLElement {
-    this.layoutControls(parent);
+  private cardContainer(parent: HTMLElement, artistFilters = false): HTMLElement {
+    this.layoutControls(parent, artistFilters);
     return parent.createDiv({cls:`mw-cloud__grid${this.listLayout() ? " is-list" : ""}`});
   }
   private recordViewed(kind: "albums" | "playlists", meta: AlbumMeta): void {
@@ -289,9 +306,12 @@ export class MusicLibraryView extends ItemView {
       this.context(card, () => this.playlistActions(item));
     }
   }
-  private renderAlbums(parent: HTMLElement, albums: AlbumSummary[]): void {
-    if (!albums.length) { this.empty(parent); return; }
-    const grid = this.cardContainer(parent);
+  private renderAlbums(parent: HTMLElement, albums: AlbumSummary[], artistFilters = false): void {
+    if (!albums.length) {
+      if (artistFilters) this.layoutControls(parent, true);
+      this.empty(parent); return;
+    }
+    const grid = this.cardContainer(parent, artistFilters);
     for (const album of albums) {
       const entry = grid.createDiv({ cls: "mw-cloud__album" });
       const card = entry.createEl("button", { cls: "mw-cloud__album-card", attr: { type: "button", title: album.name } });
@@ -375,7 +395,7 @@ export class MusicLibraryView extends ItemView {
     this.statsTargets.set(card, enqueue); this.statsObserver.observe(card);
   }
   private remember(): void {
-    const snapshot = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset };
+    const snapshot = { tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection };
     const scroll = this.body.scrollTop;
     this.history.push(() => { Object.assign(this, snapshot); this.render(); this.body.scrollTop = scroll; });
   }
@@ -387,7 +407,7 @@ export class MusicLibraryView extends ItemView {
   }
   /** Runtime snapshot used only if the source tab was closed while playing. */
   captureReturnState(): (target: MusicLibraryView) => Promise<void> {
-    const state = { historyKind: this.historyKind, tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, artistOffset: this.artistOffset, keyword: this.keyword, searchKind: this.searchKind, offset: this.offset, results: this.results, lists: this.lists };
+    const state = { historyKind: this.historyKind, tab: this.tab, collection: this.collection, playlistItem: this.playlistItem, albumItem: this.albumItem, artist: this.artist, artistItem: this.artistItem, artistSection: this.artistSection, keyword: this.keyword, searchKind: this.searchKind, offset: this.offset, results: this.results, lists: this.lists };
     const scroll = this.body.scrollTop, auth = this.auth;
     return async target => {
       if (target.closed || target.plugin.settings.neteaseCookie !== auth) return;
@@ -465,7 +485,7 @@ export class MusicLibraryView extends ItemView {
       button.dataset.artistSection = section; button.setAttr("role", "tab"); button.setAttr("aria-selected", String(this.artistSection === section));
     }
     if (this.artistSection === "songs") this.renderTracks(this.body, content.tracks);
-    else { this.renderAlbums(this.body, content.albums); if (content.more) this.more(this.body, () => this.loadArtistAlbums()); }
+    else { this.renderAlbums(this.body, content.albums, true); if (content.more) this.more(this.body, () => this.loadArtistAlbums()); }
   }
   private renderSignIn(parent: HTMLElement): void {
     const empty = parent.createDiv({ cls: "mw-cloud__empty" }); empty.createEl("p", { text: t("auth.signedOutDesc") });
@@ -526,14 +546,24 @@ export class MusicLibraryView extends ItemView {
   private async openArtist(artist: CloudArtist, remember = true): Promise<void> {
     if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
     this.artistItem = artist; this.artist = null; this.artistSection = "songs"; this.collection = null; this.playlistItem = null; this.albumItem = null;
-    return this.request(() => this.plugin.libraryApi.artistDetail(artist, this.plugin.settings.neteaseCookie), content => { this.artist = content; this.artistOffset = 0; }, () => this.openArtist(artist, false));
+    return this.request(() => this.plugin.libraryApi.artistDetail(artist, this.plugin.settings.neteaseCookie, this.plugin.settings, this.artistRequestGuard()), content => { this.artist = content; }, () => this.openArtist(artist, false));
+  }
+  private artistRequestGuard(): () => boolean {
+    const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+    return () => this.current(token, cookie);
+  }
+  private async reloadArtistAlbums(): Promise<void> {
+    const artist = this.artist; if (!artist) return;
+    await this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, 0, this.plugin.settings, this.artistRequestGuard()), page => {
+      this.artist = { ...artist, ...page };
+    }, () => this.reloadArtistAlbums());
   }
   private async loadArtistAlbums(): Promise<void> {
     const artist = this.artist; if (!artist) return;
-    const offset = this.artistOffset + 30;
+    const offset = artist.nextOffset;
     const scroll = this.body.scrollTop;
-    await this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, offset), page => {
-      this.artist = { ...artist, albums: [...artist.albums, ...page.albums], more: page.more }; this.artistOffset = offset;
+    await this.request(() => this.plugin.libraryApi.artistAlbums(artist.artist.id, this.plugin.settings.neteaseCookie, offset, this.plugin.settings, this.artistRequestGuard()), page => {
+      this.artist = { ...artist, ...page, albums: [...artist.albums, ...page.albums] };
     }, () => this.loadArtistAlbums());
     this.body.scrollTop = scroll;
   }

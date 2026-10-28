@@ -4,6 +4,7 @@ import type { zhCN } from "./zh-CN";
 
 export const zhTW: typeof zhCN = {
   history: {"songs": "歷史播放單曲", "albums": "歷史專輯", "playlists": "歷史歌單", "search": "搜尋歷史", "remove": "刪除這筆歷史記錄", "removeSearch": "刪除搜尋記錄：{name}", "clearKind": "清空目前分類", "clearConfirm": "是否清空目前分類的歷史記錄？刪除後無法復原。"},
+  artistAlbumFilters: {title: "藝術家專輯清單設定", singles: "依曲目數量過濾", singlesDesc: "隱藏曲目數量不超過下方數值的專輯。", limit: "曲目數量上限", limitDesc: "過濾此數量及以下的專輯，預設 1。", remixes: "關鍵字過濾", remixesDesc: "標題包含任一關鍵字即隱藏；分號分隔，不區分大小寫。", keywords: "過濾關鍵字", reset: "還原預設", apply: "套用", invalidLimit: "請輸入大於或等於 0 的整數。"},
   libraryLayout: {title:"顯示方式", grid:"網格檢視", list:"列表檢視"},
   cacheManager: {"total": "快取已用空間", "estimated": "約 {size}", "audio": "音訊快取", "lyrics": "歌詞快取", "stats": "專輯／歌單統計快取", "cover": "封面取色快取", "playback": "播放歷史記錄", "search": "搜尋歷史記錄", "clear": "清理", "all": "清理全部", "confirm": "是否刪除全部？刪除後所有內容將需要重新載入？", "warning": "播放歷史和搜尋歷史也將被清空，無法復原。音樂牆檔案、帳號登入資訊和個人設定不會刪除。", "done": "清理完成", "failed": "清理失敗，請重試。", "lyricsDesc": "歌詞原文與翻譯。清理後重新取得，目前顯示的歌詞仍可繼續使用。", "statsDesc": "歌曲數與總時長。清理後按需重新計算。", "coverDesc": "僅清理外掛的封面取色與亮度記憶體快取（{count} 筆），不刪除瀏覽器圖片快取。", "historyDesc": "目前庫中各帳號的本機歷史記錄。清理後無法復原。", "audioMobile": "此裝置未啟用外掛音訊磁碟快取。", "approx": "約 {size} KB"},
 

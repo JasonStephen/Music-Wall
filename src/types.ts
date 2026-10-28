@@ -192,6 +192,10 @@ export interface MusicWallSettings {
   lyricsTranslation: boolean;
   libraryAppearance: "system" | "light" | "dark";
   libraryLayout?: "grid" | "list";
+  artistAlbumHideSingles: boolean;
+  artistAlbumHideRemixes: boolean;
+  artistAlbumTrackLimit: number;
+  artistAlbumKeywords: string;
   wallAppearance: "system" | "light" | "dark";
   showGitSyncActions: boolean;
   /**
@@ -238,6 +242,10 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   audioCacheMB: 1024,
   lyricsTranslation: false,
   libraryAppearance: "system",
+  artistAlbumHideSingles: false,
+  artistAlbumHideRemixes: false,
+  artistAlbumTrackLimit: 1,
+  artistAlbumKeywords: "remix",
   wallAppearance: "system",
   showGitSyncActions: false,
   zoomScale: 1,

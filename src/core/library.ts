@@ -2,6 +2,8 @@ import type { AlbumMeta, AlbumSummary, AlbumTrackSnapshot } from "../types";
 import { weapiPost, type Requester } from "./metadata";
 import { LoginRequiredError } from "./playlist";
 import { t } from "../i18n";
+import { artistAlbumFilterKey, artistAlbumKeywords, normalizeArtistAlbumFilters, type ArtistAlbumFilters } from "./artistAlbumFilters";
+export { artistAlbumFilterKey, type ArtistAlbumFilters } from "./artistAlbumFilters";
 
 export interface CloudPlaylist { id: number; name: string; cover: string; creator: string; owner: number; count: number; special: number; }
 const playlist = (item: any): CloudPlaylist => ({ id: Number(item.id), name: String(item.name || ""), cover: item.coverImgUrl || item.picUrl || "", creator: item.creator?.nickname || "", owner: Number(item.creator?.userId || item.userId), count: Number(item.trackCount || 0), special: Number(item.specialType || 0) });
@@ -9,7 +11,8 @@ const song = (item: any): AlbumTrackSnapshot => ({ id: Number(item.id), name: it
 export type LibrarySearchKind = "songs" | "artists" | "albums" | "playlists";
 export interface CloudArtist { id: number; name: string; cover: string; }
 export interface LibrarySearchResult { songs: AlbumTrackSnapshot[]; artists: CloudArtist[]; albums: AlbumSummary[]; playlists: CloudPlaylist[]; more: boolean; }
-export interface ArtistContent { artist: CloudArtist; tracks: AlbumTrackSnapshot[]; albums: AlbumSummary[]; more: boolean; }
+export interface ArtistAlbumPage { albums: AlbumSummary[]; more: boolean; nextOffset: number; filterKey: string; }
+export interface ArtistContent extends ArtistAlbumPage { artist: CloudArtist; tracks: AlbumTrackSnapshot[]; }
 const album = (item: any): AlbumSummary => ({ albumId: Number(item.id), name: item.name || "", artist: (item.artists || [item.artist]).filter(Boolean).map((a: any) => a.name).join(" / "), cover: item.picUrl || item.blurPicUrl || "", trackCount: Number(item.size || 0), publishTime: item.publishTime, year: item.publishTime ? String(new Date(item.publishTime).getFullYear()) : undefined });
 
 export class MusicLibraryApi {
@@ -53,13 +56,32 @@ export class MusicLibraryApi {
     result.more = rows.length > 0 && offset + rows.length < Number(count || 0);
     return result;
   }
-  async artistAlbums(id: number, cookie: string, offset = 0): Promise<{ albums: AlbumSummary[]; more: boolean }> {
-    const body = await this.call(`/api/artist/albums/${id}`, { limit: 30, offset, total: true }, cookie);
-    return { albums: (body.hotAlbums || []).map(album), more: body.more === true };
+  async artistAlbums(id: number, cookie: string, offset = 0, filters: ArtistAlbumFilters = {}, isCurrent: () => boolean = () => true): Promise<ArtistAlbumPage> {
+    // Snapshot the switches: settings may change while a request is in flight.
+    const options = normalizeArtistAlbumFilters(filters);
+    const keywords = artistAlbumKeywords(options.artistAlbumKeywords);
+    const filterKey = artistAlbumFilterKey(filters);
+    const albums: AlbumSummary[] = [];
+    let more = true;
+    while (more && albums.length < 30) {
+      if (!isCurrent()) throw new Error("Artist album request cancelled");
+      // Request only the remaining slots so that no matching albums are skipped.
+      const body = await this.call(`/api/artist/albums/${id}`, { limit: 30 - albums.length, offset, total: true }, cookie);
+      const rows: any[] = body.hotAlbums || [];
+      offset += rows.length;
+      more = body.more === true && rows.length > 0;
+      for (const row of rows) {
+        const item = album(row);
+        if (options.artistAlbumHideSingles && row.size != null && Number.isFinite(Number(row.size)) && Number(row.size) >= 0 && item.trackCount <= options.artistAlbumTrackLimit
+          || options.artistAlbumHideRemixes && keywords.some(word => item.name.toLowerCase().includes(word))) continue;
+        albums.push(item);
+      }
+    }
+    return { albums, more, nextOffset: offset, filterKey };
   }
-  async artistDetail(artist: CloudArtist, cookie: string): Promise<ArtistContent> {
+  async artistDetail(artist: CloudArtist, cookie: string, filters: ArtistAlbumFilters = {}, isCurrent?: () => boolean): Promise<ArtistContent> {
     const [top, albums] = await Promise.all([
-      this.call("/api/artist/top/song", { id: artist.id }, cookie), this.artistAlbums(artist.id, cookie),
+      this.call("/api/artist/top/song", { id: artist.id }, cookie), this.artistAlbums(artist.id, cookie, 0, filters, isCurrent),
     ]);
     return { artist, tracks: (top.songs || []).map(song).filter((item: AlbumTrackSnapshot) => item.id > 0), ...albums };
   }

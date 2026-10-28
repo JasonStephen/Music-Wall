@@ -20,6 +20,7 @@ import {
 import { ALL_STYLES } from "./ui/disc";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { coverToneCacheCount, coverToneCacheUsage } from "./ui/accent";
+import { renderArtistAlbumSettings } from "./ui/artistAlbumSettings";
 import { hasLoginCookie } from "./core/playlist";
 
 export class MusicWallSettingTab extends PluginSettingTab {
@@ -159,6 +160,8 @@ export class MusicWallSettingTab extends PluginSettingTab {
 
     }
     if (this.activeTab === "wall") {
+      containerEl.createEl("h3", { text: t("artistAlbumFilters.title") });
+      renderArtistAlbumSettings(containerEl, this.plugin);
       new Setting(containerEl)
         .setName(t("settings.defaultStyle.name"))
         .addDropdown((d) => {
