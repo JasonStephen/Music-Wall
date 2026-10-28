@@ -237,6 +237,16 @@ export class MusicWallSettingTab extends PluginSettingTab {
           });
         });
 
+      new Setting(containerEl)
+        .setName(t("numericSeek.name"))
+        .setDesc(t("numericSeek.desc"))
+        .addToggle(toggle => toggle
+          .setValue(this.plugin.settings.numericSeekEnabled === true)
+          .onChange(async enabled => {
+            this.plugin.settings.numericSeekEnabled = enabled;
+            await this.plugin.saveSettings();
+          }));
+
       for (const [field, name] of [["pauseFadeSeconds", "buffering.pauseFade"], ["crossFadeSeconds", "buffering.crossFade"]] as const) {
         const fade = new Setting(containerEl).setName(t(name)).addSlider(slider => slider
           .setLimits(0, 6, 0.1).setValue(this.plugin.settings[field]).setDynamicTooltip()

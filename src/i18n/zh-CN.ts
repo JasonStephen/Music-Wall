@@ -211,6 +211,8 @@ export const zhCN = {
     choose: "播放音质", actual: "当前音质：{quality}", loading: "正在确认可用音质…",
   },
 
+  numericSeek: { name: "数字键百分比跳转（实验性功能）", desc: "开启后，在播放器页面按 0–9 可跳转到歌曲的 0–90% 位置。默认关闭。" },
+
   mini: { open: "打开音乐播放器", stop: "停止播放", loading: "正在加载…", paused: "已暂停" },
 
   authDiagnostics: {

@@ -70,7 +70,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.1";
+const BUILD_TAG = "1.3.2-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -331,6 +331,7 @@ export default class MusicWallPlugin extends Plugin {
     this.settings.showGitSyncActions = this.settings.showGitSyncActions === true;
     if (this.settings.playbackMode !== "client") this.settings.playbackMode = "internal";
     if (!isAudioQuality(this.settings.defaultAudioQuality)) this.settings.defaultAudioQuality = "standard";
+    this.settings.numericSeekEnabled = this.settings.numericSeekEnabled === true;
     this.settings.playerVolume = Number.isFinite(this.settings.playerVolume) ? Math.max(0, Math.min(1, this.settings.playerVolume)) : DEFAULT_SETTINGS.playerVolume;
     if (!["order", "repeat", "one", "shuffle"].includes(this.settings.playbackOrder)) this.settings.playbackOrder = DEFAULT_SETTINGS.playbackOrder;
     if (!["white", "black", "wood", "art"].includes(this.settings.playerCase)) this.settings.playerCase = "black";

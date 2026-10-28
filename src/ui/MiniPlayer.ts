@@ -115,6 +115,7 @@ export class MiniPlayer {
     parent.ownerDocument.addEventListener("pointerdown", this.outside);
     parent.ownerDocument.addEventListener("keydown", this.escape);
     parent.ownerDocument.addEventListener("keydown", this.space);
+    parent.ownerDocument.addEventListener("keydown", this.numericSeek);
     parent.ownerDocument.addEventListener("pointerup", this.releaseSeek);
     parent.ownerDocument.addEventListener("pointercancel", this.releaseSeek);
     this.off = plugin.nowPlaying.on(() => this.update());
@@ -156,6 +157,21 @@ export class MiniPlayer {
       .some(el => el.getClientRects().length && doc.defaultView?.getComputedStyle(el).visibility !== "hidden")) return;
     event.preventDefault();
     if (!event.repeat) void this.control("toggle");
+  };
+  private numericSeek = (event: KeyboardEvent) => {
+    const player = this.plugin.internalPlayer;
+    if (!this.plugin.settings.numericSeekEnabled || !/^[0-9]$/.test(event.key) || event.defaultPrevented || event.isComposing
+      || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat
+      || !this.visible || !this.isActive() || !this.root.getClientRects().length
+      || !player.state.seekable || player.state.durationMs <= 0) return;
+    const doc = this.parent.ownerDocument, host = this.parent.closest(".mw-view");
+    const target = (event.target as Node | null)?.nodeType === 1 ? event.target as Element : doc.activeElement;
+    const interactive = "input,textarea,select,button,a[href],summary,[contenteditable]:not([contenteditable='false']),[role='textbox'],[role='button'],[role='slider'],[role='checkbox'],[role='switch'],.modal-container,.prompt,.menu";
+    if (!target || target.closest(interactive) || !(host?.contains(target) || target === doc.body || target === doc.documentElement)) return;
+    if (Array.from(doc.querySelectorAll<HTMLElement>(".modal-container,.prompt,.menu"))
+      .some(el => el.getClientRects().length && doc.defaultView?.getComputedStyle(el).visibility !== "hidden")) return;
+    event.preventDefault();
+    void player.seek(player.state.durationMs * Number(event.key) / 10);
   };
   private releaseSeek = (event: PointerEvent) => {
     if (event.pointerId === this.seekPointer) this.finishSeek(event.type === "pointerup");
@@ -275,6 +291,7 @@ export class MiniPlayer {
     this.parent.ownerDocument.removeEventListener("pointercancel", this.releaseSeek);
     this.parent.ownerDocument.removeEventListener("keydown", this.escape);
     this.parent.ownerDocument.removeEventListener("keydown", this.space);
+    this.parent.ownerDocument.removeEventListener("keydown", this.numericSeek);
     this.parent.style.removeProperty("--mw-mini-height"); this.root.remove();
   }
 }

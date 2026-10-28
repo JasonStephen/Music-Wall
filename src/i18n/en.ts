@@ -213,6 +213,8 @@ export const en: typeof zhCN = {
     choose: "Audio quality", actual: "Playing at {quality}", loading: "Checking available qualities…",
   },
 
+  numericSeek: { name: "Numeric percentage seeking (experimental)", desc: "When enabled, press 0–9 in the player to seek to 0–90% of the song. Disabled by default." },
+
   mini: { open: "Open music player", stop: "Stop playback", loading: "Loading…", paused: "Paused" },
 
   authDiagnostics: {

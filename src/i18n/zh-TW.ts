@@ -213,6 +213,8 @@ export const zhTW: typeof zhCN = {
     choose: "播放音質", actual: "目前音質：{quality}", loading: "正在確認可用音質…",
   },
 
+  numericSeek: { name: "數字鍵百分比跳轉（實驗功能）", desc: "開啟後，在播放器頁面按 0–9 可跳轉到歌曲的 0–90% 位置。預設關閉。" },
+
   mini: { open: "開啟音樂播放器", stop: "停止播放", loading: "正在載入…", paused: "已暫停" },
 
   authDiagnostics: {

@@ -164,6 +164,8 @@ export interface MusicWallSettings {
   /** 插件内播放不使用账号歌单；client 保留原官方客户端播放路径。 */
   playbackMode: "internal" | "client";
   defaultAudioQuality: AudioQuality;
+  /** 是否启用数字键按百分比跳转（实验功能） */
+  numericSeekEnabled: boolean;
   /** 是否已提示过移动端限制 */
   mobileNoticeShown: boolean;
   /** 展示架布局下文字显示档位 */
@@ -214,6 +216,7 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   playbackPlaylistId: "",
   playbackMode: "internal",
   defaultAudioQuality: "standard",
+  numericSeekEnabled: false,
   mobileNoticeShown: false,
   shelfCaption: "pull",
   smtcEnabled: true,

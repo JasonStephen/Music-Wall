@@ -165,6 +165,16 @@ export class MusicPlayerView extends ItemView {
           if (!e.repeat) void this.control("toggle");
         }
       }
+      if (this.plugin.settings.numericSeekEnabled && /^[0-9]$/.test(e.key) && !e.defaultPrevented && !e.isComposing
+        && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat
+        && this.app.workspace.getActiveViewOfType(MusicPlayerView) === this && this.now.seekable && this.now.durationMs > 0) {
+        const target = e.target instanceof Element ? e.target : document.activeElement;
+        const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
+        if (!target || !target.closest(controls)) {
+          e.preventDefault();
+          void this.plugin.nowPlaying.seek(this.now.durationMs * Number(e.key) / 10);
+        }
+      }
       if (e.key === "Escape" && this.popover) {
         const button = this.el[this.popover === "volume" ? "btnVolume" : "btnQuality"];
         this.togglePopover(null); button?.focus();
