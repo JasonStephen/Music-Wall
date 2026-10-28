@@ -314,11 +314,19 @@ export class MusicLibraryView extends ItemView {
     const grid = this.cardContainer(parent, artistFilters);
     for (const album of albums) {
       const entry = grid.createDiv({ cls: "mw-cloud__album" });
-      const card = entry.createEl("button", { cls: "mw-cloud__album-card", attr: { type: "button", title: album.name } });
-      card.addEventListener("click", () => void this.openAlbum(album));
+      const card = entry.createDiv({ cls: "mw-cloud__album-card" });
+      const open = card.createEl("button", { cls: "mw-cloud__album-open", attr: { type: "button", title: album.name } });
+      open.addEventListener("click", () => void this.openAlbum(album));
       this.context(entry, () => this.albumActions(album));
-      card.createEl("img", { attr: { src: sizedCover(album.cover || DEFAULT_COVER, 300), alt: "", loading: "lazy" } });
-      card.createSpan({ cls: "mw-cloud__name", text: album.name }); card.createSpan({ cls: "mw-cloud__creator", text: album.artist });
+      open.createEl("img", { attr: { src: sizedCover(album.cover || DEFAULT_COVER, 300), alt: "", loading: "lazy" } });
+      open.createSpan({ cls: "mw-cloud__name", text: album.name });
+      const artists = card.createSpan({ cls: "mw-cloud__creator mw-cloud__album-artists" });
+      if (album.artistRefs?.length) {
+        album.artistRefs.forEach((artist, index) => {
+          if (index) artists.createSpan({ text: " / " });
+          this.link(artists, artist.name, () => this.openArtist({ ...artist, cover: artist.cover || "" }), "artist");
+        });
+      } else if (album.artist) this.link(artists, album.artist, () => this.albumArtist(album), "artist");
       this.cardStats(card, `album:${album.albumId}`, album.trackCount, async () => collectionStats(await this.plugin.fetchAlbumDetail(album.albumId)));
       const actions = entry.createDiv({ cls: "mw-cloud__actions" });
       svgAction(actions, "play", t("search.preview"), () => this.albumAction(album, "play"));
@@ -585,6 +593,14 @@ export class MusicLibraryView extends ItemView {
   private async trackArtist(track: AlbumTrackSnapshot): Promise<void> {
     const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
     const refs = track.artistRefs?.length ? track.artistRefs : (await this.plugin.libraryApi.songs([track.id], cookie))[0]?.artistRefs || [];
+    await this.chooseArtist(refs, token, cookie);
+  }
+  private async albumArtist(album: AlbumSummary): Promise<void> {
+    const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+    const refs = (await this.plugin.fetchAlbumDetail(album.albumId)).artistRefs || [];
+    await this.chooseArtist(refs, token, cookie);
+  }
+  private async chooseArtist(refs: { id: number; name: string }[], token: number, cookie: string): Promise<void> {
     if (!this.current(token, cookie)) return;
     const artists = [...new Map(refs.filter(a => a.id > 0).map(a => [a.id, a])).values()];
     if (artists.length === 1) await this.openArtist({ ...artists[0], cover: "" });

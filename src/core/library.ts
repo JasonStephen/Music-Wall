@@ -13,7 +13,7 @@ export interface CloudArtist { id: number; name: string; cover: string; }
 export interface LibrarySearchResult { songs: AlbumTrackSnapshot[]; artists: CloudArtist[]; albums: AlbumSummary[]; playlists: CloudPlaylist[]; more: boolean; }
 export interface ArtistAlbumPage { albums: AlbumSummary[]; more: boolean; nextOffset: number; filterKey: string; }
 export interface ArtistContent extends ArtistAlbumPage { artist: CloudArtist; tracks: AlbumTrackSnapshot[]; }
-const album = (item: any): AlbumSummary => ({ albumId: Number(item.id), name: item.name || "", artist: (item.artists || [item.artist]).filter(Boolean).map((a: any) => a.name).join(" / "), cover: item.picUrl || item.blurPicUrl || "", trackCount: Number(item.size || 0), publishTime: item.publishTime, year: item.publishTime ? String(new Date(item.publishTime).getFullYear()) : undefined });
+const album = (item: any): AlbumSummary => ({ albumId: Number(item.id), name: item.name || "", artist: (item.artists?.length ? item.artists : [item.artist]).filter(Boolean).map((a: any) => a.name).join(" / "), artistRefs: (item.artists?.length ? item.artists : [item.artist]).filter((a: any) => Number(a?.id) > 0).map((a: any) => ({ id: Number(a.id), name: String(a.name || ""), cover: a.picUrl || a.img1v1Url || "" })), cover: item.picUrl || item.blurPicUrl || "", trackCount: Number(item.size || 0), publishTime: item.publishTime, year: item.publishTime ? String(new Date(item.publishTime).getFullYear()) : undefined });
 
 export class MusicLibraryApi {
   private generation = 0;

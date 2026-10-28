@@ -128,6 +128,7 @@ export interface AlbumSummary {
   albumId: number;
   name: string;
   artist: string;
+  artistRefs?: { id: number; name: string; cover?: string }[];
   cover: string;
   trackCount: number;
   publishTime?: number;
