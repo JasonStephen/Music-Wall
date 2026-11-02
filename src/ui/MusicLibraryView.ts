@@ -15,7 +15,7 @@ import { watchHostInset } from "./hostInset";
 import { MiniPlayer } from "./MiniPlayer";
 import { PickerModal } from "./smallModals";
 import { bindLibraryMenu, type LibraryMenuAction } from "./libraryMenu";
-import { collectionSummary, collectionStats, statsSummary, type CollectionStats } from "./collectionSummary";
+import { albumReleaseMonth, albumReleaseText, collectionSummary, collectionStats, statsSummary, type CollectionStats } from "./collectionSummary";
 import { svgAction } from "./svgAction";
 import { searchHistory } from "./searchHistory";
 import { ConfirmModal } from "./ConfirmModal";
@@ -327,6 +327,8 @@ export class MusicLibraryView extends ItemView {
           this.link(artists, artist.name, () => this.openArtist({ ...artist, cover: artist.cover || "" }), "artist");
         });
       } else if (album.artist) this.link(artists, album.artist, () => this.albumArtist(album), "artist");
+      const releaseMonth = albumReleaseMonth(album);
+      if (releaseMonth) card.createEl("time", { cls: "mw-cloud__album-release", text: albumReleaseText(album), attr: { datetime: releaseMonth } });
       this.cardStats(card, `album:${album.albumId}`, album.trackCount, async () => collectionStats(await this.plugin.fetchAlbumDetail(album.albumId)));
       const actions = entry.createDiv({ cls: "mw-cloud__actions" });
       svgAction(actions, "play", t("search.preview"), () => this.albumAction(album, "play"));
@@ -447,6 +449,11 @@ export class MusicLibraryView extends ItemView {
     head.createEl("img", { attr: { src: sizedCover(collection.cover || DEFAULT_COVER, 160), alt: "" } });
     const info = head.createDiv({ cls: "mw-cloud__collection-info" });
     info.createEl("h3", { text: collection.name });
+    if (!collection.playlistId) {
+      const release = { publishTime: collection.publishTime || this.albumItem?.publishTime };
+      const month = albumReleaseMonth(release);
+      if (month) info.createEl("time", { cls: "mw-cloud__album-release", text: albumReleaseText(release), attr: { datetime: month } });
+    }
     info.createDiv({ cls: "mw-cloud__summary", text: collectionSummary(collection) });
     svgAction(head, "play", t("panel.play"), () => this.play(collection, 0));
     svgAction(head, "link", t("libraryDetails.copyLink"), () => this.copy(collection.playlistId ? "playlist" : "album", collection.playlistId || collection.albumId));

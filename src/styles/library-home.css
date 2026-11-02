@@ -70,6 +70,7 @@
 .mw-cloud .mw-cloud__grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); }
 .mw-cloud .mw-cloud__card { padding: 10px; }
 .mw-cloud__card-stats { display: block; margin-top: 5px; color: var(--mw-panel-fg-dim); font-size: 0.82em; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+.mw-cloud__album-release { display:block; margin-top:5px; color:var(--mw-panel-fg-dim); font-size:0.82em; line-height:1.5; font-variant-numeric:tabular-nums; }
 .mw-cloud__album { min-width: 0; padding: 10px; border: 1px solid var(--mw-panel-line); background: var(--mw-panel-bg); border-radius: 9px; }
 .mw-cloud__album-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 5px; margin-bottom: 8px; }
 .mw-cloud__artist-card img { border-radius: 50%; }
@@ -81,7 +82,8 @@
 .mw-cloud button.mw-cloud__link { display: block; min-width: 0; max-width: 100%; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--mw-panel-fg-dim); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
 .mw-cloud button.mw-cloud__link:hover { text-decoration: underline; }
 .mw-cloud .mw-cloud__album-card { display: block; width: 100%; min-width: 0; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; color: inherit; text-align: left; }
-.mw-cloud button.mw-cloud__album-open { display:contents; color:inherit; cursor:pointer; }
+.mw-cloud button.mw-cloud__album-open { display:contents; color:inherit; cursor:pointer; text-align:left; }
+.mw-cloud .mw-cloud__name { text-align:left; justify-self:stretch; }
 .mw-cloud button.mw-cloud__album-open:focus-visible { outline:none; }
 .mw-cloud button.mw-cloud__album-open:focus-visible img { outline:2px solid var(--interactive-accent); outline-offset:2px; }
 .mw-cloud .mw-cloud__album-artists { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
@@ -144,6 +146,8 @@
 .mw-cloud .is-list .mw-cloud__name,
 .mw-cloud .is-list .mw-cloud__creator,
 .mw-cloud .is-list .mw-cloud__card-stats { grid-column:2; min-width:0; margin:0; }
+.mw-cloud .is-list .mw-cloud__album-release { grid-column:2; margin:0; }
+.mw-cloud .is-list .mw-cloud__album-card img { grid-row:1 / span 4; }
 .mw-cloud .is-list .mw-cloud__album { display:flex; align-items:center; gap:8px; }
 .mw-cloud .is-list .mw-cloud__album-card { flex:1; }
 .mw-cloud .is-list .mw-cloud__actions { margin:0; flex-wrap:wrap; }

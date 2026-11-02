@@ -3,6 +3,7 @@
 import type { zhCN } from "./zh-CN";
 
 export const zhTW: typeof zhCN = {
+  albumRelease: "{month}發行",
   history: {"songs": "歷史播放單曲", "albums": "歷史專輯", "playlists": "歷史歌單", "search": "搜尋歷史", "remove": "刪除這筆歷史記錄", "removeSearch": "刪除搜尋記錄：{name}", "clearKind": "清空目前分類", "clearConfirm": "是否清空目前分類的歷史記錄？刪除後無法復原。"},
   artistAlbumFilters: {title: "藝術家專輯清單設定", singles: "依曲目數量過濾", singlesDesc: "隱藏曲目數量不超過下方數值的專輯。", limit: "曲目數量上限", limitDesc: "過濾此數量及以下的專輯，預設 1。", remixes: "關鍵字過濾", remixesDesc: "標題包含任一關鍵字即隱藏；分號分隔，不區分大小寫。", keywords: "過濾關鍵字", reset: "還原預設", apply: "套用", invalidLimit: "請輸入大於或等於 0 的整數。"},
   libraryLayout: {title:"顯示方式", grid:"網格檢視", list:"列表檢視"},

@@ -3,6 +3,7 @@
 import type { zhCN } from "./zh-CN";
 
 export const en: typeof zhCN = {
+  albumRelease: "Released {month}",
   history: {"songs": "Played songs", "albums": "Album history", "playlists": "Playlist history", "search": "Search history", "remove": "Delete this history entry", "removeSearch": "Delete search: {name}", "clearKind": "Clear this category", "clearConfirm": "Clear history in this category? This cannot be undone."},
   artistAlbumFilters: {title: "Artist album list settings", singles: "Filter by track count", singlesDesc: "Hide albums with at most the number of tracks below.", limit: "Track count limit", limitDesc: "Hide albums with this many tracks or fewer. Default: 1.", remixes: "Keyword filter", remixesDesc: "Hide titles containing any keyword; separate with semicolons. Case insensitive.", keywords: "Filter keywords", reset: "Reset defaults", apply: "Apply", invalidLimit: "Enter a whole number greater than or equal to 0."},
   libraryLayout: {title:"View layout", grid:"Grid view", list:"List view"},

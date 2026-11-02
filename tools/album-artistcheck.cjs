@@ -28,7 +28,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
   const api = new MusicLibraryApi(() => {});
   api.call = async () => ({ result: { albumCount: 2, albums: [
-    { id: 5, name: 'Collaboration', size: 12, artists: [{ id: 8, name: 'First', picUrl: 'first.jpg' }, { id: 9, name: 'Second' }] },
+    { id: 5, name: 'Collaboration', size: 12, publishTime: Date.UTC(2020, 8, 18, 12), artists: [{ id: 8, name: 'First', picUrl: 'first.jpg' }, { id: 9, name: 'Second' }] },
     { id: 6, name: 'Solo', size: 3, artists: [], artist: { id: 10, name: 'Solo artist' } },
   ] } });
   const result = await api.searchContent('artist', 'albums', '');
@@ -38,6 +38,19 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   const view = Object.create(MusicLibraryView.prototype);
   Object.assign(view, { cardContainer: p => p.createDiv(), context() {}, cardStats() {}, async openAlbum(album) { openedAlbum = album.albumId; }, async openArtist(artist) { openedArtist = artist; } });
   view.renderAlbums(parent, result.albums);
+  const dates = parent.find(el => el.tag === 'time');
+  assert.equal(dates.length, 1);
+  assert.equal(dates[0].options.text, '2020.09\u53d1\u884c');
+  assert.equal(dates[0].options.attr.datetime, '2020-09');
+  const { albumReleaseMonth } = load('src/ui/collectionSummary.ts');
+  for (const value of [undefined, 0, NaN, Infinity, 1e20]) assert.equal(albumReleaseMonth({ publishTime: value }), '');
+  assert.equal(albumReleaseMonth({ publishTime: Date.UTC(2020, 0, 15, 12) }), '2020-01');
+  view.body = new Element(); view.renderTracks = () => {};
+  view.renderCollection({ ...result.albums[0], tracks: [] });
+  assert.equal(view.body.find(el => el.tag === 'time')[0].options.text, '2020.09\u53d1\u884c');
+  view.body = new Element();
+  view.renderCollection({ ...result.albums[0], playlistId: 42, tracks: [] });
+  assert.equal(view.body.find(el => el.tag === 'time').length, 0);
   const links = parent.find(el => el.options.attr?.['data-link'] === 'artist');
   assert.equal(links.length, 3);
   links[1].click(); await tick(); assert.equal(openedArtist.id, 9); assert.equal(openedAlbum, undefined);

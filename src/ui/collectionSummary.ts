@@ -1,7 +1,19 @@
-import type { AlbumMeta } from "../types";
+import type { AlbumMeta, AlbumSummary } from "../types";
 import { t } from "../i18n";
 
 export interface CollectionStats { count: number; duration?: number; }
+const releaseMonthFormat = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", timeZone: "America/Los_Angeles" });
+export function albumReleaseMonth(album: Pick<AlbumSummary, "publishTime">): string {
+  if (!Number.isFinite(album.publishTime) || !album.publishTime) return "";
+  const date = new Date(album.publishTime);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = releaseMonthFormat.formatToParts(date);
+  return `${parts.find(part => part.type === "year")!.value}-${parts.find(part => part.type === "month")!.value}`;
+}
+export function albumReleaseText(album: Pick<AlbumSummary, "publishTime">): string {
+  const month = albumReleaseMonth(album);
+  return month ? t("albumRelease", { month: month.replace("-", ".") }) : "";
+}
 export function collectionStats(collection: AlbumMeta): CollectionStats {
   const tracks = collection.tracks || [];
   const count = Math.max(collection.trackCount || 0, tracks.length);

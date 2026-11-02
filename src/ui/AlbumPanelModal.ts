@@ -12,6 +12,7 @@ import { buildStarsDisplay, normalizeRating, paintStarsDisplay } from "./rating"
 import { RatingModal } from "./RatingModal";
 import { t } from "../i18n";
 import { PickerModal } from "./smallModals";
+import { albumReleaseText } from "./collectionSummary";
 
 export interface AlbumPanelNavigation {
   openAlbum(meta: AlbumMeta): Promise<void>;
@@ -126,7 +127,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): ()
       }).open();
     });
   }
-  row(t("panel.release"), opts.meta.year);
+  row(t("panel.release"), albumReleaseText(opts.meta) || opts.meta.year);
   row(t("panel.trackCount"), opts.meta.trackCount);
   // 总时长：档位化展示（分钟/小时），悬停给"总分钟:秒"
   const totalDur = sumTrackDur(opts.meta.tracks);
