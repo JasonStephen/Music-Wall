@@ -3,6 +3,7 @@ import type { NowPlayingState } from "../core/nowPlaying";
 import { lyricIndexAt, type Lyrics } from "../core/lyrics";
 import { t } from "../i18n";
 import { svgAction } from "./svgAction";
+import { setIcon } from "obsidian";
 
 /** Only mounted in the full player. Timeline comes from the current audio, not a free-running clock. */
 export class PlayerLyrics {
@@ -24,6 +25,9 @@ export class PlayerLyrics {
   private resize: ResizeObserver | null = null;
   private frame = 0;
   private motions: Animation[] = [];
+  private preview = -1;
+  private seekButton: HTMLButtonElement;
+  private seekTime: HTMLElement;
   constructor(private root: HTMLElement, private plugin: MusicWallPlugin) {
     root.addClass("mw-lyrics"); root.setAttr("aria-label", t("lyrics.title"));
     const bar = root.createDiv({ cls: "mw-lyrics__bar" });
@@ -36,8 +40,17 @@ export class PlayerLyrics {
     }, false);
     this.viewport = root.createDiv({ cls: "mw-lyrics__viewport", attr: { tabindex: "0" } });
     this.track = this.viewport.createDiv({ cls: "mw-lyrics__track" });
+    this.seekButton = root.createEl("button", { cls: "mw-lyrics__seek is-hidden", attr: { type: "button" } });
+    setIcon(this.seekButton.createSpan(), "play");
+    this.seekTime = this.seekButton.createSpan();
+    this.seekButton.addEventListener("click", () => {
+      const time = this.lyrics?.lines[this.preview]?.time;
+      if (time == null || this.state?.source !== "internal" || String(this.state.songId) !== this.key || !this.state.seekable) return;
+      void this.plugin.internalPlayer.seek(time);
+      this.resumeFollow();
+    });
     this.retry = svgAction(root, "refresh-cw", t("library.retry"), () => this.load(true), true); this.retry.addClass("is-hidden");
-    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.cancelMotion(); this.follow.removeClass("is-hidden"); this.scheduleFollow(); } };
+    const browse = () => { if (this.lyrics?.lines.some(line => line.time !== null)) { this.manual = true; this.cancelMotion(); this.follow.removeClass("is-hidden"); this.updatePreview(); this.scheduleFollow(); } };
     this.viewport.addEventListener("wheel", event => { if (!event.ctrlKey && !event.altKey) browse(); }, { passive: true });
     this.viewport.addEventListener("touchstart", () => { this.touching = true; browse(); }, { passive: true });
     this.viewport.addEventListener("touchmove", browse, { passive: true });
@@ -45,9 +58,9 @@ export class PlayerLyrics {
     this.viewport.addEventListener("touchend", endTouch, { passive: true });
     this.viewport.addEventListener("touchcancel", endTouch, { passive: true });
     // Include touch inertia: count ten seconds from the last actual scroll.
-    this.viewport.addEventListener("scroll", () => { if (this.manual) this.scheduleFollow(); }, { passive: true });
+    this.viewport.addEventListener("scroll", () => { if (this.manual) { this.updatePreview(); this.scheduleFollow(); } }, { passive: true });
     this.viewport.addEventListener("keydown", event => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) browse(); });
-    if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateActive(true)); this.resize.observe(this.viewport); }
+    if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => { this.updateActive(true); if (this.manual) this.updatePreview(); }); this.resize.observe(this.viewport); }
     this.updateTranslation();
   }
   update(state: NowPlayingState): void {
@@ -64,6 +77,7 @@ export class PlayerLyrics {
     this.cancelMotion();
     if (this.frame) cancelAnimationFrame(this.frame);
     this.lyrics = null; this.active = -2; this.manual = false;
+    this.preview = -1; this.root.removeClass("is-browsing"); this.seekButton.addClass("is-hidden");
     this.retry.addClass("is-hidden"); this.follow.addClass("is-hidden"); this.updateTranslation();
     this.viewport.scrollTop = 0;
     if (key === "idle" || !key) { this.message(t("lyrics.idle")); return; }
@@ -79,15 +93,10 @@ export class PlayerLyrics {
       if (!lyrics.lines.some(line => line.text)) { this.message(t(lyrics.instrumental ? "lyrics.instrumental" : "lyrics.empty")); return; }
       this.viewport.removeClass("is-message"); this.track.empty(); this.rows = [];
       for (const line of lyrics.lines) {
-        const timed = line.time !== null;
-        const row = this.track.createEl(timed ? "button" : "div", { cls: "mw-lyrics__line", ...(timed ? { attr: { type: "button" } } : {}) });
+        const row = this.track.createDiv({ cls: "mw-lyrics__line" });
         const text = row.createSpan({ cls: "mw-lyrics__text" });
         text.createSpan({ cls: "mw-lyrics__original", text: line.text });
         if (line.translation) text.createSpan({ cls: "mw-lyrics__translation", text: line.translation });
-        if (timed) row.addEventListener("click", () => {
-          if (this.state?.source !== "internal" || String(this.state.songId) !== key || !this.state.seekable) return;
-          this.clearFollowTimer(); this.manual = false; this.follow.addClass("is-hidden"); void this.plugin.internalPlayer.seek(line.time!);
-        });
         this.rows.push(row);
       }
       this.updateTranslation(); this.updateActive(true);
@@ -101,11 +110,33 @@ export class PlayerLyrics {
     this.translate.setAttr("aria-pressed", String(!!this.plugin.settings.lyricsTranslation));
     this.translate.disabled = !this.lyrics?.lines.some(line => line.translation);
     this.translate.title = t(this.translate.disabled ? "lyrics.noTranslation" : "lyrics.translation");
+    if (this.manual) this.updatePreview();
+  }
+  private updatePreview(): void {
+    if (!this.manual || !this.rows.length) return;
+    const anchor = this.viewport.scrollTop + this.viewport.clientHeight * .26;
+    let index = -1, distance = Infinity;
+    this.rows.forEach((row, i) => {
+      if (this.lyrics?.lines[i].time == null) return;
+      const delta = Math.abs(row.offsetTop - anchor);
+      if (delta < distance) { index = i; distance = delta; }
+    });
+    this.preview = index; this.root.addClass("is-browsing");
+    this.rows.forEach((row, i) => row.toggleClass("is-preview", i === index));
+    const row = this.rows[index], time = this.lyrics?.lines[index]?.time;
+    this.seekButton.toggleClass("is-hidden", !row || time == null || !this.state?.seekable);
+    if (!row || time == null) return;
+    const seconds = Math.floor(time / 1000);
+    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    this.seekTime.textContent = clock;
+    this.seekButton.setAttr("aria-label", `${clock} · ${this.lyrics!.lines[index].text}`);
+    this.seekButton.style.top = `${this.viewport.offsetTop + row.offsetTop - this.viewport.scrollTop + row.offsetHeight / 2}px`;
   }
   private updateActive(force = false): void {
     const lines = this.lyrics?.lines;
     if (!lines?.length || !this.rows.length || !this.state) return;
     const index = lyricIndexAt(lines, this.state.positionMs);
+    if (this.manual) this.updatePreview();
     if (index === this.active && !force) return;
     const previous = this.active; this.active = index;
     let first = index;
@@ -160,6 +191,8 @@ export class PlayerLyrics {
   }
   private resumeFollow(): void {
     this.clearFollowTimer(); this.manual = false;
+    this.preview = -1; this.root.removeClass("is-browsing");
+    this.rows.forEach(row => row.removeClass("is-preview")); this.seekButton.addClass("is-hidden");
     this.follow.addClass("is-hidden"); this.updateActive(true);
   }
   private cancelMotion(): void { this.motions.splice(0).forEach(animation => animation.cancel()); }

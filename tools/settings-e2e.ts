@@ -10,7 +10,7 @@ installDomHelpers();const wait=(ms=20)=>new Promise(resolve=>setTimeout(resolve,
  let used=2*1024*1024,trimmed=0;const cleared:string[]=[];
  const plugin:any={settings:{...DEFAULT_SETTINGS},async saveData(){},async saveSettings(){},refreshOpenViews(){},async clearManagedCache(kind:string){cleared.push(kind);},audioTransport:{supported:true,async usage(){return used;},async trim(){trimmed++;used=1024*1024;},async clear(){used=0;}}};
  const tab=new MusicWallSettingTab({} as never,plugin);mount.appendChild(tab.containerEl);tab.display();
- expect(tab.containerEl.querySelectorAll('[role=tab]').length===6,'six settings categories include cache management');
+ expect(tab.containerEl.querySelectorAll('[role=tab]').length===6&&!tab.containerEl.querySelector('#mw-settings-tab-experimental'),'six settings categories without completed experiment');
  tab.containerEl.querySelector<HTMLButtonElement>('#mw-settings-tab-cache')!.click();await wait();
  const rows=()=>[...tab.containerEl.querySelectorAll<HTMLElement>('.setting-item')];
  for(const row of rows())expect(row.scrollWidth<=row.clientWidth+1,'cache setting has no horizontal overflow');

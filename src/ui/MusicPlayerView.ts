@@ -26,7 +26,7 @@ import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
-import { coverTone, backdropForeground, type CoverTone } from "./accent";
+import { coverTone, backdropForeground, LYRICS_CONTRAST_THRESHOLD, type CoverTone } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
@@ -100,6 +100,7 @@ export class MusicPlayerView extends ItemView {
   private styleBtn: HTMLButtonElement | null = null;
   private presetMedia: MediaQueryList | null = null;
   private fullLyrics = false;
+  private renderGeneration = 0;
   private lastPresetGroup: Exclude<PresetGroup, "custom"> = "vinyl";
   private onPresetTheme = () => this.refreshPresetAppearance();
   /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
@@ -193,6 +194,20 @@ export class MusicPlayerView extends ItemView {
       if (e.target === this.contentEl) this.contentEl.removeClass("is-dragover");
     });
     this.registerDomEvent(this.contentEl, "drop", (e) => void this.onDrop(e));
+    let tap: { x: number; y: number } | null = null;
+    this.registerDomEvent(this.contentEl, "pointerdown", (e: PointerEvent) => {
+      tap = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    });
+    this.registerDomEvent(this.contentEl, "pointercancel", () => { tap = null; });
+    this.registerDomEvent(this.contentEl, "click", (e: MouseEvent) => {
+      const start = tap; tap = null;
+      if (!this.contentEl.hasClass("mw-player--portrait") || !start
+        || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return;
+      const target = e.target as Element;
+      if (target.closest("button, input, select, textarea, a, [role='button'], [role='slider'], [contenteditable='true'], .mw-drawer, .mw-player__playlist, .mw-np__popover-anchor")) return;
+      if (this.playlistOpen || this.drawer?.isOpen()) return;
+      this.fullLyrics = !this.fullLyrics; this.syncLayout();
+    });
     await this.render();
     // 窗格尺寸跟随：window.resize 覆盖不到「拖分隔条 / 分屏 / 收展侧边栏」
     this.watchPaneSize();
@@ -206,6 +221,7 @@ export class MusicPlayerView extends ItemView {
     await this.plugin.returnFromPlayer();
   }
   async onClose(): Promise<void> {
+    ++this.renderGeneration;
     this.presetMedia?.removeEventListener("change", this.onPresetTheme); this.presetMedia = null;
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
@@ -314,6 +330,7 @@ export class MusicPlayerView extends ItemView {
   // ---- 渲染 ----
 
   private async render(): Promise<void> {
+    const generation = ++this.renderGeneration;
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     const root = this.contentEl;
     const prevDrawer = this.drawer?.currentKey() ?? null;
@@ -330,7 +347,6 @@ export class MusicPlayerView extends ItemView {
     this.popover = null; this.qualityKey = ""; this.volumeIcon = "";
     this.albumKey = "";
     this.iconPaused = null;
-    await this.refreshMatch();
 
     // 所有内容放进缩放盒（zoom 必须作用在没有 overflow 裁剪的中间层，见 base.css）
     const box = root.createDiv({ cls: "mw-zoombox" });
@@ -345,6 +361,7 @@ export class MusicPlayerView extends ItemView {
     this.shell = body;
     this.buildNow(body.createDiv({ cls: "mw-player__now" }));
     this.playerLyrics = new PlayerLyrics(body.createDiv(), this.plugin);
+    this.el.dock = box.createDiv({ cls: "mw-player__dock" });
 
     // 上拉曲目面板 + 遮罩：内置播放可选择曲目；客户端模式保留原只读列表。
     // 遮罩只做视觉，不拦截点击；点击列表外区域、收起钮、列表钮或 Esc 均可关闭。
@@ -363,6 +380,10 @@ export class MusicPlayerView extends ItemView {
     // 缩放盒尺寸兜底（与音乐墙同一套，见 zoom.ts syncZoomBox）：
     // CSS 的 calc 反除补偿若退化成 auto，内容会缩在左上角、右/下留白
     this.syncZoomBox();
+    // Workspace restoration must not wait for vault reads or other restored views.
+    void this.refreshMatch().then(() => {
+      if (generation === this.renderGeneration && this.shell) this.updateNow();
+    }).catch(error => console.warn("[music-wall] Player album matching failed", error));
   }
 
   /** 背景模式落成类名；「封面」模式额外注入当前专辑封面做动态取色 + 黑白字自适应 */
@@ -414,14 +435,18 @@ export class MusicPlayerView extends ItemView {
     this.el.source = bar.createEl("button", { cls: "clickable-icon mw-player__source", attr: { type: "button" } });
     this.el.source.addEventListener("click", () => void this.openSource());
     const tools = bar.createDiv({ cls: "mw-player-presets", attr: { role: "group", "aria-label": t("playerPresets.title") } });
-    this.el.coverToggle = tools.createEl("button", { cls: "clickable-icon mw-cover-toggle", attr: { type: "button" } });
-    setIcon(this.el.coverToggle, "list-music");
-    this.el.coverToggle.addEventListener("click", () => { this.fullLyrics = !this.fullLyrics; this.syncLayout(); });
     const button = tools.createEl("button", { cls: "clickable-icon mw-toolbtn", attr: { type: "button", title: t("playerPresets.title"), "aria-label": t("playerPresets.title") } });
     setIcon(button, "palette"); button.addEventListener("click", () => this.drawer?.toggle("settings"));
     this.styleBtn = button;
     const more = tools.createEl("button", { cls: "clickable-icon mw-player__more", attr: { type: "button", title: t("player.menu"), "aria-label": t("player.menu") } });
     setIcon(more, "ellipsis"); more.addEventListener("click", event => this.openPlayerMenu(event));
+    const pages = bar.createDiv({ cls: "mw-player__pages", attr: { role: "group", "aria-label": t("lyrics.title") } });
+    this.el.pageTabs = pages;
+    this.el.coverTab = pages.createEl("button", { text: t("playerPresets.cover"), attr: { type: "button" } });
+    pages.createSpan({ text: "|", attr: { "aria-hidden": "true" } });
+    this.el.lyricsTab = pages.createEl("button", { text: t("lyrics.title"), attr: { type: "button" } });
+    this.el.coverTab.addEventListener("click", () => { this.fullLyrics = false; this.syncLayout(); });
+    this.el.lyricsTab.addEventListener("click", () => { this.fullLyrics = true; this.syncLayout(); });
     return bar;
   }
 
@@ -669,17 +694,20 @@ export class MusicPlayerView extends ItemView {
   private buildNow(col: HTMLElement): void {
     // 统一宽度的竖列：设备 / 信息 / 进度 / 控制 上下对齐
     const stack = col.createDiv({ cls: "mw-np__stack" });
+    this.el.stack = stack;
     const stage = stack.createDiv({ cls: "mw-np__stage" });
     this.el.discWrap = stage.createDiv({ cls: "mw-np__disc is-paused" });
+    const transport = stack.createDiv({ cls: "mw-np__transport" });
+    this.el.transport = transport;
 
-    const meta = stack.createDiv({ cls: "mw-np__meta" });
+    const meta = transport.createDiv({ cls: "mw-np__meta" });
     this.el.title = meta.createDiv({ cls: "mw-np__title" });
     this.el.artist = meta.createEl("button", { cls: "mw-np__artist", attr: { type: "button" } });
     this.el.artist.addEventListener("click", () => { void this.openCurrentArtist().catch(() => new Notice(t("library.failed"))); });
     const line = meta.createDiv({ cls: "mw-np__line" });
     this.el.status = line.createSpan({ cls: "mw-np__status" });
 
-    const timeline = stack.createDiv({ cls: "mw-np__timeline is-hidden" });
+    const timeline = transport.createDiv({ cls: "mw-np__timeline is-hidden" });
     this.el.timeline = timeline;
     this.el.elapsed = timeline.createSpan({ text: "0:00" });
     const seek = timeline.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.1", "aria-label": t("internal.seek") } });
@@ -694,7 +722,7 @@ export class MusicPlayerView extends ItemView {
     for (const event of ["pointerup", "pointercancel", "blur"]) seek.addEventListener(event, () => { seek.dataset.dragging = "false"; });
     this.el.duration = timeline.createSpan({ text: "0:00" });
 
-    const controls = stack.createDiv({ cls: "mw-np__controls" });
+    const controls = transport.createDiv({ cls: "mw-np__controls" });
     this.el.btnPrev = controls.createEl("button", { cls: "mw-np__ctrl", text: "" });
     setIcon(this.el.btnPrev, "skip-back");
     this.el.btnPrev.title = t("player.prevTip");
@@ -753,7 +781,7 @@ export class MusicPlayerView extends ItemView {
       void this.plugin.saveData(this.plugin.settings);
     });
 
-    const qualityAnchor = stack.createDiv({ cls: "mw-np__popover-anchor mw-np__quality is-hidden" });
+    const qualityAnchor = transport.createDiv({ cls: "mw-np__popover-anchor mw-np__quality is-hidden" });
     this.el.qualityAnchor = qualityAnchor;
     const qualityButton = qualityAnchor.createEl("button", { cls: "mw-np__quality-button", attr: {
       "aria-label": t("quality.choose"), "aria-expanded": "false", "aria-haspopup": "true",
@@ -1095,24 +1123,26 @@ export class MusicPlayerView extends ItemView {
     root.style.setProperty("--mw-np-accent", accent);
     root.style.setProperty("--mw-np-accent-fg", foreground);
     root.style.setProperty("--mw-full-tone", accent);
-    root.style.setProperty("--mw-full-foreground", foreground);
+    root.style.setProperty("--mw-full-foreground", presetForeground(accent, LYRICS_CONTRAST_THRESHOLD));
     if (this.bg === "art") this.setArtTone(tone.luma);
     this.applyRegionContrast();
   }
 
-  private applyRegionContrast(): void {
+  applyRegionContrast(): void {
     const root = this.contentEl, bounds = root.getBoundingClientRect();
-    for (const region of Array.from(root.querySelectorAll<HTMLElement>(".mw-player__now, .mw-lyrics, .mw-player__bar"))) {
+    const lyrics = root.querySelector<HTMLElement>(".mw-lyrics");
+    const rect = lyrics?.getBoundingClientRect();
+    const color = this.coverPalette && rect ? backdropForeground(this.coverPalette, bounds.width, bounds.height, {
+      x: (rect.left - bounds.left) / bounds.width, y: (rect.top - bounds.top) / bounds.height,
+      width: rect.width / bounds.width, height: rect.height / bounds.height,
+    }) : null;
+    for (const region of Array.from(root.querySelectorAll<HTMLElement>(".mw-player__now, .mw-lyrics, .mw-player__bar, .mw-player__dock"))) {
       if (this.bg !== "art" || this.preset()?.fullCover || !this.coverPalette || !bounds.width || !bounds.height) {
         region.style.removeProperty("--mw-region-fg");
         region.style.removeProperty("--mw-region-shadow");
         continue;
       }
-      const rect = region.getBoundingClientRect();
-      const color = backdropForeground(this.coverPalette, bounds.width, bounds.height, {
-        x: (rect.left - bounds.left) / bounds.width, y: (rect.top - bounds.top) / bounds.height,
-        width: rect.width / bounds.width, height: rect.height / bounds.height,
-      });
+      if (!color) continue;
       region.style.setProperty("--mw-region-fg", color);
       region.style.setProperty("--mw-region-shadow", color === "#f2f4f8"
         ? "0 1px 3px #0009, 0 0 12px #0005" : "0 1px 3px #ffffff80, 0 0 10px #ffffff40");
@@ -1128,15 +1158,19 @@ export class MusicPlayerView extends ItemView {
     if (!this.shell) return;
     const w = this.contentEl.clientWidth || 0;
     const portrait = w > 0 && w < this.contentEl.clientHeight;
+    const transportHost = portrait ? this.el.dock : this.el.stack;
+    if (this.el.transport && transportHost && this.el.transport.parentElement !== transportHost) transportHost.appendChild(this.el.transport);
     this.contentEl.toggleClass("mw-player--portrait", portrait);
     this.contentEl.toggleClass("mw-player--cover-lyrics", this.fullLyrics);
-    if (this.el.coverToggle) {
-      this.el.coverToggle.toggleClass("is-hidden", !this.preset()?.fullCover || !portrait);
-      this.el.coverToggle.setAttr("aria-pressed", String(this.fullLyrics));
-      this.el.coverToggle.setAttr("aria-label", t(this.fullLyrics ? "playerPresets.showCover" : "playerPresets.showLyrics"));
-      this.el.coverToggle.title = t(this.fullLyrics ? "playerPresets.showCover" : "playerPresets.showLyrics");
+    if (this.el.pageTabs) {
+      this.el.coverTab.setAttr("aria-pressed", String(!this.fullLyrics));
+      this.el.lyricsTab.setAttr("aria-pressed", String(this.fullLyrics));
     }
-    this.contentEl.toggleClass("mw-player--lyrics-stacked", w > 0 && w / (this.plugin.settings.zoomScale || 1) < 620);
+    for (const [selector, hidden] of [[".mw-player__now", portrait && this.fullLyrics], [".mw-lyrics", portrait && !this.fullLyrics]] as const) {
+      const page = this.shell.querySelector<HTMLElement>(selector);
+      if (page) { page.inert = hidden; page.setAttr("aria-hidden", String(hidden)); }
+    }
+    this.contentEl.toggleClass("mw-player--lyrics-stacked", !portrait && w > 0 && w / (this.plugin.settings.zoomScale || 1) < 620);
     this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);

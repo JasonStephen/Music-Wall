@@ -45,6 +45,7 @@ try {
   if(process.argv.includes('--lyrics')) {
     cases.splice(0,cases.length);
     for(const theme of ['light','dark']) for(const [width,height,zoom] of [[1280,800,1],[768,1024,1],[360,740,1],[240,600,1],[640,360,1],[360,740,2]]) cases.push({kind:'player',panel:'lyrics',theme,bg:theme==='dark'?'dark':'white',style:'cover',width,height,zoom});
+    for(const theme of ['light','dark'])for(const width of [1280,360])cases.push({kind:'player',panel:'lyrics',theme,bg:'art',cover:'c2a476',style:'cover',width,height:800,zoom:1});
   }
   if(process.argv.includes('--height')) {
     cases.splice(0,cases.length);
@@ -142,6 +143,9 @@ try {
     }
     if(item.panel==='lyrics') {
       const test=await value('window.verifyLyricsUI()');checks+=test.checks;if(test.fail.length){failed++;console.log('FAIL lyrics '+JSON.stringify({item,errors:test.fail}));}
+      await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+      const fade=await value('window.verifyPortraitFade()');checks+=fade.checks;if(fade.fail.length){failed++;console.log('FAIL portrait fade '+JSON.stringify({item,errors:fade.fail}));}
+      await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
       if(item.width===1280&&item.theme==='dark'){
         await page('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
         const motion=await value('window.verifyLyricMotion()');checks+=motion.checks;if(motion.fail.length){failed++;console.log('FAIL lyric motion '+JSON.stringify(motion.fail));}
@@ -177,7 +181,7 @@ try {
       }
       const lifecycle=await value('window.verifyMiniSeekLifecycle()');checks+=10;if(lifecycle.length){failed++;console.log('FAIL mini seek lifecycle '+JSON.stringify(lifecycle));}
     }
-    if(item.kind==='player'&&item.panel!=='height'&&!item.presets&&!keyboardChecked){
+    if(item.kind==='player'&&item.panel!=='height'&&item.panel!=='lyrics'&&!item.presets&&!keyboardChecked){
       const keyboard=await value('window.verifyKeyboardPlayback()');checks+=keyboard.checks;keyboardChecked=true;
       if(keyboard.fail.length){failed++;console.log('FAIL keyboard playback '+JSON.stringify(keyboard.fail));}
     }
@@ -245,7 +249,7 @@ try {
       const outside=await value('window.verifyOutside()');checks+=3;if(outside.length){failed++;console.log('FAIL outside click '+JSON.stringify(outside));}
       const clear=await value('window.verifyHostResize()');checks++;if(!clear){failed++;console.log('FAIL dynamic host status-bar resize/hide');}
     }
-    if(!playOrderChecked&&item.kind!=='library'&&item.kind!=='settings'&&item.panel!=='height'&&!item.presets){
+    if(!playOrderChecked&&item.kind!=='library'&&item.kind!=='settings'&&item.panel!=='height'&&item.panel!=='lyrics'&&!item.presets){
       const order=await value('window.verifyPlayOrderControls()');checks+=order.checks;playOrderChecked=true;
       if(order.fail.length){failed++;console.log('FAIL playback order controls '+JSON.stringify(order.fail));}
     }

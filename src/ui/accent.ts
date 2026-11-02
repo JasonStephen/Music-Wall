@@ -12,6 +12,8 @@
 import { requestUrl } from "obsidian";
 import { t } from "../i18n";
 
+export const LYRICS_CONTRAST_THRESHOLD = 1.30;
+
 /** 采样尺寸：24×24 足够看出主色与平均亮度，代价可忽略 */
 const SAMPLE = 24;
 /** 色相分桶数（每桶 30°） */
@@ -237,7 +239,7 @@ export function backdropForeground(tone: CoverTone, width: number, height: numbe
   const dark = luminance(27, 30, 35);
   const blackContrast = lower(values.map(v => (Math.max(v, dark) + .05) / (Math.min(v, dark) + .05)));
   const whiteContrast = lower(values.map(v => (1.05 / (v + .05))));
-  return blackContrast >= whiteContrast ? "#1b1e23" : "#f2f4f8";
+  return blackContrast >= whiteContrast * LYRICS_CONTRAST_THRESHOLD ? "#1b1e23" : "#f2f4f8";
 }
 
 /** 整幅封面的平均亮度（只统计不透明像素）；全是透明像素时返回 null */

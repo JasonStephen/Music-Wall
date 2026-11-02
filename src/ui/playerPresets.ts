@@ -45,9 +45,9 @@ export function presetIcon(host: HTMLElement, group: PresetGroup): void {
 }
 
 /** Choose the higher-contrast foreground for the solid sampled cover background. */
-export function presetForeground(color: string): string {
+export function presetForeground(color: string, threshold = 1): string {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return "#ffffff";
   const channels = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
   const luma = channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
-  return (luma + .05) / .05 >= 1.05 / (luma + .05) ? "#111111" : "#ffffff";
+  return (luma + .05) / .05 >= threshold * 1.05 / (luma + .05) ? "#111111" : "#ffffff";
 }

@@ -70,7 +70,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.2";
+const BUILD_TAG = "1.3.3-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -172,17 +172,17 @@ export default class MusicWallPlugin extends Plugin {
     this.nowPlaying = this.combinedProvider;
     this.nowPlaying.on(() => this.updateStatusBar());
 
-    // 第二个参数必须是 registerView 注册的视图类型，Obsidian 据此关联 .mw → 音乐墙视图
-    this.registerExtensions([WALL_EXT], WALL_VIEW_TYPE);
-    this.registerView(WALL_VIEW_TYPE, (leaf) => new MusicWallView(leaf, this));
-
-    this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
-    this.registerView(LIBRARY_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
     this.libraryApi = new MusicLibraryApi(this.requester);
     this.collectionStatsCache = new CollectionStatsCache(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/collection-stats-cache.json`);
     this.lyrics = new LyricsService(this.requester, this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/lyrics-cache.json`);
     this.historyStore = new HistoryStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/history.json`);
     await this.historyStore.ready();
+    // Register only after services are ready: Obsidian may immediately restore
+    // the last active player/library as soon as its view factory is registered.
+    this.registerView(WALL_VIEW_TYPE, (leaf) => new MusicWallView(leaf, this));
+    this.registerExtensions([WALL_EXT], WALL_VIEW_TYPE);
+    this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
+    this.registerView(LIBRARY_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
     let lastSong = "", lastCollection = "";
     this.register(this.internalPlayer.on(() => {
       const state = this.internalPlayer.state, album = this.internalPlayer.album;
@@ -325,6 +325,7 @@ export default class MusicWallPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     normalizePlayerPresets(this.settings);
+    delete (this.settings as MusicWallSettings & { lyricsContrastThreshold?: number }).lyricsContrastThreshold;
     this.settings.zoomScale = clampZoom(this.settings.zoomScale ?? 1);
     this.settings.minColumnWidth = 180;
     if (!["system", "light", "dark"].includes(this.settings.wallAppearance)) this.settings.wallAppearance = "system";
