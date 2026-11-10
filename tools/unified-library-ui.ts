@@ -226,6 +226,22 @@ let dispose = async () => {};
   check(current(mini)?.dataset.song==='100805','Opening mini queue reveals current song across pages');
   locate(full).click();await tick();
   check(current(full)?.dataset.song==='100805','Full queue locates current song across pages');
+  full.querySelector<HTMLButtonElement>('.mw-np__ctrl--list')!.click();await tick(360);
+  check(getComputedStyle(full.querySelector('.mw-player__playlist')!).backdropFilter==='none'&&getComputedStyle(mini.querySelector('.mw-mini__playlist')!).backdropFilter==='none','Queue surfaces do not create blurred backdrop layers');
+  check(getComputedStyle(full).transform==='none','Expanded player releases its animation transform');
+  for (const host of [mini,full]) {
+    const list=host.querySelector<HTMLElement>('.mw-queue__list')!;
+    const scrollHost=host===mini?mini.querySelector<HTMLElement>('.mw-mini__playlist')!:list;
+    scrollHost.scrollTop=180;
+    const offset=scrollHost.scrollTop;
+    const row=host.querySelector<HTMLElement>('[data-song="100808"]')!;
+    const revision=engine.revision;
+    row.querySelector<HTMLButtonElement>('.mw-queue__name')!.click();await tick();
+    check(engine.index===808&&engine.revision===revision,'Clicking a queue song selects it without recreating the queue');
+    check(row.isConnected&&host.querySelector<HTMLElement>('[data-song]')?.dataset.song==='100800','Clicking a song on page nine keeps its page and mounted rows');
+    check(scrollHost.scrollTop===offset,'Clicking a queue song preserves scroll position');
+  }
+  await engine.select(805);await tick();
   const stableRow=current(full)!;
   await engine.select(806);await tick();
   check(current(mini)?.dataset.song==='100806'&&current(full)?.dataset.song==='100806','Both queues update highlight when song changes');
@@ -246,6 +262,13 @@ let dispose = async () => {};
   check(mini.querySelector<HTMLElement>('.mw-mini__track.is-current')?.dataset.trackIndex==='1205'&&full.querySelector<HTMLElement>('.mw-np__track.is-current')?.dataset.trackIndex==='1205','Album queues locate current track across pages in both players');
   mini.querySelector<HTMLButtonElement>('[data-queue-view="playlist"]')!.click();full.querySelector<HTMLButtonElement>('[data-queue-view="playlist"]')!.click();await tick();
   check(mini.querySelectorAll('.mw-mini__track').length===0&&full.querySelectorAll('.mw-np__track').length===0,'Switching back to songs removes the extra album list');
+  locate(mini).click();locate(full).click();await tick();
+  check(engine.contentKind==='album'&&current(mini)?.dataset.song==='101205'&&current(full)?.dataset.song==='101205','Album playback highlights and locates the same song in both song queues');
+  await engine.select(1206);await tick();
+  check(current(mini)?.dataset.song==='101206'&&current(full)?.dataset.song==='101206','Album song changes refresh song queue highlights');
+  full.querySelector<HTMLElement>('[data-song="101208"] .mw-queue__name')!.click();await tick();
+  check(full.querySelector<HTMLElement>('[data-song]')?.dataset.song==='101200'&&current(full)?.dataset.song==='101208','Switching from album playback to song playback keeps the browsed page');
+
   await view.collapsePlayer();engine.stop();
  }
  const anchor=view.contentEl.querySelector<HTMLButtonElement>('.mw-cloud__head button')!;
@@ -253,7 +276,8 @@ let dispose = async () => {};
  const filterRect=document.querySelector<HTMLElement>('.mw-artist-filters')!.getBoundingClientRect();
  check(filterRect.left>=0&&filterRect.right<=innerWidth+1&&filterRect.top>=0&&filterRect.bottom<=innerHeight+1,'Enlarged filter popover stays within viewport');filters.hide();
  if(config.page==='local'||config.page==='stress')view.showWall('local',null,localEntry);else if(config.page==='colored'){view.showWall('albums',folder);await store.update(d=>{d.appearance.style='colored-vinyl'});}else if(config.page==='albums')view.showWall('albums',folder);else if(config.page==='player'){await engine.playPlaylist({...store.data.collections.find(c=>c.id===localId)!.meta,wallEntryId:localEntry});await view.expandPlayer();}else view.showWall();
- await tick(320);
+ if(config.queue){view.contentEl.querySelector<HTMLButtonElement>('.mw-embedded-player .mw-np__ctrl--list')!.click();}
+ await tick(400);
  const root=view.contentEl;const bodyRect=root.querySelector('.mw-cloud__body')!.getBoundingClientRect();const roots=root.getBoundingClientRect();
  check(root.scrollWidth<=root.clientWidth+1,'No root horizontal overflow');const content=root.querySelector<HTMLElement>('.mw-cloud__body')!;check(content.scrollWidth<=content.clientWidth+1,'No body horizontal overflow: '+[...content.querySelectorAll<HTMLElement>('*')].filter(el=>el.getBoundingClientRect().right>bodyRect.right+1).slice(0,8).map(el=>el.className).join(','));
  check(!/localWall\.|labels\.sort\.|\?\?\?/.test(root.textContent||''),'All labels resolved');

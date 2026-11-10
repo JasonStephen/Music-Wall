@@ -8,6 +8,8 @@ export class QueueControls {
   private off: () => void;
   private key = "";
   private songPager: SongPager<InternalPlayer["songQueue"][number]> | null = null;
+  private songPage = 0;
+  private songIds = "";
   view: "album" | "playlist";
   private dragging = "";
   private disposed = false;
@@ -22,6 +24,11 @@ export class QueueControls {
   private update(): boolean {
     const key = `${this.player.contentKind}|${this.player.order}|${this.player.currentEntryId}|${this.player.albumQueue.map(entry => entry.id).join()}|${this.player.songQueue.map(track => track.id).join()}|${this.view}|${this.player.revision}|${this.player.queuedPlaylist?.tracks?.length || 0}`;
     if (key === this.key) return false; this.key = key;
+    const songIds = this.player.songQueue.map(track => track.id).join();
+    this.songPage = songIds === this.songIds ? this.songPager?.currentPage ?? this.songPage : 0;
+    this.songIds = songIds;
+    const previousList = this.root.querySelector<HTMLElement>(".mw-queue__list");
+    const scrollTop = previousList?.scrollTop ?? 0;
     this.songPager = null;
     this.root.empty();
     const toolbar = this.root.createDiv({ cls: "mw-queue__toolbar" });
@@ -49,7 +56,12 @@ export class QueueControls {
       this.onPreferenceChange();
     });
     mode.dataset.action = "play-order"; mode.createSpan({ text: modeLabel() });
-    if (this.view !== "album") return this.renderSongs(toolbar);
+    if (this.view !== "album") {
+      this.renderSongs(toolbar);
+      const list = this.root.querySelector<HTMLElement>(".mw-queue__list");
+      if (list) list.scrollTop = scrollTop;
+      return true;
+    }
     const list = this.root.createDiv({ cls: "mw-queue__list" });
     if (!this.player.albumQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return true; }
     this.player.albumQueue.forEach((entry, index) => {
@@ -90,15 +102,15 @@ export class QueueControls {
     const list = this.root.createDiv({ cls: "mw-queue__list" });
     if (!this.player.songQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return true; }
     const pager = this.songPager = new SongPager(list, (page, track: (typeof this.player.songQueue)[number], index) => {
-      const row = page.createDiv({ cls: `mw-queue__row${this.player.album?.tracks?.[this.player.index]?.id === track.id && this.player.contentKind === "playlist" ? " is-current" : ""}`, attr: { "data-song": String(track.id), "aria-current": String(this.isCurrent(index)) } });
+      const row = page.createDiv({ cls: `mw-queue__row${this.isCurrent(index) ? " is-current" : ""}`, attr: { "data-song": String(track.id), "aria-current": String(this.isCurrent(index)) } });
       row.createSpan({ cls: "mw-queue__number", text: String(index + 1).padStart(2, "0") });
       const play = row.createEl("button", { cls: "mw-queue__name", text: track.name, attr: { title: track.name } });
-      play.addEventListener("click", () => void this.player.playPlaylist({albumId:0,name:track.name,artist:track.artists||"",cover:track.cover||"",trackCount:this.player.songQueue.length,tracks:this.player.songQueue.map(item=>({...item}))}, index));
+      play.addEventListener("click", () => void this.selectTrack(index));
       const actions = row.createDiv({ cls: "mw-queue__actions" });
       row.createSpan({ cls: "mw-queue__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       this.button(actions, "trash-2", t("queue.removeSong"), () => void this.player.removeSong(track.id));
     });
-    pager.setItems(this.player.songQueue);
+    pager.setItems(this.player.songQueue, true, this.songPage);
     return true;
   }
   get collection() {
@@ -109,27 +121,32 @@ export class QueueControls {
     const track = collection?.tracks?.[index];
     if (!collection || !track || !(await this.authorize()) || this.disposed || collection.tracks !== this.collection?.tracks) return;
     const selected = collection.tracks!.indexOf(track); if (selected < 0) return;
-    if (this.player.album === collection) await this.player.select(selected);
+    const activeTracks = this.player.album?.tracks;
+    const activePlaylist = this.view === "playlist" && this.player.contentKind === "playlist"
+      && activeTracks?.length === collection.tracks?.length
+      && activeTracks?.every((item, i) => item.id === collection.tracks?.[i]?.id);
+    if (this.player.album === collection || activePlaylist) await this.player.select(selected);
     else await this.player.playPlaylist(collection, selected);
   }
   isCurrent(index: number): boolean {
-    if (this.view === "playlist") return this.player.contentKind === "playlist" && this.player.songQueue[index]?.id === this.player.album?.tracks?.[this.player.index]?.id;
+    if (this.view === "playlist") return this.player.album?.tracks?.[this.player.index]?.id !== undefined && this.player.songQueue[index]?.id === this.player.album?.tracks?.[this.player.index]?.id;
     return this.collection === this.player.album && index === this.player.index;
   }
   private updateHighlights(): void {
-    const id = this.player.contentKind === "playlist" ? this.player.album?.tracks?.[this.player.index]?.id : undefined;
+    const id = this.player.album?.tracks?.[this.player.index]?.id;
     this.root.querySelectorAll<HTMLElement>("[data-song]").forEach(row => {
       const current = id !== undefined && row.dataset.song === String(id);
       row.toggleClass("is-current", current); row.setAttr("aria-current", String(current));
     });
   }
   locateCurrent(): void {
-    if (this.view !== this.player.contentKind) {
+    const id = this.player.album?.tracks?.[this.player.index]?.id;
+    const songIndex = this.player.songQueue.findIndex(track => track.id === id);
+    if (this.view !== this.player.contentKind && !(this.view === "playlist" && songIndex >= 0)) {
       this.view = this.player.contentKind; this.update(); this.onView();
     }
     if (this.view === "playlist") {
-      const id = this.player.album?.tracks?.[this.player.index]?.id;
-      this.songPager?.reveal(this.player.songQueue.findIndex(track => track.id === id));
+      this.songPager?.reveal(songIndex);
       this.updateHighlights();
     } else {
       this.root.querySelector<HTMLElement>(".mw-queue__row.is-current")?.scrollIntoView({ block: "nearest" });

@@ -28,9 +28,10 @@ export class SongPager<T> {
     button.addEventListener("click", () => this.turn(direction));
     return button;
   }
-  setItems(items: readonly T[], reset = true): void {
+  get currentPage(): number { return this.page; }
+  setItems(items: readonly T[], reset = true, initialPage?: number): void {
     this.items = items;
-    this.page = reset ? 0 : Math.min(this.page, Math.max(0, Math.ceil(items.length / SongPager.size) - 1));
+    this.page = Math.max(0, Math.min(initialPage ?? (reset ? 0 : this.page), Math.max(0, Math.ceil(items.length / SongPager.size) - 1)));
     this.render();
   }
   reveal(index: number): void {

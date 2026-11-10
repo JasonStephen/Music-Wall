@@ -110,7 +110,7 @@
 .mw-local__song, .mw-local__card, .mw-cloud__track { user-select:none; }
 .mw-cloud > .mw-embedded-player { transform:translateY(100%); visibility:hidden; transition:transform .24s ease-out; }
 .mw-cloud > .mw-embedded-player.is-ready { visibility:visible; }
-.mw-cloud > .mw-embedded-player.is-open { transform:translateY(0); }
+.mw-cloud > .mw-embedded-player.is-open { transform:none; }
 .mw-cloud > .mw-embedded-player.is-closing { pointer-events:none; transition-timing-function:ease-in; }
 .mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:36px minmax(0,1fr) auto; padding-left:4px; }
 .mw-embedded-player.mw-player .mw-player__collapse { grid-column:1; grid-row:1; justify-self:start; width:32px; height:32px; padding:5px; }

@@ -167,3 +167,17 @@
   border-radius: 8px;
   background: var(--mw-panel-hover);
 }
+
+
+/* Keep queue text on a solid surface instead of a scaled backdrop layer. */
+.mw-player .mw-player__playlist,
+.mw-player.mw-bg--art .mw-player__playlist,
+.mw-mini .mw-mini__panel.mw-mini__playlist {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-shadow: none;
+}
+.mw-player.mw-bg--art .mw-player__playlist {
+  --mw-panel-bg: #171a20;
+  background: var(--mw-panel-bg);
+}
