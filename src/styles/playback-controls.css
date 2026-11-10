@@ -1,7 +1,7 @@
 /* Native inputs retain pointer, keyboard and screen-reader behavior. */
 :is(.mw-player, .mw-mini) input[type="range"].mw-range {
   --mw-range-track: color-mix(in srgb, var(--text-normal) 20%, transparent);
-  --mw-range-fill: var(--mw-np-accent, var(--mw-ui-accent, #b52b27));
+  --mw-range-fill: var(--mw-np-accent, var(--mw-ui-accent, #1d4e89));
   appearance: none;
   -webkit-appearance: none;
   display: block;
@@ -121,8 +121,6 @@
 .mw-player__playlist-head { align-items: center; flex-wrap: wrap; }
 .mw-player__playlist-title { overflow-wrap: anywhere; }
 .mw-player__playlist-note { flex: 1 1 180px; line-height: 1.5; }
-.mw-player .mw-np__track.is-current { background: var(--mw-panel-hover); }
-.mw-player .mw-np__track.is-current .mw-np__trackName { color: var(--mw-panel-fg); }
 .mw-player .mw-np__track.is-playable:focus-visible { outline-color: var(--mw-panel-fg-dim); }
 .mw-player .mw-player__playlist-close { background: var(--mw-panel-surface); border-color: var(--mw-panel-line); color: var(--mw-panel-fg); }
 
@@ -162,10 +160,8 @@
 .mw-queue .mw-queue__row.is-current,
 .mw-mini .mw-mini__track.is-current,
 .mw-player .mw-np__track.is-current {
-  outline: 2px solid var(--mw-ui-accent);
-  outline-offset: -2px;
-  border-radius: 8px;
-  background: var(--mw-panel-hover);
+  outline: none;
+  background: transparent;
 }
 
 

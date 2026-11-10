@@ -1125,6 +1125,9 @@ export class MusicPlayerView extends Component {
     root.style.setProperty("--mw-case-accent", accent);
     root.style.setProperty("--mw-style-tag-fg", foreground);
     root.style.setProperty("--mw-np-accent", accent);
+    root.style.setProperty("--mw-ui-accent", accent);
+    root.style.setProperty("--mw-ui-accent-hover", accent);
+    root.style.setProperty("--mw-ui-on-accent", foreground);
     root.style.setProperty("--mw-np-accent-fg", foreground);
     root.style.setProperty("--mw-full-tone", accent);
     root.style.setProperty("--mw-full-foreground", presetForeground(accent, LYRICS_CONTRAST_THRESHOLD));

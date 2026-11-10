@@ -64,7 +64,7 @@
 .mw-mini .mw-mini__quality { width: 112px; right: min(64px, max(8px, calc(100% - 128px))); }
 .mw-mini .mw-mini__quality-option { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .mw-mini .mw-mini__quality-option:hover, .mw-mini .mw-mini__quality-option[aria-pressed="true"],
-.mw-mini .mw-mini__track:hover, .mw-mini .mw-mini__track.is-current { background: var(--mw-panel-hover); }
+.mw-mini .mw-mini__track:hover { background: var(--mw-panel-hover); }
 .mw-mini .mw-mini__volume { right: 34px; width: 42px; padding: 8px; }
 /* Auxiliary actions stay available through one SVG overflow button. */
 .mw-mini .mw-mini__button[data-action="more"] { display:none; }

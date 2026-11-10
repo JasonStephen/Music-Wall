@@ -4,7 +4,7 @@ const path = require('node:path');
 const { buildSync } = require('esbuild');
 const built = buildSync({
   stdin: { contents: `export * from './src/core/internalPlayer'; export * from './src/core/audioSource';
-    export * from './src/core/playback'; export * from './src/core/match'; export * from './src/core/quality';`, resolveDir: path.resolve(__dirname, '..'), loader: 'ts' },
+    export * from './src/core/playbackSession'; export * from './src/core/playback'; export * from './src/core/match'; export * from './src/core/quality';`, resolveDir: path.resolve(__dirname, '..'), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['obsidian'],
 });
 const loaded = { exports: {} };
@@ -209,6 +209,76 @@ async function main() {
     assert.equal(instance.volume,.3); assert.equal(instance.index,0);
     await instance.next(); assert.deepEqual(requested.at(-1),[12,'higher']);
     instance.stop(); await instance.playAlbum(album()); assert.deepEqual(requested.at(-1),[11,'hires']); instance.stop();
+  });
+  await test('Playback session restores a local playlist and song without its progress or network work', async () => {
+    const first=player();
+    const list={...album(7),albumId:0,localPlaylistId:'local:test',name:'My list'};
+    await first.instance.playPlaylist(list,1);first.instance.setOrder('shuffle');
+    await first.instance.seek(45000);
+    const saved=api.parsePlaybackSession(JSON.stringify(first.instance.exportSession()));
+    assert.ok(saved);assert.equal(saved.playing,true);
+    assert.ok(!JSON.stringify(saved).includes('positionMs'));
+    first.instance.stop();
+    const second=player();second.instance.restoreSession(saved);
+    assert.equal(second.instance.album.localPlaylistId,'local:test');assert.equal(second.instance.index,1);
+    assert.equal(second.instance.state.songId,72);assert.equal(second.instance.order,'shuffle');
+    assert.equal(second.instance.state.status,'paused');assert.equal(second.instance.state.positionMs,0);
+    assert.deepEqual(second.resolved,[]);assert.equal(second.audios.length,0);
+    await second.instance.play();
+    assert.equal(second.instance.state.songId,72);assert.equal(second.instance.state.positionMs,0);
+    assert.equal(second.instance.state.status,'playing');
+    second.instance.stop();
+  });
+  await test('Playback session keeps both queues, album order, saved songs and new entry IDs', async () => {
+    const first=player();await first.instance.playAlbum(album(1),1);await first.instance.seek(30000);
+    first.instance.enqueueAlbum(album(2));first.instance.enqueueAlbum(album(3));
+    first.instance.moveQueued(first.instance.albumQueue[2].id,1);
+    await first.instance.playPlaylist({...album(4),albumId:0,playlistId:55},2);
+    await first.instance.pause();
+    const saved=api.parsePlaybackSession(JSON.stringify(first.instance.exportSession()));
+    assert.ok(saved);assert.equal(saved.playing,false);
+    const second=player();second.instance.restoreSession(saved);
+    assert.deepEqual(second.instance.albumQueue.map(e=>e.album.albumId),[1,3,2]);
+    assert.deepEqual(second.instance.songQueue.map(t=>t.id),[41,42,43]);
+    assert.equal(second.instance.index,2);assert.equal(second.instance.state.status,'paused');
+    second.instance.enqueueAlbum(album(5));
+    assert.equal(new Set(second.instance.albumQueue.map(e=>e.id)).size,4);
+    await second.instance.playQueued(second.instance.albumQueue[0].id);
+    assert.equal(second.instance.state.songId,12);assert.equal(second.instance.state.positionMs,0);
+    const albumSaved=api.parsePlaybackSession(JSON.stringify(second.instance.exportSession()));
+    const third=player();third.instance.restoreSession(albumSaved);
+    assert.equal(third.instance.album,third.instance.albumQueue[0].album);
+    assert.equal(third.instance.state.songId,12);
+    await third.instance.resumePlaylist();
+    assert.equal(third.instance.state.songId,43);assert.equal(third.instance.state.positionMs,0);
+    first.instance.stop();second.instance.stop();third.instance.stop();
+  });
+  await test('Session storage serializes writes, ignores progress and survives player teardown', async () => {
+    const files=new Map();let writes=0;
+    const adapter={exists:async p=>files.has(p),read:async p=>files.get(p),write:async(p,text)=>{writes++;await flush();files.set(p,text)}};
+    const store=new api.PlaybackSessionStore(adapter,'session.json');
+    const first=player();store.watch(first.instance);
+    await first.instance.playAlbum(album(1),1);await store.flush();
+    const baseline=writes;
+    await first.instance.seek(60000);first.instance.setVolume(.5);await store.flush();
+    assert.equal(writes,baseline);
+    first.instance.enqueueAlbum(album(2));await first.instance.select(2);
+    const pending=store.dispose();first.instance.stop();await pending;
+    const saved=await new api.PlaybackSessionStore(adapter,'session.json').load();
+    assert.equal(saved.index,2);assert.equal(saved.albumQueue.length,2);assert.equal(saved.playing,true);
+    const restored=player();restored.instance.restoreSession(saved);
+    const nextStore=new api.PlaybackSessionStore(adapter,'session.json');nextStore.watch(restored.instance);
+    await restored.instance.play();await restored.instance.pause();await nextStore.flush();
+    assert.equal((await nextStore.load()).playing,false);
+    await nextStore.dispose();restored.instance.stop();
+  });
+  await test('Malformed playback sessions are ignored and empty sessions remain valid', async () => {
+    assert.equal(api.parsePlaybackSession('{bad'),null);
+    assert.equal(api.parsePlaybackSession('{"version":99}'),null);
+    const first=player();await first.instance.playAlbum(album(),1);
+    const snapshot=JSON.parse(JSON.stringify(first.instance.exportSession()));
+    snapshot.index=99;assert.equal(api.parsePlaybackSession(JSON.stringify(snapshot)),null);
+    first.instance.stop();assert.ok(api.parsePlaybackSession(JSON.stringify(first.instance.exportSession())));
   });
   console.log(`\n${passed} internal playback checks passed`);
 }

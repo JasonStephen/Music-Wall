@@ -437,6 +437,8 @@ export class LocalMusicWall {
     const pager = new SongPager(list, (page, s: AlbumTrackSnapshot) => {
         const row = page.createDiv({ cls: "mw-cloud__track mw-local__song", attr: { "data-local-song": String(s.id) } });
         row.toggleClass("is-selected", this.selected.has(s.id));
+        row.toggleClass("is-current", this.plugin.nowPlaying.state.songId === s.id);
+        row.setAttr("aria-current", String(this.plugin.nowPlaying.state.songId === s.id));
         row.addEventListener("click", event => {
           if ((event.target as Element).closest("button, a, input")) return;
           this.songs.click(s.id, filtered().map(s => s.id), event); this.selected = this.songs.ids;

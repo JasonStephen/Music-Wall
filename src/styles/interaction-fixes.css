@@ -8,7 +8,7 @@
 /* Native inputs handle interactions; only our own spans draw the slider. */
 :is(.mw-player, .mw-mini) .mw-slider {
   --mw-range-track: color-mix(in srgb, var(--text-normal) 22%, transparent);
-  --mw-range-fill: var(--mw-np-accent, var(--mw-ui-accent, #b52b27));
+  --mw-range-fill: var(--mw-np-accent, var(--mw-ui-accent, #1d4e89));
   position: relative; flex: 1 1 auto; width: 100%; min-width: 0; height: 24px;
 }
 .mw-player.mw-bg--art .mw-slider,

@@ -102,6 +102,16 @@ export class MusicLibraryView extends ItemView {
       renderTracks: (parent, tracks, collection) => this.renderTracks(parent, tracks, collection),
       trackActions: (track, collection, index) => this.trackActions(track, collection, index),
     });
+    let highlightedSong = this.plugin.nowPlaying.state.songId;
+    this.register(this.plugin.nowPlaying.on(() => {
+      const id = this.plugin.nowPlaying.state.songId;
+      if (id === highlightedSong) return;
+      highlightedSong = id;
+      this.body?.querySelectorAll<HTMLElement>("[data-song-id], [data-local-song]").forEach(row => {
+        const current = id !== undefined && String(id) === (row.dataset.songId || row.dataset.localSong);
+        row.toggleClass("is-current", current); row.setAttr("aria-current", String(current));
+      });
+    }));
     const root = this.contentEl; root.empty(); root.addClass("mw-view", "mw-cloud");
     const win = root.ownerDocument.defaultView;
     this.appearanceMedia = typeof win?.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -602,6 +612,8 @@ export class MusicLibraryView extends ItemView {
       const row = page.createDiv({ cls: "mw-cloud__track" });
       row.toggleClass("is-selected", selection.ids.has(track.id));
       row.dataset.songId = String(track.id);
+      row.toggleClass("is-current", this.plugin.nowPlaying.state.songId === track.id);
+      row.setAttr("aria-current", String(this.plugin.nowPlaying.state.songId === track.id));
       row.addEventListener("click", event => {
         if ((event.target as Element).closest("button, a, input")) return;
         selection.click(track.id, trackIds, event);

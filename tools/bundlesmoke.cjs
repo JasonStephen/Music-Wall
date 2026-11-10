@@ -296,6 +296,43 @@ const origLoad = Module._load;
   const deps = plugin.getPlaybackDeps();
   if (!deps || typeof deps.isDesktop !== 'boolean' || !deps.request) throw Error('Invalid playback dependencies');
   console.log('Unified startup, embedded component, collapse, commands and legacy removal passed');
+  const sessionPath='.obsidian/plugins/music-wall/playback-session.json';
+  const sessionAlbum={albumId:0,localPlaylistId:'local:resume',name:'Resume list',artist:'Artist',cover:'',trackCount:2,
+    tracks:[{id:91,name:'First',duration:120000},{id:92,name:'Second',duration:120000}]};
+  const seed={version:1,album:sessionAlbum,index:1,playing:true,contentKind:'playlist',order:'order',
+    albumQueue:[],currentEntryId:'',songQueue:sessionAlbum.tracks,queuedPlaylist:sessionAlbum,
+    savedAlbum:null,savedPlaylist:null,priorityNext:[],prioritySongs:[]};
+  const sessionFiles=new Map();
+  fakeVault.configDir='.obsidian';
+  fakeVault.adapter.exists=async path=>sessionFiles.has(path);
+  fakeVault.adapter.read=async path=>sessionFiles.get(path);
+  fakeVault.adapter.write=async(path,text)=>{sessionFiles.set(path,text)};
+  let layoutReady;
+  fakeWorkspace.onLayoutReady=callback=>{layoutReady=callback};
+  for (const scenario of ['playing','paused','interrupted','client','corrupt']) {
+    sessionFiles.set(sessionPath,scenario==='corrupt'?'{bad':JSON.stringify({...seed,playing:scenario!=='paused'}));
+    const restarted=new Plugin(fakeApp,{id:'music-wall'});
+    restarted.loadData=async()=>({playbackMode:scenario==='client'?'client':'internal',neteaseCookie:'MUSIC_U=test;'});
+    await restarted.onload();
+    let resumed=0;
+    restarted.internalPlayer.play=async()=>{
+      resumed++;
+      if(restarted.internalPlayer.state.songId!==92||restarted.internalPlayer.state.positionMs!==0)throw Error('Wrong restored song or progress');
+      return true;
+    };
+    if(scenario==='interrupted')await restarted.internalPlayer.pause();
+    layoutReady();
+    if(resumed!==(scenario==='playing'?1:0))throw Error('Unexpected startup autoplay: '+scenario);
+    if(['playing','paused','interrupted'].includes(scenario)) {
+      if(restarted.internalPlayer.state.songId!==92||restarted.internalPlayer.songQueue.length!==2)throw Error('Session was not restored');
+      restarted.internalPlayer.setOrder('repeat');
+      await restarted.playbackSessionStore.flush();
+      const before=sessionFiles.get(sessionPath);
+      restarted.onunload();await restarted.playbackSessionStore.flush();
+      if(sessionFiles.get(sessionPath)!==before)throw Error('Unloading cleared the saved playback session');
+    } else restarted.onunload();
+  }
+  console.log('Playback session startup, autoplay, paused state, cancellation and teardown passed');
   console.log("\n== main.js 冒烟测试通过 ==");
   process.exit(0);
 })().catch((e) => {

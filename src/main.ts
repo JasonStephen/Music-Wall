@@ -45,6 +45,7 @@ import { isAudioQuality } from "./core/quality";
 import { AudioTransport } from "./core/audioTransport";
 import { CollectionStatsCache } from "./core/collectionStatsCache";
 import { HistoryStore } from "./core/history";
+import { PlaybackSessionStore } from "./core/playbackSession";
 import { clearCoverToneCache } from "./ui/accent";
 import { LyricsService } from "./core/lyrics";
 import { InternalPlayer, CombinedNowPlayingProvider } from "./core/internalPlayer";
@@ -61,7 +62,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.4.0-exp-2";
+const BUILD_TAG = "1.4.0-exp-3";
 
 
 export default class MusicWallPlugin extends Plugin {
@@ -101,6 +102,7 @@ export default class MusicWallPlugin extends Plugin {
   private verifiedAt = 0;
   private loginCheck: { cookie: string; promise: Promise<boolean> } | null = null;
   private unloading = false;
+  private playbackSessionStore: PlaybackSessionStore | null = null;
   private gitSyncModal: GitSyncModal | null = null;
   private githubWallReader: GitHubWallReader | null = null;
   private githubAuth = new GitHubAuth();
@@ -163,6 +165,17 @@ export default class MusicWallPlugin extends Plugin {
     this.lyrics = new LyricsService(this.requester, this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/lyrics-cache.json`);
     this.historyStore = new HistoryStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/history.json`);
     await this.historyStore.ready();
+    this.playbackSessionStore = new PlaybackSessionStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/playback-session.json`);
+    const savedSession = this.settings.playbackMode === "internal" ? await this.playbackSessionStore.load() : null;
+    if (savedSession) this.internalPlayer.restoreSession(savedSession);
+    this.playbackSessionStore.watch(this.internalPlayer, savedSession?.playing);
+    let resumeSession = savedSession?.playing ?? false;
+    this.register(this.internalPlayer.on(() => { resumeSession = false; }));
+    this.app.workspace.onLayoutReady(() => {
+      if (!resumeSession || this.unloading || this.settings.playbackMode !== "internal" || !hasLoginCookie(this.settings.neteaseCookie)) return;
+      resumeSession = false;
+      void this.internalPlayer.play();
+    });
     // Register only after services are ready: Obsidian may immediately restore
     // the last active player/library as soon as its view factory is registered.
     this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
@@ -227,6 +240,7 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   onunload(): void {
+    void this.playbackSessionStore?.dispose();
     void this.historyStore?.flush().catch(() => {});
     void this.collectionStatsCache?.flush();
     this.unloading = true;

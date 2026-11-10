@@ -1,9 +1,9 @@
 /* Plugin controls have their own palette, independent of the vault accent. */
 :is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters, .mw-statusbar, .menu:has([data-section="music-wall"])) {
-  --mw-ui-accent: #b52b27;
-  --mw-ui-accent-hover: #99211e;
+  --mw-ui-accent: #1d4e89;
+  --mw-ui-accent-hover: #173f70;
   --mw-ui-on-accent: #fff;
-  --accent-h: 2; --accent-s: 65%; --accent-l: 43%;
+  --accent-h: 213; --accent-s: 65%; --accent-l: 33%;
   --interactive-accent: var(--mw-ui-accent);
   --interactive-accent-hover: var(--mw-ui-accent-hover);
   --interactive-accent-hsl: var(--accent-h), var(--accent-s), var(--accent-l);
@@ -26,22 +26,22 @@
 .theme-dark :is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters, .mw-statusbar, .menu:has([data-section="music-wall"])),
 .mw-view.mw-cloud[data-library-theme="dark"],
 .mw-view.mw-player:is(.mw-bg--dark, .mw-bg--wood, .mw-art--dark) {
-  --mw-ui-accent: #ff8a91;
-  --mw-ui-accent-hover: #ffadb2;
-  --mw-ui-on-accent: #301215;
-  --accent-h: 356; --accent-s: 100%; --accent-l: 77%;
+  --mw-ui-accent: #8bb8ed;
+  --mw-ui-accent-hover: #b4d2f5;
+  --mw-ui-on-accent: #10233d;
+  --accent-h: 213; --accent-s: 73%; --accent-l: 74%;
 }
 .mw-view.mw-cloud[data-library-theme="light"],
 .mw-view.mw-player:is(.mw-bg--white, .mw-art--light) {
-  --mw-ui-accent: #b52b27;
-  --mw-ui-accent-hover: #99211e;
+  --mw-ui-accent: #1d4e89;
+  --mw-ui-accent-hover: #173f70;
   --mw-ui-on-accent: #fff;
-  --accent-h: 2; --accent-s: 65%; --accent-l: 43%;
+  --accent-h: 213; --accent-s: 65%; --accent-l: 33%;
 }
 .mw-view.mw-player {
   --mw-accent: var(--mw-ui-accent);
-  --mw-np-accent: var(--mw-ui-accent) !important;
-  --mw-np-accent-fg: var(--mw-ui-on-accent) !important;
+  --mw-np-accent: #1d4e89;
+  --mw-np-accent-fg: #fff;
 }
 :is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), textarea, select) {
   color: var(--mw-panel-fg, var(--text-normal)) !important;
@@ -85,3 +85,11 @@
 .menu:has([data-section="music-wall"]) .menu-item.selected:not(.is-disabled) { background:var(--background-modifier-active-hover) !important; color:var(--mw-ui-accent) !important; }
 .menu:has([data-section="music-wall"]) .menu-item { font-size:calc(var(--font-ui-small, 14px) * 1.25); padding:7.5px 15px; }
 .menu:has([data-section="music-wall"]) .menu-item-icon svg { width:22.5px; height:22.5px; }
+
+.mw-queue .mw-queue__row.is-current .mw-queue__name,
+.mw-mini .mw-mini__track.is-current .mw-mini__track-name,
+.mw-player .mw-np__track.is-current .mw-np__trackName,
+.mw-cloud .mw-cloud__track.is-current .mw-cloud__name {
+  color: var(--mw-ui-accent);
+  font-weight: 600;
+}

@@ -1,7 +1,7 @@
 {
   "id": "music-wall",
   "name": "Music Wall",
-  "version": "1.4.0-exp-2",
+  "version": "1.4.0-exp-3",
   "minAppVersion": "1.5.0",
   "description": "整理收藏的专辑和歌单，创建本地歌单，以多层文件夹和唱片样式浏览音乐，并在音乐库中播放。 Organize albums and playlists in folders, create local playlists, and listen in your music library.",
   "author": "Jason",

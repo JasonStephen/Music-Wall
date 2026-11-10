@@ -48,7 +48,7 @@
   --mw-panel-line: rgba(0, 0, 0, 0.12);
   --mw-panel-surface: rgba(0, 0, 0, 0.04);
   --mw-panel-hover: rgba(0, 0, 0, 0.06);
-  --mw-np-accent: var(--mw-ui-accent, #b52b27);
+  --mw-np-accent: var(--mw-ui-accent, #1d4e89);
   --mw-np-accent-fg: #ffffff;
   /* 控制键（上一首/播放/下一首/列表）的可见性：浅色背景下用深色半透明底 */
   --mw-ctrl-bg: #ffffff;
@@ -91,7 +91,7 @@
   --mw-player-panel-bg: rgba(14, 16, 21, 0.62);
   /* 封面模式：主色由 JS 从封面提取后写到行内；提取彻底失败（纯灰封面/解码失败）
      用固定品牌蓝兜底（第七轮），不再退主题紫——紫在整套调色里最跳。 */
-  --mw-np-accent: var(--mw-ui-accent, #b52b27);
+  --mw-np-accent: var(--mw-ui-accent, #1d4e89);
   --mw-np-accent-fg: #ffffff;
   /* 面板是**磨砂玻璃**而不是实心黑板（第五轮 B2）：
      原来是 92% 近黑实底，在封面背景上像贴了块黑板，「样式依然是暗的」。

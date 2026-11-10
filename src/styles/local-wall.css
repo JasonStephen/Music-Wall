@@ -117,6 +117,9 @@
 .mw-embedded-player.mw-player .mw-player__collapse :is(.mw-control-icon, svg) { width:36px; min-width:36px; height:36px; flex-basis:36px; }
 .mw-embedded-player.mw-player .mw-player__source { grid-column:2; grid-row:1; }
 .mw-embedded-player.mw-player .mw-player-presets { grid-column:3; grid-row:1; }
+@container mw-pane (max-width:300px) {
+  .mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:32px minmax(0,1fr) auto; column-gap:0; }
+}
 @container mw-pane (max-width:600px) {
   .mw-local__landing { gap:12px; }
   .mw-cloud button.mw-local__portal { width:150px; min-height:170px; padding:18px; }

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import type { AudioQuality } from "./quality";
 import type { AudioLease } from "./audioTransport";
 import { AudioFader } from "./audioFade";
+import type { PlaybackSession } from "./playbackSession";
 
 export type PlaybackOrder = "order" | "repeat" | "one" | "shuffle";
 export interface AlbumQueueEntry { id: string; album: AlbumMeta; }
@@ -75,6 +76,36 @@ export class InternalPlayer implements NowPlayingProvider {
 
   constructor(private deps: InternalPlayerDeps) { this.fader = new AudioFader(deps.webAudio !== false); }
   get playingRequested(): boolean { return this.wanted; }
+
+  exportSession(): PlaybackSession {
+    return {
+      version: 1, album: this.album, index: this.index, playing: this.wanted,
+      contentKind: this.contentKind, order: this.order, albumQueue: this.albumQueue,
+      currentEntryId: this.currentEntryId, songQueue: this.songQueue, queuedPlaylist: this.queuedPlaylist,
+      savedAlbum: this.savedAlbum ? { id: this.savedAlbum.id, index: this.savedAlbum.index } : null,
+      savedPlaylist: this.savedPlaylist ? { index: this.savedPlaylist.index } : null,
+      priorityNext: this.priorityNext, prioritySongs: this.prioritySongs,
+    };
+  }
+  restoreSession(session: PlaybackSession): void {
+    this.stop();
+    const saved: PlaybackSession = JSON.parse(JSON.stringify(session));
+    this.albumQueue = saved.albumQueue;
+    this.currentEntryId = saved.currentEntryId;
+    this.contentKind = saved.contentKind;
+    this.album = saved.contentKind === "album"
+      ? this.albumQueue.find(entry => entry.id === saved.currentEntryId)?.album || saved.album : saved.album;
+    this.index = saved.index;
+    this.songQueue = saved.songQueue; this.queuedPlaylist = saved.queuedPlaylist;
+    this.savedAlbum = saved.savedAlbum ? { ...saved.savedAlbum, positionMs: 0 } : null;
+    this.savedPlaylist = saved.savedPlaylist ? { ...saved.savedPlaylist, positionMs: 0 } : null;
+    this.entrySerial = this.albumQueue.reduce((max, entry) => Math.max(max, Number(entry.id) || 0), 0);
+    this.order = saved.contentKind === "album" && saved.order === "shuffle" ? "order" : saved.order;
+    this.resetRandom();
+    this.priorityNext = saved.priorityNext; this.prioritySongs = saved.prioritySongs;
+    this.phase = this.album ? "paused" : "none";
+    ++this.revision; this.emit();
+  }
 
   get currentCover(): string { return this.album?.tracks?.[this.index]?.cover || this.album?.cover || ""; }
   get allowedOrders(): PlaybackOrder[] { return this.contentKind === "playlist" ? ["order", "repeat", "one", "shuffle"] : ["order", "repeat", "one"]; }
