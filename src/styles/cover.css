@@ -39,25 +39,17 @@
   pointer-events: none;
 }
 
-.mw-card:hover .mw-disc--cover .mw-cover--standalone,
 .mw-disc--cover:hover .mw-cover--standalone {
   transform: translateY(-8px) scale(1.03);
   box-shadow: 0 22px 40px rgba(0, 0, 0, 0.55);
 }
-.mw-card:hover .mw-disc--cover .mw-cover--standalone::after,
+
 .mw-disc--cover:hover .mw-cover--standalone::after {
   transform: translateX(120%);
 }
 
 /* 无障碍：减少动效偏好（仅抑制位移/抬升，保留盘片旋转这一核心特征） */
 @media (prefers-reduced-motion: reduce) {
-  .mw-card:hover .mw-disc--vinyl .mw-record,
-  .mw-card:hover .mw-disc--cover .mw-cover--standalone,
-  .mw-card:hover .mw-case__front,
-  .mw-card:hover .mw-tape {
-    transform: none;
-    transition: none;
-  }
   .mw-disc--cover .mw-cover--standalone::after {
     transition: none;
   }

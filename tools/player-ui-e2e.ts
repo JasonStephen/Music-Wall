@@ -35,7 +35,6 @@ function makePlugin() {
       smtcEnabled: false,
       minColumnWidth: 200,
       defaultStyle: "vinyl",
-      shelfCaption: "pull",
       /** 全局缩放：与真实设置同形（缩放场景会临时改写它再调 syncZoomBox） */
       zoomScale: 1,
     },

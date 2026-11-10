@@ -75,12 +75,10 @@
     inset 0 0 4px rgba(0, 0, 0, 0.9);
 }
 
-/* hover：盘片转动（plate 只管旋转）+ 整体微抬（record 只管缩放） */
-.mw-card:hover .mw-disc--vinyl .mw-record,
 .mw-disc--vinyl:hover .mw-record {
   transform: scale(1.02);
 }
-.mw-card:hover .mw-disc--vinyl .mw-record__plate,
+
 .mw-disc--vinyl:hover .mw-record__plate {
   animation: mw-spin 4.5s linear infinite;
 }

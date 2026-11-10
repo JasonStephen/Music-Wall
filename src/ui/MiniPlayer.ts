@@ -91,7 +91,7 @@ export class MiniPlayer {
     setIcon(this.buttons.quality.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "chevron-down");
     this.volumeButton = this.buttons.volume = this.button(tools, "volume", "volume-2", t("internal.volume"), () => this.showPanel("volume"));
     this.button(tools, "expand", "maximize-2", t("mini.open"), () => void plugin.openPlayerView());
-    this.buttons.more = this.button(tools, "more", "ellipsis", t("wall.toolbar.more"), () => this.showPanel("more"));
+    this.buttons.more = this.button(tools, "more", "ellipsis", t("player.menu"), () => this.showPanel("more"));
     for (const name of PANELS) {
       this.buttons[name].setAttr("aria-expanded", "false");
       this.panels[name] = this.root.createDiv({ cls: `mw-mini__panel mw-mini__${name} is-hidden`, attr: { role: "group", "aria-label": this.buttons[name].getAttribute("aria-label")! } });

@@ -1,7 +1,6 @@
 import { App, Modal } from "obsidian";
 import { t } from "../i18n";
 import type { GitHubAccountController, GitHubAccounts } from "../core/githubAuth";
-import { applyModalTheme } from "./modalTheme";
 
 /** Browser OAuth runs in GCM, so this UI never receives a password or access token. */
 export class GitHubLoginModal extends Modal {
@@ -18,7 +17,7 @@ export class GitHubLoginModal extends Modal {
 
   constructor(app: App, private controller: GitHubAccountController, private closed: () => void = () => {}) { super(app); }
   onOpen(): void {
-    this.modalEl.addClass("mw-modal-zoom", "mw-github-login"); applyModalTheme(this.modalEl);
+    this.modalEl.addClass("mw-modal-zoom", "mw-github-login");
     const root = this.contentEl;
     root.createEl("h2", { text: t("githubAuth.title") });
     root.createEl("p", { text: t("githubAuth.description"), cls: "mw-git-sync__hint" });

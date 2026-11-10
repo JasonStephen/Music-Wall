@@ -69,7 +69,7 @@
   color: var(--mw-panel-fg, var(--text-normal));
 }
 
-/* 布局预设：纯 CSS 示意图（不依赖封面） */
+/* 背景预览的公共画布 */
 .mw-preset__art {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -80,34 +80,6 @@
   display: grid;
   gap: 4px;
   overflow: hidden;
-}
-.mw-preset__cell {
-  border-radius: 2px;
-  background: var(--mw-panel-fg-dim, var(--text-faint));
-  opacity: 0.62;
-}
-.mw-preset__art--grid {
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-}
-.mw-preset__art--list {
-  grid-template-columns: 1fr;
-  grid-auto-rows: 1fr;
-}
-.mw-preset__art--list .mw-preset__cell {
-  border-radius: 999px;
-  height: 60%;
-  align-self: center;
-}
-.mw-preset__art--shelf {
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-  background: linear-gradient(180deg, #241b14, #17110c);
-  border-color: rgba(255, 226, 180, 0.22);
-}
-.mw-preset__art--shelf .mw-preset__cell {
-  background: linear-gradient(180deg, #6b4830, #3a2413);
-  opacity: 1;
 }
 
 /* 背景预设（播放器）：小色块 */

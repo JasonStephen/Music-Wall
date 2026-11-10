@@ -14,20 +14,6 @@
   --mw-rate-ink-light: #fdfbff;
 }
 
-/* 展示架墙面与展示架弹窗：5 分档改用浅金色，与暖木背景协调。
-   只收 5 分档——1–4 档本来就在暖色光谱内；档位语义不变，白色数字墨色照旧。 */
-.mw-view.mw-wall--shelf,
-.modal.mw-modal--shelf {
-  --mw-rate-5: #e6b65b;
-}
-
-/* 木墙详情页（开盒信息面）的亮星光晕略发虚：木纹上关掉 text-shadow（B7）。
-   选择器必须带 [data-rating]：各档位光晕规则是 (0,4,0)，不带属性选择器会打成平手、
-   靠后声明的 data-rating 光晕仍会赢（这段不能被挪到档位规则之前而不掉特异性）。 */
-.mw-view.mw-wall--shelf .mw-stars[data-rating] .mw-stars__star.is-on {
-  text-shadow: none;
-}
-
 /* ---- 卡片右上角徽标：单星＋中间数字（常显，不随悬停按钮消失） ---- */
 .mw-rating-badge {
   position: absolute;
@@ -72,37 +58,6 @@
 }
 .mw-rating-badge[data-rating="5"] .mw-rating-badge__num {
   color: var(--mw-rate-ink-light);
-}
-/* 有徽标的卡片：右上悬停按钮整体下移一行，避免盖住放大后的星 */
-.mw-card.has-rating .mw-iconbtn {
-  top: 44px;
-}
-
-/* ---- 展示架：徽标挂在封套内部（跟随抽出与缩放），列表：缩略图右上角 ---- */
-.mw-shelf-jacket .mw-rating-badge {
-  top: 6px;
-  right: 6px;
-  width: 30px;
-  height: 30px;
-  /* 高于封套自身的 ::after 反光层（z-index auto），否则会被它压住 */
-  z-index: 5;
-}
-.mw-row__thumbwrap {
-  position: relative;
-  flex: 0 0 64px;
-  width: 64px;
-  height: 64px;
-}
-.mw-row__thumbwrap .mw-row__thumb {
-  width: 100%;
-  height: 100%;
-  flex: none;
-}
-.mw-row__thumbwrap .mw-rating-badge {
-  top: -6px;
-  right: -6px;
-  width: 28px;
-  height: 28px;
 }
 
 /* ---- 详情只读五星 ---- */
@@ -153,29 +108,6 @@
 }
 .mw-rate-row__btn {
   font-size: 0.8em;
-}
-/* 开盒详情（深色信息面）：按钮硬重置，免得被主题刷成白底药丸 */
-.mw-gf__rate {
-  margin-top: 8px;
-  flex-shrink: 0;
-}
-.mw-gf__rate .mw-gf__rate-btn {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 2px 12px;
-  border: 1px solid rgba(255, 226, 180, 0.28);
-  border-radius: 999px;
-  background: rgba(255, 226, 180, 0.08);
-  box-shadow: none;
-  min-height: 0;
-  height: auto;
-  color: #e6dcc9;
-  font-size: 0.75em;
-  cursor: pointer;
-}
-.mw-gf__rate .mw-gf__rate-btn:hover {
-  border-color: #d9a24a;
-  color: #fff2dc;
 }
 
 /* ---- 评分模态框：五颗大星＋悬停预览 ---- */

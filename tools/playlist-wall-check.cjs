@@ -9,8 +9,7 @@ function load(entry) {
   return module.exports;
 }
 const { wallCollectionId, collectionUrl } = load('src/core/collection.ts');
-const { emptyWall, insertItem, parseWall, serializeWall, mergeWalls } = load('src/core/store.ts');
-const { normalizeOrder, moveWithin, removeFromOrder } = load('src/core/layout.ts');
+const { parseWall } = load('src/core/store.ts');
 const { MusicLibraryApi } = load('src/core/library.ts');
 const { playAlbum, h5FallbackUrl } = load('src/core/playback.ts');
 const { MusicLibraryView } = load('src/ui/MusicLibraryView.ts');
@@ -18,18 +17,8 @@ const album = { albumId: 42, name: 'Album', artist: 'Artist', cover: '', trackCo
 const playlist = { ...album, albumId: 0, playlistId: 42, name: 'Playlist' };
 const item = meta => ({ albumId: wallCollectionId(meta), meta, source: 'search', locked: true, addedAt: new Date().toISOString() });
 (async () => {
-  const wall = emptyWall('Mixed', 'vinyl'); wall.order = [];
-  assert.equal(insertItem(wall, item(album)), true);
-  assert.equal(insertItem(wall, item(playlist)), true);
-  assert.equal(insertItem(wall, item(playlist)), false);
-  const restored = parseWall(serializeWall(wall));
+  const restored = parseWall(JSON.stringify({ version: 3, name: 'Mixed', style: 'vinyl', items: [item(album), item(playlist)] }));
   assert.deepEqual(restored.items.map(i => i.albumId), [42, -42]);
-  assert.deepEqual(normalizeOrder(restored.items, restored.order), [42, -42]);
-  assert.deepEqual(moveWithin(restored.order, -42, 42, 'before'), [-42, 42]);
-  assert.deepEqual(removeFromOrder(restored.order, [-42]), [42]);
-  const target = emptyWall('Target', 'cd');
-  assert.deepEqual(mergeWalls(target, restored), { addedCount: 2, skippedCount: 0 });
-  assert.deepEqual(mergeWalls(target, restored), { addedCount: 0, skippedCount: 2 });
   assert.equal(parseWall(JSON.stringify({ version: 2, items: [item(album)] })).items.length, 1);
   assert.equal(parseWall(JSON.stringify({ version: 3, items: [{ ...item(playlist), albumId: 42 }] })).items.length, 0);
   assert.match(collectionUrl(playlist), /playlist\?id=42$/);
@@ -57,5 +46,5 @@ const item = meta => ({ albumId: wallCollectionId(meta), meta, source: 'search',
   view.openAlbum = async value => { opened = value; };
   await view.showCollection(playlist); assert.equal(opened.id, 42);
   await view.showCollection(album); assert.equal(opened.albumId, 42);
-  console.log('Playlist wall checks passed: collision-free keys, persistence, legacy files, sorting, migration, links, live details, failed/stale request guards and detail routing.');
+  console.log('Playlist wall checks passed: collision-free keys, persistence, legacy files, links, live details, failed/stale request guards and detail routing.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

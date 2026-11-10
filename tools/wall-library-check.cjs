@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { buildSync } = require('esbuild');
 const result = buildSync({ entryPoints: ['src/core/wallLibrary.ts'], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['obsidian'] });
 const m = { exports: {} }; new Function('module','exports','require',result.outputFiles[0].text)(m,m.exports,require);
-const { emptyLibrary, parseLibrary, addFolder, addSaved, createPlaylist, clonePlaylist, addSongs, moveFolder, moveEntries, removeEntries, removeFolder, migrateWall, folderPath, WallLibraryStore } = m.exports;
+const { emptyLibrary, parseLibrary, addFolder, addSaved, createPlaylist, clonePlaylist, addSongs, moveFolder, moveEntries, removeEntries, removeFolder, folderPath, WallLibraryStore } = m.exports;
 const meta = (id=5) => ({ albumId:id,name:'Album '+id,artist:'Artist',cover:'',trackCount:1,tracks:[{id:id*10,name:'Song',duration:1000}] });
 (async () => {
  const d=emptyLibrary(), a=addFolder(d,'albums',null,'A'), b=addFolder(d,'albums',a.id,'B'), p=addFolder(d,'playlists',null,'A');
@@ -21,16 +21,10 @@ const meta = (id=5) => ({ albumId:id,name:'Album '+id,artist:'Artist',cover:'',t
  copy.tracks[0].name='Edited';assert.equal(source.tracks[0].name,'Second');
  const emptyClone=clonePlaylist(clones,{...source,tracks:[]},null);assert.equal(clones.collections.find(c=>c.id===emptyClone.collection).meta.tracks.length,0);
  const bad=JSON.parse(JSON.stringify(d));bad.entries.find(e=>e.id===local.id).rating=3;assert.throws(()=>parseLibrary(JSON.stringify(bad)));
- const migrated=emptyLibrary(); const wall={items:[{albumId:1,meta:meta(1),groupId:'g',rating:5,metaEdited:true,addedAt:'first'},{albumId:2,meta:meta(2),addedAt:'second'}],groups:[{id:'g',name:'Group',collapsed:true}],order:[2,1],view:{sortMode:'manual',sortAsc:true}};
- assert.equal(migrateWall(migrated,'MusicWall/Genre/Old.mw',wall),2);assert.equal(migrateWall(migrated,'MusicWall/Genre/Old.mw',wall),0);
- assert.equal(folderPath(migrated,migrated.entries.find(e=>e.collection==='albums:1').folder),'MusicWall / Genre / Old / Group');
- assert.equal(migrated.entries.find(e=>e.collection==='albums:1').rating,5); assert.equal(migrated.entries.find(e=>e.collection==='albums:1').metaEdited,true);
- parseLibrary(JSON.stringify(migrated));
- const empty=emptyLibrary();migrateWall(empty,'Empty.mw',{items:[],groups:[{id:'empty',name:'Empty group'}]});assert.equal(empty.folders.length,2);
  const memory=new Map();const adapter={exists:async p=>memory.has(p),read:async p=>memory.get(p),write:async(p,t)=>{memory.set(p,t)},mkdir:async p=>{memory.set(p,'')}};
  const store=new WallLibraryStore(adapter);await store.ready();await Promise.all([store.update(d=>addFolder(d,'albums',null,'First')),store.update(d=>addFolder(d,'albums',null,'Second'))]);assert.equal(store.data.folders.length,2);
  const before=memory.get(store.path);await assert.rejects(store.update(d=>{addFolder(d,'albums',null,'Third');throw Error();}));assert.equal(memory.get(store.path),before);
  await assert.rejects(store.update(d=>{d.folders[0].parent=d.folders[0].id;}));assert.equal(memory.get(store.path),before);
  memory.set(store.path,'broken');await assert.rejects(store.update(d=>addFolder(d,'albums',null,'Fourth')));assert.equal(memory.get(store.path),'broken');
- console.log('Unified collection checks passed: trees, duplicate locations, shared records, local songs, migration, legacy metadata, concurrent saves and failed-write protection.');
+ console.log('Unified collection checks passed: trees, duplicate locations, shared records, local songs, legacy metadata, concurrent saves and failed-write protection.');
 })().catch(e=>{console.error(e);process.exitCode=1});

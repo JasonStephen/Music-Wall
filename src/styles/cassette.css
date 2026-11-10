@@ -144,18 +144,16 @@
   border-radius: 2px;
 }
 
-/* hover：盒盖抬起，磁带滑出 */
-.mw-card:hover .mw-case__front,
 .mw-disc--cassette:hover .mw-case__front {
   transform: translateY(-5%) scale(1.02);
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6),
     inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
-.mw-card:hover .mw-tape,
+
 .mw-disc--cassette:hover .mw-tape {
   transform: translate(26%, -50%);
 }
-.mw-card:hover .mw-tape__hub,
+
 .mw-disc--cassette:hover .mw-tape__hub {
   animation: mw-spin-cd 1.6s linear infinite;
 }

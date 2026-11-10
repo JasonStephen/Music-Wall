@@ -6,7 +6,6 @@
 
 import type { DiscStyle, WallItem } from "../types";
 import { buildDiscElement } from "./disc";
-import { sizedCover } from "../core/metadata";
 import { t } from "../i18n";
 
 /** 预览取图尺寸：瓷砖实际只有 ~120-180px，取 220 足够清晰又不浪费流量 */
@@ -71,33 +70,6 @@ export function buildStyleTile(
   tile.appendChild(stage);
   tile.createSpan({ cls: "mw-preset__label", text: label });
   tile.addEventListener("click", () => onPick(style));
-  return tile;
-}
-
-/** 用当前墙的第一张封面作为预览图（四种样式预览同一张，便于对比） */
-export function firstCover(items: { meta: { cover: string } }[]): string {
-  for (const it of items) if (it.meta.cover) return sizedCover(it.meta.cover, PRESET_COVER_SIZE);
-  return "";
-}
-
-/** 布局预设：纯 CSS 示意图标（不依赖封面），三选一 */
-export function buildLayoutTile(
-  layout: "grid" | "list" | "shelf",
-  label: string,
-  active: boolean,
-  onPick: (layout: "grid" | "list" | "shelf") => void
-): HTMLElement {
-  const tile = document.createElement("button");
-  tile.className = "mw-preset mw-preset--layout";
-  tile.type = "button";
-  tile.dataset.mwLayout = layout;
-  tile.toggleClass("is-active", active);
-  tile.setAttr("aria-label", label);
-  tile.setAttr("title", label);
-  const art = tile.createDiv({ cls: `mw-preset__art mw-preset__art--${layout}` });
-  for (let i = 0; i < 4; i++) art.createDiv({ cls: "mw-preset__cell" });
-  tile.createSpan({ cls: "mw-preset__label", text: label });
-  tile.addEventListener("click", () => onPick(layout));
   return tile;
 }
 

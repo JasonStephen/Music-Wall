@@ -1,23 +1,8 @@
-// 浮层面板外壳：两种形态共用一套开合/互斥/快捷键逻辑
-// - side：从右侧滑出的侧边抽屉（样式与布局 / 筛选 / 排序）
-// - float：锚在右上角的悬浮框（搜索本墙 / 添加专辑），点击墙面不关闭
-//
-// 设计要点：
-// - 挂在 .mw-stage 下（absolute 覆盖层），因此不参与 .mw-grid 的滚动；
-// - 内容由调用方通过 builder 提供，每次 open/refresh 重建，避免陈旧闭包；
-// - Esc / 关闭钮收起；外部按钮的激活态由 onAfterChange 回调同步。
-
+// 播放器样式面板的开合与键盘交互。
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
 
-export type DrawerKey =
-  | "style"
-  | "filter"
-  | "group"
-  | "sort"
-  | "search"
-  | "settings"
-  | "add";
+export type DrawerKey = "settings";
 
 export interface DrawerApi {
   /** 收起面板 */
@@ -45,8 +30,7 @@ export class SideDrawer {
 
   constructor(
     host: HTMLElement,
-    onAfterChange?: () => void,
-    variant: "side" | "float" = "side"
+    onAfterChange?: () => void
   ) {
     this.onAfterChange = onAfterChange;
 
@@ -57,7 +41,7 @@ export class SideDrawer {
     //    就会留下「看得见但点不动、还吞掉所有点击」的幽灵层。
     // 关闭途径：工具栏图标 / 面板右上 × / Esc。
     this.panel = host.createDiv({
-      cls: variant === "float" ? "mw-drawer mw-drawer--float" : "mw-drawer",
+      cls: "mw-drawer",
     });
     const head = this.panel.createDiv({ cls: "mw-drawer__head" });
     this.titleEl = head.createDiv({ cls: "mw-drawer__title" });
@@ -69,7 +53,7 @@ export class SideDrawer {
 
     this.bodyEl = this.panel.createDiv({ cls: "mw-drawer__body" });
 
-    // 捕获阶段：面板打开时优先吃掉 Esc，不让它继续去关展示架详情
+    // 捕获阶段：面板打开时优先处理 Esc
     this.onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !this.openKey) return;
       e.stopPropagation();

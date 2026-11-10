@@ -2,7 +2,6 @@
 // 调用方经 onSave 落盘，本框不直接写 vault；点击星即保存并关闭。
 
 import { App, Modal } from "obsidian";
-import { applyModalTheme } from "./modalTheme";
 import { normalizeRating } from "./rating";
 import { t } from "../i18n";
 
@@ -29,7 +28,7 @@ export class RatingModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass("mw-modal-zoom");
-    applyModalTheme(this.modalEl);
+
     const { contentEl } = this;
     contentEl.addClass("mw-rating-modal");
     contentEl.createEl("h2", {

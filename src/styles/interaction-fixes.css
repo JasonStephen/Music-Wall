@@ -1,9 +1,4 @@
-/* Captions are positioned below the plank, so the last row must reserve their height. */
-.mw-grid--shelf .mw-section__cards {
-  padding-bottom: calc(var(--mw-plank-h, 19px) + 16px + 2.6em);
-}
-.mw-grid--shelf .mw-section.is-collapsed > .mw-section__cards { padding-bottom: 0; }
-.mw-shelf-cap__name, .mw-shelf-cap__artist { line-height: 1.35; }
+
 
 /* Native inputs handle interactions; only our own spans draw the slider. */
 :is(.mw-player, .mw-mini) .mw-slider {
@@ -77,7 +72,7 @@
   .mw-player .mw-np__popover { bottom: calc(12px + var(--mw-host-bottom, 0px)); }
 }
 
-/* Scroll surfaces use their own palette, including the shelf, player and modals. */
+/* Scroll surfaces use their own palette, including the player and modals. */
 .mw-view, .mw-view *, .mw-modal-zoom, .mw-modal-zoom * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--mw-panel-fg-dim, var(--text-muted)) 60%, transparent) transparent;

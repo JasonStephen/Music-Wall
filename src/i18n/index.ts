@@ -10,9 +10,7 @@ import { en } from "./en";
 import type {
   DiscStyle,
   PlayerBackground,
-  ShelfCaption,
   SortMode,
-  WallLayout,
 } from "../types";
 
 /** 实际支持的语言 */
@@ -111,15 +109,9 @@ export function t(
 export function styleLabel(s: DiscStyle): string {
   return t(`labels.style.${s}`);
 }
-export function layoutLabel(l: WallLayout): string {
-  return t(`labels.layout.${l}`);
-}
 export function sortLabel(k: SortMode): string {
   return t(`labels.sort.${k}`);
 }
 export function playerBgLabel(b: PlayerBackground): string {
   return t(`labels.bg.${b}`);
-}
-export function shelfCaptionLabel(c: ShelfCaption): string {
-  return t(`labels.caption.${c}`);
 }

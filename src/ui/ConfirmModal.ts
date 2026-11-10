@@ -5,7 +5,6 @@
 
 import { App, Modal } from "obsidian";
 
-import { applyModalTheme } from "./modalTheme";
 import { t } from "../i18n";
 
 export interface ConfirmOptions {
@@ -37,7 +36,6 @@ export class ConfirmModal extends Modal {
   onOpen(): void {
     // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
     this.modalEl.addClass("mw-modal-zoom");
-    applyModalTheme(this.modalEl);
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("mw-confirm");

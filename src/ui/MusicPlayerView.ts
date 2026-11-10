@@ -23,7 +23,6 @@ import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
 import { disposeZoomBox, handleZoomWheel, syncZoomBox, effectiveZoom } from "./zoom";
 import { coverTone, backdropForeground, LYRICS_CONTRAST_THRESHOLD, type CoverTone } from "./accent";
-import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
 import { decorateRange, paintRange } from "./range";
@@ -332,8 +331,6 @@ export class MusicPlayerView extends Component {
     this.backdrop?.dispose(); root.empty();
     root.addClass("mw-view", "mw-player");
     this.backdrop = new CoverBackdrop(root);
-    // 播放器的弹窗一律用默认皮肤（展示架的木色只属于音乐墙）
-    setModalTheme("default");
     this.el = {};
     this.trackRows = [];
     this.popover = null; this.qualityKey = ""; this.volumeIcon = "";

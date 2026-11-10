@@ -102,8 +102,6 @@
     inset 0 0 4px rgba(0, 0, 0, 0.85);
 }
 
-/* hover：缓慢自转 */
-.mw-card:hover .mw-disc--cd .mw-record__plate,
 .mw-disc--cd:hover .mw-record__plate {
   animation: mw-spin-cd 6.5s linear infinite;
 }

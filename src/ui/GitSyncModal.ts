@@ -1,7 +1,6 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import { t } from "../i18n";
 import { canSelectSyncRow, changedLineSets, defaultSyncSelection, selectedSyncChanges, summarizeWallChange, type SyncDirection, type WallSyncPlan, type WallSyncRow } from "../core/wallSync";
-import { applyModalTheme } from "./modalTheme";
 
 export interface GitSyncConfig { repoUrl: string; branch: string; localDirectory: string; remoteDirectory: string; }
 export interface GitSyncPreview { plan: WallSyncPlan; branch: string; commit: string | null; apply(selected: Set<string>, signal?: AbortSignal): Promise<number>; }
@@ -28,7 +27,7 @@ export class GitSyncModal extends Modal {
   constructor(app: App, private config: GitSyncConfig, private prepare: PrepareSyncPreview, private direction: SyncDirection = "pull", private closed: () => void = () => {}, private account?: { name(): string; open(): Promise<boolean> }, private pullOnly = false) { super(app); }
 
   onOpen(): void {
-    this.modalEl.addClass("mw-modal-zoom", "mw-git-sync"); applyModalTheme(this.modalEl);
+    this.modalEl.addClass("mw-modal-zoom", "mw-git-sync");
     const root = this.contentEl; root.empty();
     root.createEl("h2", { text: t("gitSync.title") });
     root.createEl("p", { cls: "mw-git-sync__hint", text: t("gitSync.scope") });

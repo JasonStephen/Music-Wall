@@ -1,12 +1,11 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import { t } from "../i18n";
-import { applyModalTheme } from "./modalTheme";
 
 export interface Destination { id: string | null; name: string; detail?: string; disabled?: boolean; icon?: string; }
 export class WallDestinationModal extends Modal {
   constructor(app: App, private heading: string, private choices: Destination[], private pick: (id: string | null) => Promise<unknown>) { super(app); }
   onOpen(): void {
-    this.modalEl.addClass("mw-modal-zoom"); applyModalTheme(this.modalEl);
+    this.modalEl.addClass("mw-modal-zoom");
     this.contentEl.addClass("mw-wall-dialog"); this.contentEl.createEl("h2", { text: this.heading });
     const input = this.contentEl.createEl("input", { attr: { type: "search", placeholder: t("localWall.searchPlaceholder"), "aria-label": t("library.search") } });
     const list = this.contentEl.createDiv({ cls: "mw-wall-dialog__choices" });
@@ -30,7 +29,7 @@ export class WallDestinationModal extends Modal {
 export class WallTextModal extends Modal {
   constructor(app: App, private heading: string, private value: string, private submit: (value: string) => Promise<unknown>, private multiline = false) { super(app); }
   onOpen(): void {
-    this.modalEl.addClass("mw-modal-zoom"); applyModalTheme(this.modalEl); this.contentEl.addClass("mw-wall-dialog");
+    this.modalEl.addClass("mw-modal-zoom"); this.contentEl.addClass("mw-wall-dialog");
     this.contentEl.createEl("h2", { text: this.heading });
     const input = this.multiline ? this.contentEl.createEl("textarea") : this.contentEl.createEl("input", { type: "text" });
     input.value = this.value; input.setAttr("aria-label", this.heading);

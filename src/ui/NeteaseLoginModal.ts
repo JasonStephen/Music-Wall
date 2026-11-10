@@ -3,7 +3,6 @@ import { createQrLogin, checkQrLogin, type QrLoginSession } from "../core/auth";
 import type { Requester } from "../core/metadata";
 import { t } from "../i18n";
 import { LoginDiagnosticError, loginErrorMessage, type LoginStage } from "../core/loginDiagnostics";
-import { applyModalTheme } from "./modalTheme";
 
 /** 关闭、刷新、登出及卸载均作废旧请求；一次只轮询一个二维码。 */
 export class NeteaseLoginModal extends Modal {
@@ -49,7 +48,6 @@ export class NeteaseLoginModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass("mw-modal-zoom", "mw-login-modal");
-    applyModalTheme(this.modalEl);
     this.contentEl.addClass("mw-login");
     this.contentEl.createEl("h2", { text: t("auth.title") });
     this.contentEl.createEl("p", { text: t("auth.scanHint") });

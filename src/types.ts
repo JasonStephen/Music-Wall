@@ -5,11 +5,9 @@ import type { AudioQuality } from "./core/quality";
 /** 唱片视觉样式 */
 export type DiscStyle = "vinyl" | "cd" | "cassette" | "cover";
 
-/** 墙布局：网格（默认）、多列列表或展示架 */
+/** 旧 .mw 文件布局，仅用于 Git 同步兼容 */
 export type WallLayout = "grid" | "list" | "shelf";
 
-/** 展示架布局下，专辑名称文字显示档位（全局设置） */
-export type ShelfCaption = "hidden" | "pull" | "always";
 
 /** 排序类型；manual = 手动排序（顺序存于 MusicWallData.order） */
 export type SortMode = "manual" | "addedAt" | "name" | "artist" | "year" | "rating";
@@ -173,8 +171,6 @@ export interface MusicWallSettings {
   numericSeekEnabled: boolean;
   /** 是否已提示过移动端限制 */
   mobileNoticeShown: boolean;
-  /** 展示架布局下文字显示档位 */
-  shelfCaption: ShelfCaption;
   /** 是否启用 SMTC 正在播放（仅 Windows 桌面端生效） */
   smtcEnabled: boolean;
   /** 播放器页背景模式 */
@@ -227,7 +223,6 @@ export const DEFAULT_SETTINGS: MusicWallSettings = {
   defaultAudioQuality: "standard",
   numericSeekEnabled: false,
   mobileNoticeShown: false,
-  shelfCaption: "pull",
   smtcEnabled: true,
   playerExperimental: false,
   playerPresetGroup: "vinyl",
@@ -273,8 +268,6 @@ export const ZOOM_CSS_VAR = "--mw-zoom";
 
 /** v3 adds playlist entries with negative wall keys; v1/v2 files remain readable. */
 export const WALL_FILE_VERSION = 3;
-/** 分组 id 前缀 */
-export const GROUP_ID_PREFIX = "g";
 /** 播放器视图类型标识 */
 export const PLAYER_VIEW_TYPE = "music-wall-player";
 export const LIBRARY_VIEW_TYPE = "music-wall-library";

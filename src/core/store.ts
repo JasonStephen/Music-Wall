@@ -1,6 +1,5 @@
-// .mw 文件的读写、解析与 schema 迁移。
+// Git 同步使用的 .mw 文件解析与兼容校验。
 
-import type { Vault, TFile } from "obsidian";
 import {
   WALL_FILE_VERSION,
   type DiscStyle,
@@ -10,15 +9,10 @@ import {
   type WallItem,
   type WallViewState,
 } from "../types";
-import { normalizeOrder } from "./layout";
 import { t } from "../i18n";
 
 const VALID_STYLES: DiscStyle[] = ["vinyl", "cd", "cassette", "cover"];
 const VALID_SORT_MODES: SortMode[] = ["manual", "addedAt", "name", "artist", "year", "rating"];
-
-export function emptyWall(name: string, style: DiscStyle): MusicWallData {
-  return { version: WALL_FILE_VERSION, name, style, items: [] };
-}
 
 /** 字符串数组清洗：去非字符串、去空串、去重 */
 function cleanStringList(v: unknown): string[] | undefined {
@@ -172,65 +166,4 @@ export function parseWall(text: string): MusicWallData {
     throw new Error(t("storeErr.badStructure"));
   }
   return migrate(raw);
-}
-
-export async function loadWall(vault: Vault, file: TFile): Promise<MusicWallData> {
-  const text = await vault.read(file);
-  return parseWall(text);
-}
-
-export async function saveWall(
-  vault: Vault,
-  file: TFile,
-  data: MusicWallData
-): Promise<void> {
-  await vault.modify(file, JSON.stringify(data, null, 2));
-}
-
-/** 序列化为可导出文本（Git diff 友好：2 空格缩进） */
-export function serializeWall(data: MusicWallData): string {
-  return JSON.stringify(data, null, 2);
-}
-
-/** 迁入条目的分组归属：目标墙存在同名分组才保留，否则退回未分组（不会消失） */
-function adaptGroupId(target: MusicWallData, item: WallItem): string | undefined {
-  if (!item.groupId) return undefined;
-  return (target.groups ?? []).some((g) => g.id === item.groupId)
-    ? item.groupId
-    : undefined;
-}
-
-/** 按 albumId 去重插入单条目（样式跟随目标墙全局设置）。返回是否实际插入 */
-export function insertItem(target: MusicWallData, item: WallItem): boolean {
-  if (target.items.some((i) => i.albumId === item.albumId)) return false;
-  target.items.push({ ...item, style: undefined, groupId: adaptGroupId(target, item) });
-  if (target.order) target.order = normalizeOrder(target.items, target.order);
-  return true;
-}
-
-/** 合并另一个墙的数据，返回 {merged, addedCount, skippedCount}（按 albumId 去重） */
-export function mergeWalls(
-  target: MusicWallData,
-  incoming: MusicWallData
-): { addedCount: number; skippedCount: number } {
-  const existing = new Set(target.items.map((i) => i.albumId));
-  let addedCount = 0;
-  let skippedCount = 0;
-  for (const item of incoming.items) {
-    if (existing.has(item.albumId)) {
-      skippedCount++;
-      continue;
-    }
-    target.items.push({
-      ...item,
-      style: undefined,
-      groupId: adaptGroupId(target, item),
-    });
-    existing.add(item.albumId);
-    addedCount++;
-  }
-  if (addedCount && target.order) {
-    target.order = normalizeOrder(target.items, target.order);
-  }
-  return { addedCount, skippedCount };
 }

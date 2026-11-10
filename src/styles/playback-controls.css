@@ -124,12 +124,6 @@
 .mw-player .mw-np__track.is-playable:focus-visible { outline-color: var(--mw-panel-fg-dim); }
 .mw-player .mw-player__playlist-close { background: var(--mw-panel-surface); border-color: var(--mw-panel-line); color: var(--mw-panel-fg); }
 
-.mw-zoombox.has-mini .mw-shelf-detail { bottom: var(--mw-mini-height, 0px); }
-.mw-zoombox.has-mini .mw-gf__book { width: min(92cqw, calc((100cqh - var(--mw-mini-height, 0px) - 40px) * 2), 1480px); }
-@container mw-pane (max-width: 640px) {
-  .mw-zoombox.has-mini .mw-gf__book { width: 92cqw; height: min(92cqh, calc(100cqh - var(--mw-mini-height, 0px) - 24px)); }
-}
-
 /* Container queries follow split panes and plugin zoom, including portrait/short windows. */
 @container mw-pane (max-width: 420px) {
   .mw-player__body { padding: 12px 16px; }

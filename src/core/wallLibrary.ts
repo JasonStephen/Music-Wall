@@ -1,4 +1,4 @@
-import type { AlbumMeta, AlbumTrackSnapshot, DiscStyle, MusicWallData, SortMode } from "../types";
+import type { AlbumMeta, AlbumTrackSnapshot, DiscStyle, SortMode } from "../types";
 
 export const WALL_LIBRARY_PATH = "MusicWall/music-wall.json";
 export type WallKind = "local" | "playlists" | "albums";
@@ -18,12 +18,11 @@ export interface WallLibraryData {
   views: Record<string, FolderView>;
   appearance: { style: WallDiscStyle; layout: "grid" | "list" };
   last: WallLocation;
-  migrated: string[];
 }
 export const newId = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const folderKey = (kind: WallKind, folder: string | null) => `${kind}/${folder || ""}`;
 export function emptyLibrary(style: WallDiscStyle = "vinyl"): WallLibraryData {
-  return { version: 1, folders: [], collections: [], entries: [], views: {}, appearance: { style, layout: "grid" }, last: { kind: null, folder: null }, migrated: [] };
+  return { version: 1, folders: [], collections: [], entries: [], views: {}, appearance: { style, layout: "grid" }, last: { kind: null, folder: null } };
 }
 export function parseLibrary(text: string): WallLibraryData {
   const d = JSON.parse(text) as WallLibraryData;
@@ -59,7 +58,6 @@ export function parseLibrary(text: string): WallLibraryData {
   }
   if (!d.appearance || !WALL_STYLES.includes(d.appearance.style) || !["grid", "list"].includes(d.appearance.layout)) throw new Error("Invalid appearance");
   for (const v of Object.values(d.views)) if (!v || !["manual", "addedAt", "name", "artist", "year", "rating"].includes(v.sort) || typeof v.asc !== "boolean" || !Array.isArray(v.order) || v.order.some(id => typeof id !== "string")) throw new Error("Invalid order");
-  if (!Array.isArray(d.migrated) || d.migrated.some(p => typeof p !== "string")) throw new Error("Invalid migration");
   if (!d.last || d.last.kind !== null && !WALL_KINDS.includes(d.last.kind)) d.last = { kind: null, folder: null };
   if (d.last.folder && folders.get(d.last.folder)?.kind !== d.last.kind) d.last = { kind: d.last.kind, folder: null };
   return d;
@@ -135,29 +133,6 @@ export function addSongs(d: WallLibraryData, collection: string, songs: AlbumTra
   const tracks = c.meta.tracks || (c.meta.tracks = []), seen = new Set(tracks.map(s => s.id)); let count = 0;
   for (const s of songs) if (Number.isSafeInteger(s.id) && s.id > 0 && !seen.has(s.id)) { tracks.push({ ...s }); seen.add(s.id); count++; }
   c.meta.trackCount = tracks.length; return count;
-}
-export function migrateWall(d: WallLibraryData, path: string, wall: MusicWallData): number {
-  path = path.replace(/\\/g, "/"); if (d.migrated.includes(path)) return 0;
-  const kinds = new Set<WallKind>(wall.items.map(i => i.meta.playlistId ? "playlists" : "albums")); let count = 0;
-  if (!kinds.size) kinds.add("albums");
-  for (const kind of kinds) {
-    let parent: string | null = null;
-    for (const name of path.replace(/\.mw$/i, "").split("/").filter(Boolean)) parent = (d.folders.find(f => f.kind === kind && f.parent === parent && f.name === name) || addFolder(d, kind, parent, name)).id;
-    const groupFolders = new Map<string, string>();
-    for (const g of wall.groups || []) {
-      const folder = d.folders.find(f => f.kind === kind && f.parent === parent && f.name === g.name) || addFolder(d, kind, parent, g.name);
-      folder.collapsed = g.collapsed; groupFolders.set(g.id, folder.id);
-    }
-    const byId = new Map(wall.items.map(i => [i.albumId, i]));
-    const ordered = [...new Set([...(wall.order || []), ...wall.items.map(i => i.albumId)])].map(id => byId.get(id)).filter(Boolean);
-    for (const item of ordered) {
-      if (!item || (item.meta.playlistId ? "playlists" : "albums") !== kind) continue;
-      const folder = item.groupId && groupFolders.get(item.groupId) || parent;
-      const e = addSaved(d, item.meta, folder, { addedAt: item.addedAt, rating: item.rating, metaEdited: item.metaEdited, snapshot: JSON.parse(JSON.stringify(item.meta)) });
-      if (e) { count++; const key = folderKey(kind, folder); const v = d.views[key] || (d.views[key] = { sort: wall.view?.sortMode || (wall.order ? "manual" : "addedAt"), asc: wall.view?.sortAsc ?? true, order: [] }); v.order.push(e.id); }
-    }
-  }
-  d.migrated.push(path); return count;
 }
 interface StorageAdapter { exists(path: string): Promise<boolean>; read(path: string): Promise<string>; write(path: string, text: string): Promise<void>; mkdir(path: string): Promise<void>; }
 export class WallLibraryStore {
