@@ -1,4 +1,5 @@
 export const localWallCN = {
+  previousPage: "上一页", nextPage: "下一页", pageCount: "第 {page} / {pages} 页 · 共 {count} 首",
   coloredVinyl: "彩胶",
   clone: "克隆为本地歌单",
   title: "音乐墙", local: "创建的歌单", playlists: "收藏的歌单", albums: "收藏的专辑", folder: "文件夹",
@@ -13,6 +14,7 @@ export const localWallCN = {
   collapsePlayer: "收起播放器", back: "返回", root: "根目录", save: "保存", noResults: "未找到匹配内容", folderCount: "{count} 项", saved: "已添加到音乐墙", editLayout: "拖动可调整顺序或移入文件夹", updateFailed: "无法保存，请重试", folderConflict: "名称已存在或目标文件夹不可用", dataFailed: "无法读取音乐墙收藏，请检查文件后重新打开", searchPlaceholder: "搜索名称、艺术家或简介", onlineCreated: "账号创建歌单", onlineCollected: "账号收藏歌单",
 };
 export const localWallTW: typeof localWallCN = {
+  previousPage: "上一頁", nextPage: "下一頁", pageCount: "第 {page} / {pages} 頁 · 共 {count} 首",
   coloredVinyl: "彩膠",
   clone: "複製為本機歌單",
   title: "音樂牆", local: "建立的歌單", playlists: "收藏的歌單", albums: "收藏的專輯", folder: "資料夾",

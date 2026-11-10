@@ -1,4 +1,6 @@
 import { setIcon } from "obsidian";
+import { SongPager } from "./SongPager";
+import type { AlbumTrackSnapshot } from "../types";
 import type MusicWallPlugin from "../main";
 import { t } from "../i18n";
 import { sizedCover } from "../core/metadata";
@@ -41,6 +43,7 @@ export class MiniPlayer {
   private queueControls: QueueControls;
   private playlistBody: HTMLElement;
   private albumKey = "";
+  private albumTracks: AlbumTrackSnapshot[] | undefined;
   private qualityKey = "";
   private coverKey = "";
   private playing: boolean | null = null;
@@ -254,20 +257,24 @@ export class MiniPlayer {
     if (icon !== this.volumeIcon) { this.volumeIcon = icon; setIcon(this.volumeButton, icon); }
     this.qualityText.setText(player.quality ? qualityLabel(player.quality) : "…");
     const collection = this.queueControls.collection;
-    const albumKey = JSON.stringify([this.queueControls.view, collection?.albumId, collection?.playlistId, collection?.tracks]);
-    if (this.albumKey !== albumKey) {
+    const albumKey = `${this.queueControls.view}|${collection?.albumId}|${collection?.playlistId}|${collection?.name}|${collection?.tracks?.length}|${player.revision}`;
+    if (this.albumKey !== albumKey || this.albumTracks !== collection?.tracks) {
+      this.albumTracks = collection?.tracks;
       this.albumKey = albumKey; this.playlistBody.empty(); this.trackRows = [];
       this.playlistBody.createDiv({ cls: "mw-mini__playlist-title", text: collection?.name || t("library.empty") });
       const tracks = this.playlistBody.createDiv({ cls: "mw-mini__tracks" });
-      collection?.tracks?.forEach((track, index) => {
-        const row = tracks.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
+      const pager = new SongPager(tracks, (page, track: AlbumTrackSnapshot, index) => {
+        const row = page.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
+        row.dataset.trackIndex = String(index);
+        row.toggleClass("is-current", this.queueControls.isCurrent(index));
         row.createSpan({ text: String(index + 1).padStart(2, "0") });
         row.createSpan({ cls: "mw-mini__track-name", text: track.name });
         row.createSpan({ text: clock(track.duration) });
         row.addEventListener("click", () => void this.selectTrack(index)); this.trackRows.push(row);
-      });
+      }, () => { this.trackRows = []; });
+      pager.setItems(collection?.tracks || []);
     }
-    this.trackRows.forEach((row, index) => { row.toggleClass("is-current", this.queueControls.isCurrent(index)); row.setAttr("aria-current", String(this.queueControls.isCurrent(index))); });
+    this.trackRows.forEach(row => { const current = this.queueControls.isCurrent(Number(row.dataset.trackIndex)); row.toggleClass("is-current", current); row.setAttr("aria-current", String(current)); });
     const qualityKey = `${player.availableQualities.join()}|${player.quality}|${player.loading}`;
     if (qualityKey !== this.qualityKey) {
       this.qualityKey = qualityKey; this.panels.quality.empty();

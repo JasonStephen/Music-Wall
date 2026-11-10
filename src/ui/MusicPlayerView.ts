@@ -7,6 +7,7 @@ import {
   PLAYER_VIEW_TYPE,
   clampZoom,
   type AlbumMeta,
+  type AlbumTrackSnapshot,
   type DiscStyle,
   type PlayerBackground,
   type DeviceCase,
@@ -27,6 +28,7 @@ import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
 import { qualityLabel, type AudioQuality } from "../core/quality";
 import { decorateRange, paintRange } from "./range";
 import { watchHostInset } from "./hostInset";
+import { SongPager } from "./SongPager";
 import { QueueControls } from "./QueueControls";
 import { CoverBackdrop } from "./CoverBackdrop";
 import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
@@ -869,8 +871,10 @@ export class MusicPlayerView extends Component {
       });
       return;
     }
-    tracks.forEach((track, i) => {
-      const row = host.createDiv({ cls: "mw-np__track" });
+    const pager = new SongPager(host, (page, track: AlbumTrackSnapshot, i) => {
+      const row = page.createDiv({ cls: "mw-np__track" });
+      row.dataset.trackIndex = String(i);
+      row.toggleClass("is-current", this.queueControls ? this.queueControls.isCurrent(i) : i === this.activeTrackIndex());
       if (internal && album) {
         row.addClass("is-playable");
         row.setAttr("role", "button"); row.setAttr("tabindex", "0");
@@ -890,7 +894,8 @@ export class MusicPlayerView extends Component {
       name.title = track.name;
       row.createSpan({ cls: "mw-np__trackDur", text: fmtClock(track.duration) });
       this.trackRows.push(row);
-    });
+    }, () => { this.trackRows = []; });
+    pager.setItems(tracks);
   }
 
   // ---- 增量更新 ----
@@ -1051,7 +1056,7 @@ export class MusicPlayerView extends Component {
 
   private updateHighlights(): void {
     const idx = this.activeTrackIndex();
-    this.trackRows.forEach((row, i) => row.toggleClass("is-current", this.queueControls ? this.queueControls.isCurrent(i) : i === idx));
+    this.trackRows.forEach(row => { const i = Number(row.dataset.trackIndex); row.toggleClass("is-current", this.queueControls ? this.queueControls.isCurrent(i) : i === idx); });
   }
 
   private renderDisc(album: AlbumMeta | null): void {

@@ -15,6 +15,7 @@ import { WallDestinationModal, WallTextModal } from "./WallDestinationModal";
 import { RatingModal } from "./RatingModal";
 import { collectionSummary } from "./collectionSummary";
 import { playAlbum } from "../core/playback";
+import { SongPager } from "./SongPager";
 
 const MIME = "application/x-music-wall-library";
 const iconFor = (kind: WallKind) => kind === "albums" ? "disc-3" : kind === "local" ? "list-music" : "bookmark";
@@ -49,7 +50,12 @@ export class LocalMusicWall {
   private cleanup: (() => void)[] = [];
   private navCleanup: (() => void)[] = [];
   private main!: HTMLElement;
-  constructor(private plugin: MusicWallPlugin, private host: WallHost) { this.location = { ...plugin.wallLibrary.data.last }; }
+  constructor(private plugin: MusicWallPlugin, private host: WallHost) {
+    this.location = { ...plugin.wallLibrary.data.last };
+    const collection = this.collection;
+    // Restore the folder for large collections; open details only on user action.
+    if (Math.max(collection?.meta.trackCount || 0, collection?.meta.tracks?.length || 0) > SongPager.size) delete this.location.entry;
+  }
   private get data() { return this.plugin.wallLibrary.data; }
   private get entry() { return this.data.entries.find(e => e.id === this.location.entry); }
   private get collection() { return this.data.collections.find(c => c.id === this.entry?.collection); }
@@ -70,8 +76,8 @@ export class LocalMusicWall {
     const state = { location: { ...this.location }, keyword: this.keyword, detail: this.detail, songQuery: this.songQuery, failed: this.failed, partial: this.partial };
     return () => { ++this.request; Object.assign(this, state); this.loading = false; this.cards.clear(); this.songs.clear(); this.selected.clear(); this.saveLocation(); if (this.location.entry && !this.detail) void this.loadDetail(); };
   }
-  private menu(host: HTMLElement, actions: () => LibraryMenuAction[], nav = false): void {
-    const menu = bindLibraryMenu(host, actions); (nav ? this.navCleanup : this.cleanup).push(menu.dispose);
+  private menu(host: HTMLElement, actions: () => LibraryMenuAction[], nav = false, cleanup = this.cleanup): void {
+    const menu = bindLibraryMenu(host, actions); (nav ? this.navCleanup : cleanup).push(menu.dispose);
     if (!nav) {
       const more = svgAction(host, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
       more.addClass("mw-local__more"); more.addEventListener("click", event => event.stopPropagation());
@@ -425,10 +431,11 @@ export class LocalMusicWall {
       if (this.songSort !== "manual" && this.songSort !== "added") tracks.sort((a, b) => String(a[this.songSort as keyof AlbumTrackSnapshot] || "").localeCompare(String(b[this.songSort as keyof AlbumTrackSnapshot] || "")) * (this.songAsc ? 1 : -1));
       else if (!this.songAsc) tracks.reverse(); return tracks;
     };
-    const render = () => {
-      list.empty(); selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size;
-      for (const s of filtered()) {
-        const row = list.createDiv({ cls: "mw-cloud__track mw-local__song", attr: { "data-local-song": String(s.id) } });
+    const pageMenus: (() => void)[] = [];
+    const clearPage = () => pageMenus.splice(0).forEach(dispose => dispose()); this.cleanup.push(clearPage);
+    const originalIndices = new Map((meta.tracks || []).map((song, index) => [song.id, index]));
+    const pager = new SongPager(list, (page, s: AlbumTrackSnapshot) => {
+        const row = page.createDiv({ cls: "mw-cloud__track mw-local__song", attr: { "data-local-song": String(s.id) } });
         row.toggleClass("is-selected", this.selected.has(s.id));
         row.addEventListener("click", event => {
           if ((event.target as Element).closest("button, a, input")) return;
@@ -439,10 +446,10 @@ export class LocalMusicWall {
         const title = row.createDiv({ cls: "mw-cloud__track-info" }); title.createDiv({ cls: "mw-cloud__name", text: s.name }); title.createDiv({ cls: "mw-cloud__track-meta", text: [s.artists, s.albumName].filter(Boolean).join(" · ") });
         if (s.unavailable) title.createDiv({ cls: "mw-local__hint", text: t("localWall.unavailable") });
         row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(s.duration / 60000)}:${String(Math.floor(s.duration / 1000) % 60).padStart(2, "0")}` });
-        const index = this.detail!.tracks!.findIndex(x => x.id === s.id);
+        const index = originalIndices.get(s.id) ?? 0;
         svgAction(row, "play", t("panel.play"), () => playAlbum({ ...this.detail! }, this.plugin.getPlaybackDeps(), index));
-        this.menu(row, () => [...this.host.trackActions(s, this.detail!, index), { label: t("localWall.remove"), icon: "trash-2", run: () => this.update(d => { const c = d.collections.find(x => x.id === meta.localPlaylistId); if (c) { c.meta.tracks = (c.meta.tracks || []).filter(x => x.id !== s.id); c.meta.trackCount = c.meta.tracks.length; } }) }]);
-        songSource(row, () => { const ids = this.songs.drag(s.id, filtered().map(s => s.id)); this.selected = this.songs.ids; return { collection: meta.localPlaylistId, ids, tracks: filtered().filter(s => ids.includes(s.id)) }; });
+        this.menu(row, () => [...this.host.trackActions(s, this.detail!, index), { label: t("localWall.remove"), icon: "trash-2", run: () => this.update(d => { const c = d.collections.find(x => x.id === meta.localPlaylistId); if (c) { c.meta.tracks = (c.meta.tracks || []).filter(x => x.id !== s.id); c.meta.trackCount = c.meta.tracks.length; } }) }], false, pageMenus);
+        songSource(row, () => { const visible = filtered(); const ids = this.songs.drag(s.id, visible.map(s => s.id)), chosen = new Set(ids); this.selected = this.songs.ids; return { collection: meta.localPlaylistId, ids, tracks: visible.filter(s => chosen.has(s.id)) }; });
         row.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("application/x-music-wall-song") && row.draggable) event.preventDefault(); });
         row.addEventListener("drop", event => {
           if (!row.draggable) return; event.preventDefault();
@@ -456,9 +463,12 @@ export class LocalMusicWall {
             c.meta.tracks = tracks.map(track => visibleIds.has(String(track.id)) ? byId.get(ids[position++])! : track); this.songSort = "manual"; this.songAsc = true;
           }).catch(() => new Notice(t("localWall.updateFailed")));
         });
-      }
-      if (!(meta.tracks || []).length) list.createDiv({ cls: "mw-cloud__empty", text: t("localWall.emptySongs") });
+    }, clearPage);
+    const render = () => {
+      selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size;
+      pager.setItems(filtered());
     };
+    if (!(meta.tracks || []).length) list.createDiv({ cls: "mw-cloud__empty", text: t("localWall.emptySongs") });
     input.addEventListener("input", () => { this.songQuery = input.value; render(); }); render();
   }
   dispose(): void { this.disposed = true; this.request++; this.cleanup.splice(0).forEach(fn => fn()); this.navCleanup.splice(0).forEach(fn => fn()); }

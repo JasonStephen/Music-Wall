@@ -12,6 +12,7 @@ import { playAlbum } from "../core/playback";
 import { DEFAULT_COVER } from "./defaultCover";
 import { handleZoomWheel, syncZoomBox, disposeZoomBox, effectiveZoom } from "./zoom";
 import { watchHostInset } from "./hostInset";
+import { SongPager } from "./SongPager";
 import { MiniPlayer } from "./MiniPlayer";
 import { PickerModal } from "./smallModals";
 import { bindLibraryMenu, type LibraryMenuAction } from "./libraryMenu";
@@ -592,16 +593,21 @@ export class MusicLibraryView extends ItemView {
     if (!tracks.length) { this.empty(parent); return; }
     const list = parent.createDiv({ cls: "mw-cloud__tracks" });
     const selection = new MouseSelection<number>();
+    const trackIds = tracks.map(track => track.id);
+    const pageMenus: (() => void)[] = [];
+    const clearPage = () => pageMenus.splice(0).forEach(dispose => dispose());
+    this.menuCleanups.push(clearPage);
     list.style.setProperty("--mw-track-digits", String(Math.max(2, String(tracks.length).length)));
-    tracks.forEach((track, index) => {
-      const row = list.createDiv({ cls: "mw-cloud__track" });
+    const pager = new SongPager(list, (page, track: AlbumTrackSnapshot, index) => {
+      const row = page.createDiv({ cls: "mw-cloud__track" });
+      row.toggleClass("is-selected", selection.ids.has(track.id));
       row.dataset.songId = String(track.id);
       row.addEventListener("click", event => {
         if ((event.target as Element).closest("button, a, input")) return;
-        selection.click(track.id, tracks.map(s => s.id), event);
+        selection.click(track.id, trackIds, event);
         for (const el of Array.from(list.querySelectorAll<HTMLElement>("[data-song-id]"))) el.toggleClass("is-selected", selection.ids.has(Number(el.dataset.songId)));
       });
-      songSource(row, () => { const ids = selection.drag(track.id, tracks.map(s => s.id)); return { ids, tracks: tracks.filter(s => ids.includes(s.id)) }; });
+      songSource(row, () => { const ids = selection.drag(track.id, trackIds); const chosen = new Set(ids); return { ids, tracks: tracks.filter(s => chosen.has(s.id)) }; });
       row.createSpan({ cls: "mw-cloud__number", text: String(index + 1).padStart(2, "0") });
       const detail = row.createDiv({ cls: "mw-cloud__track-info" }); detail.createSpan({ cls: "mw-cloud__name", text: track.name }); const metadata = detail.createDiv({ cls: "mw-cloud__track-meta" });
       if (track.albumName || collection && !collection.playlistId) this.link(metadata, track.albumName || collection!.name, () => this.trackAlbum(track, collection), "album");
@@ -617,10 +623,11 @@ export class MusicLibraryView extends ItemView {
         event.preventDefault(); play.click();
       });
       svgAction(actions, "list-plus", t("library.playNext"), () => this.single(track, false)).dataset.trackAction = "next";
-      const menu = this.context(row, () => this.trackActions(track, collection, index));
+      const menu = bindLibraryMenu(row, () => this.trackActions(track, collection, index)); pageMenus.push(menu.dispose);
       const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
       more.dataset.trackAction = "more";
-    });
+    }, clearPage);
+    pager.setItems(tracks);
   }
   private renderArtist(content: ArtistContent): void {
     const head = this.body.createDiv({ cls: "mw-cloud__collection" });

@@ -1,4 +1,7 @@
 .mw-cloud { position:relative; }
+.mw-song-pager { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px; padding:8px 0; position:sticky; top:0; z-index:2; background:var(--mw-panel-bg,var(--background-primary)); color:var(--mw-panel-fg,var(--text-normal)); font-size:12px; }
+.mw-song-pager[hidden] { display:none; }
+.mw-song-pager__rows { display:contents; }
 .mw-cloud .mw-cloud__body { display:flex; flex-direction:column; }
 .mw-cloud .mw-cloud__sidebar { flex-basis:240px; }
 .mw-cloud .mw-cloud__head { flex-wrap:wrap; }

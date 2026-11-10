@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { SongPager } from "./SongPager";
 import { t } from "../i18n";
 import type { InternalPlayer } from "../core/internalPlayer";
 
@@ -85,8 +86,8 @@ export class QueueControls {
     clear.disabled = this.player.songQueue.length === 0;
     const list = this.root.createDiv({ cls: "mw-queue__list" });
     if (!this.player.songQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return true; }
-    this.player.songQueue.forEach((track, index) => {
-      const row = list.createDiv({ cls: `mw-queue__row${this.player.album?.tracks?.[this.player.index]?.id === track.id && this.player.contentKind === "playlist" ? " is-current" : ""}`, attr: { "data-song": String(track.id) } });
+    const pager = new SongPager(list, (page, track: (typeof this.player.songQueue)[number], index) => {
+      const row = page.createDiv({ cls: `mw-queue__row${this.player.album?.tracks?.[this.player.index]?.id === track.id && this.player.contentKind === "playlist" ? " is-current" : ""}`, attr: { "data-song": String(track.id) } });
       row.createSpan({ cls: "mw-queue__number", text: String(index + 1).padStart(2, "0") });
       const play = row.createEl("button", { cls: "mw-queue__name", text: track.name, attr: { title: track.name } });
       play.addEventListener("click", () => void this.player.playPlaylist({albumId:0,name:track.name,artist:track.artists||"",cover:track.cover||"",trackCount:this.player.songQueue.length,tracks:this.player.songQueue.map(item=>({...item}))}, index));
@@ -94,6 +95,7 @@ export class QueueControls {
       row.createSpan({ cls: "mw-queue__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       this.button(actions, "trash-2", t("queue.removeSong"), () => void this.player.removeSong(track.id));
     });
+    pager.setItems(this.player.songQueue);
     return true;
   }
   get collection() {
