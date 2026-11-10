@@ -112,8 +112,9 @@
 .mw-cloud > .mw-embedded-player.is-ready { visibility:visible; }
 .mw-cloud > .mw-embedded-player.is-open { transform:none; }
 .mw-cloud > .mw-embedded-player.is-closing { pointer-events:none; transition-timing-function:ease-in; }
-.mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:36px minmax(0,1fr) auto; padding-left:4px; }
-.mw-embedded-player.mw-player .mw-player__collapse { grid-column:1; grid-row:1; justify-self:start; width:32px; height:32px; padding:5px; }
+.mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:36px minmax(0,1fr) auto; }
+.mw-embedded-player.mw-player .mw-player__collapse { grid-column:1; grid-row:1; justify-self:start; width:32px; height:36px; padding:0; }
+.mw-embedded-player.mw-player .mw-player__collapse :is(.mw-control-icon, svg) { width:36px; min-width:36px; height:36px; flex-basis:36px; }
 .mw-embedded-player.mw-player .mw-player__source { grid-column:2; grid-row:1; }
 .mw-embedded-player.mw-player .mw-player-presets { grid-column:3; grid-row:1; }
 @container mw-pane (max-width:600px) {
