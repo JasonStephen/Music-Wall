@@ -7,12 +7,13 @@ import type { InternalPlayer } from "../core/internalPlayer";
 export class QueueControls {
   private off: () => void;
   private key = "";
+  private songPager: SongPager<InternalPlayer["songQueue"][number]> | null = null;
   view: "album" | "playlist";
   private dragging = "";
   private disposed = false;
   constructor(private root: HTMLElement, private player: InternalPlayer, private authorize: () => Promise<boolean>, private onView: () => void = () => {}, private onPreferenceChange: () => void = () => {}) {
     this.view = player.contentKind;
-    root.addClass("mw-queue"); this.off = player.on(() => { if (this.update()) this.onView(); }); this.update();
+    root.addClass("mw-queue"); this.off = player.on(() => { if (this.update()) this.onView(); this.updateHighlights(); }); this.update();
   }
   private button(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
     const button = parent.createEl("button", { cls: "clickable-icon mw-queue__button", attr: { title: label, "aria-label": label } });
@@ -21,6 +22,7 @@ export class QueueControls {
   private update(): boolean {
     const key = `${this.player.contentKind}|${this.player.order}|${this.player.currentEntryId}|${this.player.albumQueue.map(entry => entry.id).join()}|${this.player.songQueue.map(track => track.id).join()}|${this.view}|${this.player.revision}|${this.player.queuedPlaylist?.tracks?.length || 0}`;
     if (key === this.key) return false; this.key = key;
+    this.songPager = null;
     this.root.empty();
     const toolbar = this.root.createDiv({ cls: "mw-queue__toolbar" });
     const tabs = toolbar.createDiv({ cls: "mw-queue__tabs", attr: { role: "tablist", "aria-label": t("player.playlistTip") } });
@@ -38,6 +40,7 @@ export class QueueControls {
     head.createSpan({ cls: "mw-queue__kind", text: t(`queue.${this.player.contentKind}Mode`) });
     const currentView = this.player.contentKind === "playlist" ? "playlist" : "album";
     if (this.view !== currentView) this.button(head, "arrow-right-left", t("queue.switchCurrent"), () => { this.view = currentView; this.update(); this.onView(); });
+    this.button(head, "locate-fixed", t("queue.locateCurrent"), () => this.locateCurrent());
     const icons = { order: "list-ordered", repeat: "repeat", one: "repeat-1", shuffle: "shuffle" };
     const modeLabel = () => t(`queue.${this.player.order === "repeat" && this.player.contentKind === "playlist" ? "repeatList" : this.player.order}`);
     const mode = this.button(head, icons[this.player.order], modeLabel(), () => {
@@ -86,8 +89,8 @@ export class QueueControls {
     clear.disabled = this.player.songQueue.length === 0;
     const list = this.root.createDiv({ cls: "mw-queue__list" });
     if (!this.player.songQueue.length) { list.createDiv({ cls: "mw-queue__empty", text: t("queue.empty") }); return true; }
-    const pager = new SongPager(list, (page, track: (typeof this.player.songQueue)[number], index) => {
-      const row = page.createDiv({ cls: `mw-queue__row${this.player.album?.tracks?.[this.player.index]?.id === track.id && this.player.contentKind === "playlist" ? " is-current" : ""}`, attr: { "data-song": String(track.id) } });
+    const pager = this.songPager = new SongPager(list, (page, track: (typeof this.player.songQueue)[number], index) => {
+      const row = page.createDiv({ cls: `mw-queue__row${this.player.album?.tracks?.[this.player.index]?.id === track.id && this.player.contentKind === "playlist" ? " is-current" : ""}`, attr: { "data-song": String(track.id), "aria-current": String(this.isCurrent(index)) } });
       row.createSpan({ cls: "mw-queue__number", text: String(index + 1).padStart(2, "0") });
       const play = row.createEl("button", { cls: "mw-queue__name", text: track.name, attr: { title: track.name } });
       play.addEventListener("click", () => void this.player.playPlaylist({albumId:0,name:track.name,artist:track.artists||"",cover:track.cover||"",trackCount:this.player.songQueue.length,tracks:this.player.songQueue.map(item=>({...item}))}, index));
@@ -104,11 +107,35 @@ export class QueueControls {
   async selectTrack(index: number): Promise<void> {
     const collection = this.collection;
     const track = collection?.tracks?.[index];
-    if (!collection || !track || !(await this.authorize()) || this.disposed || collection !== this.collection) return;
+    if (!collection || !track || !(await this.authorize()) || this.disposed || collection.tracks !== this.collection?.tracks) return;
     const selected = collection.tracks!.indexOf(track); if (selected < 0) return;
     if (this.player.album === collection) await this.player.select(selected);
     else await this.player.playPlaylist(collection, selected);
   }
-  isCurrent(index: number): boolean { return this.collection === this.player.album && index === this.player.index; }
+  isCurrent(index: number): boolean {
+    if (this.view === "playlist") return this.player.contentKind === "playlist" && this.player.songQueue[index]?.id === this.player.album?.tracks?.[this.player.index]?.id;
+    return this.collection === this.player.album && index === this.player.index;
+  }
+  private updateHighlights(): void {
+    const id = this.player.contentKind === "playlist" ? this.player.album?.tracks?.[this.player.index]?.id : undefined;
+    this.root.querySelectorAll<HTMLElement>("[data-song]").forEach(row => {
+      const current = id !== undefined && row.dataset.song === String(id);
+      row.toggleClass("is-current", current); row.setAttr("aria-current", String(current));
+    });
+  }
+  locateCurrent(): void {
+    if (this.view !== this.player.contentKind) {
+      this.view = this.player.contentKind; this.update(); this.onView();
+    }
+    if (this.view === "playlist") {
+      const id = this.player.album?.tracks?.[this.player.index]?.id;
+      this.songPager?.reveal(this.player.songQueue.findIndex(track => track.id === id));
+      this.updateHighlights();
+    } else {
+      this.root.querySelector<HTMLElement>(".mw-queue__row.is-current")?.scrollIntoView({ block: "nearest" });
+      this.onLocateTrack?.();
+    }
+  }
+  onLocateTrack?: () => void;
   dispose(): void { this.disposed = true; this.off(); }
 }

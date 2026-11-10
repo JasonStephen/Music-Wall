@@ -41,6 +41,7 @@ export class MiniPlayer {
   private openPanel: Panel | null = null;
   private trackRows: HTMLButtonElement[] = [];
   private queueControls: QueueControls;
+  private trackPager: SongPager<AlbumTrackSnapshot> | null = null;
   private playlistBody: HTMLElement;
   private albumKey = "";
   private albumTracks: AlbumTrackSnapshot[] | undefined;
@@ -111,6 +112,7 @@ export class MiniPlayer {
       });
     }
     this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin(), () => { this.albumKey = ""; this.update(); }, () => { plugin.settings.playbackOrder = plugin.internalPlayer.order; void plugin.saveData(plugin.settings); });
+    this.queueControls.onLocateTrack = () => this.trackPager?.reveal(plugin.internalPlayer.index);
     this.playlistBody = this.panels.playlist.createDiv();
     this.volume = this.panels.volume.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
     decorateRange(this.volume, true);
@@ -194,6 +196,7 @@ export class MiniPlayer {
       this.buttons[key].setAttr("aria-expanded", String(open));
       this.buttons[key].toggleClass("is-active", open);
     }
+    if (this.openPanel === "playlist") this.queueControls.locateCurrent();
   }
   private reserveSpace(): void {
     if (this.openPanel === "more" && !this.buttons.more.getClientRects().length) this.showPanel(null);
@@ -262,11 +265,11 @@ export class MiniPlayer {
     const albumKey = `${this.queueControls.view}|${collection?.albumId}|${collection?.playlistId}|${collection?.name}|${collection?.tracks?.length}|${player.revision}`;
     if (this.albumKey !== albumKey || this.albumTracks !== collection?.tracks) {
       this.albumTracks = collection?.tracks;
-      this.albumKey = albumKey; this.playlistBody.empty(); this.trackRows = [];
+      this.albumKey = albumKey; this.trackPager = null; this.playlistBody.empty(); this.trackRows = [];
       if (showAlbumTracks) {
         this.playlistBody.createDiv({ cls: "mw-mini__playlist-title", text: collection?.name || t("library.empty") });
         const tracks = this.playlistBody.createDiv({ cls: "mw-mini__tracks" });
-        const pager = new SongPager(tracks, (page, track: AlbumTrackSnapshot, index) => {
+        const pager = this.trackPager = new SongPager(tracks, (page, track: AlbumTrackSnapshot, index) => {
           const row = page.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
           row.dataset.trackIndex = String(index);
           row.toggleClass("is-current", this.queueControls.isCurrent(index));

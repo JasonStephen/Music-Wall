@@ -33,6 +33,12 @@ export class SongPager<T> {
     this.page = reset ? 0 : Math.min(this.page, Math.max(0, Math.ceil(items.length / SongPager.size) - 1));
     this.render();
   }
+  reveal(index: number): void {
+    if (index < 0 || index >= this.items.length) return;
+    const page = Math.floor(index / SongPager.size);
+    if (page !== this.page) { this.page = page; this.render(); }
+    (this.rows.children[index % SongPager.size] as HTMLElement)?.scrollIntoView({ block: "nearest" });
+  }
   private turn(direction: number): void {
     this.page = Math.max(0, Math.min(this.page + direction, Math.ceil(this.items.length / SongPager.size) - 1));
     this.render();

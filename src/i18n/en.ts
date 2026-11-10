@@ -140,7 +140,7 @@ export const en: typeof zhCN = {
       "collapseNav": "Collapse sidebar",
       "closeNav": "Close sidebar"
   },
-  queue: {"switchCurrent": "Switch to current queue", "clearSongs": "Clear song list", "removeSong": "Remove from song list", "add":"Add to album queue","playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Song list","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
+  queue: {"locateCurrent": "Locate current song", "switchCurrent": "Switch to current queue", "clearSongs": "Clear song list", "removeSong": "Remove from song list", "add":"Add to album queue","playlistQueue":"Song list","addPlaylist":"Add to song list","playlistAdded":"Added to song list","repeatList":"Repeat list","title":"Album queue","empty":"No queued albums","albumMode":"Albums","playlistMode":"Song list","order":"In order","repeat":"Repeat queue","one":"Repeat song","shuffle":"Shuffle","up":"Move earlier","down":"Move later","remove":"Remove album","added":"Album added to queue","duplicate":"This album is already queued","internalOnly":"Switch to in-plugin playback to use this feature"},
   labels: {
     style: {
       vinyl: "Vinyl",

@@ -78,6 +78,7 @@ export class MusicPlayerView extends Component {
   private playlistOpen = false;
   private popover: "volume" | "quality" | null = null;
   private queueControls: QueueControls | null = null;
+  private trackPager: SongPager<AlbumTrackSnapshot> | null = null;
   private qualityKey = "";
   private playerLyrics: PlayerLyrics | null = null;
   private artistPicker: PickerModal | null = null;
@@ -835,6 +836,7 @@ export class MusicPlayerView extends Component {
     this.el.scrim?.toggleClass("is-open", open);
     this.el.btnPlaylist?.toggleClass("is-active", open);
     this.el.btnPlaylist?.setAttr("aria-expanded", String(open));
+    if (open) this.queueControls?.locateCurrent();
   }
 
   private buildPlaylist(panel: HTMLElement): void {
@@ -848,6 +850,7 @@ export class MusicPlayerView extends Component {
     close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
     if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateTrackList(); this.updateHighlights(); }, () => { this.plugin.settings.playbackOrder = this.plugin.internalPlayer.order; void this.plugin.saveData(this.plugin.settings); });
+    if (this.queueControls) this.queueControls.onLocateTrack = () => this.trackPager?.reveal(this.activeTrackIndex());
     this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
   }
 
@@ -856,6 +859,7 @@ export class MusicPlayerView extends Component {
     const host = this.el.tracks;
     if (!host) return;
     host.empty();
+    this.trackPager = null;
     this.trackRows = [];
     const songsInQueue = this.plugin.settings.playbackMode === "internal" && this.queueControls?.view === "playlist";
     host.toggleClass("is-hidden", songsInQueue);
@@ -876,7 +880,7 @@ export class MusicPlayerView extends Component {
       });
       return;
     }
-    const pager = new SongPager(host, (page, track: AlbumTrackSnapshot, i) => {
+    const pager = this.trackPager = new SongPager(host, (page, track: AlbumTrackSnapshot, i) => {
       const row = page.createDiv({ cls: "mw-np__track" });
       row.dataset.trackIndex = String(i);
       row.toggleClass("is-current", this.queueControls ? this.queueControls.isCurrent(i) : i === this.activeTrackIndex());

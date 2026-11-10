@@ -840,8 +840,7 @@
 }
 .mw-np__track.is-current {
   background: var(--background-modifier-hover);
-  color: var(--mw-accent, var(--interactive-accent));
-  font-weight: 600;
+  color: var(--mw-panel-fg);
 }
 .mw-np__trackNo {
   color: var(--text-faint);

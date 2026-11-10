@@ -139,7 +139,7 @@ export const zhCN = {
       "collapseNav": "收起侧边栏",
       "closeNav": "关闭侧边栏"
   },
-  queue: {"switchCurrent": "切换到当前队列", "clearSongs": "清空歌曲列表", "removeSong": "移出歌曲列表", "add":"加入专辑队列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌曲列表","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
+  queue: {"locateCurrent": "定位当前歌曲", "switchCurrent": "切换到当前队列", "clearSongs": "清空歌曲列表", "removeSong": "移出歌曲列表", "add":"加入专辑队列","playlistQueue":"歌曲列表","addPlaylist":"加入播放列表","playlistAdded":"已加入播放列表","repeatList":"列表循环","title":"专辑队列","empty":"暂无待播专辑","albumMode":"专辑播放","playlistMode":"歌曲列表","order":"顺序播放","repeat":"队列循环","one":"单曲循环","shuffle":"随机播放","up":"向前移动","down":"向后移动","remove":"移除专辑","added":"已加入专辑队列","duplicate":"此专辑已在队列中","internalOnly":"请切换到插件内播放后使用此功能"},
   labels: {
     style: {
       vinyl: "黑胶",
