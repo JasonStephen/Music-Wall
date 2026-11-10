@@ -1,5 +1,13 @@
 .mw-cloud { position:relative; }
-.mw-song-pager { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px; padding:8px 0; position:sticky; top:0; z-index:2; background:var(--mw-panel-bg,var(--background-primary)); color:var(--mw-panel-fg,var(--text-normal)); font-size:12px; }
+.mw-song-pager { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:12px; padding:6px 0; margin-bottom:6px; border-bottom:1px solid var(--mw-panel-line,var(--background-modifier-border)); position:sticky; top:0; z-index:2; background:var(--mw-panel-bg,var(--background-primary)); color:var(--mw-panel-fg-dim,var(--text-muted)); font-size:11px; font-variant-numeric:tabular-nums; }
+.mw-song-pager__range { white-space:nowrap; opacity:.8; }
+.mw-song-pager__controls { display:flex; align-items:center; gap:2px; padding:2px; border:1px solid var(--mw-panel-line,var(--background-modifier-border)); border-radius:8px; }
+.mw-song-pager__page { display:inline-flex; align-items:baseline; justify-content:center; gap:5px; min-width:48px; white-space:nowrap; }
+.mw-song-pager__page strong { color:var(--mw-panel-fg,var(--text-normal)); font-weight:600; }
+.mw-view .mw-song-pager button.mw-svg-action { width:26px; height:26px; min-width:26px; min-height:26px; padding:4px; border-radius:5px; color:var(--mw-panel-fg-dim,var(--text-muted)); }
+.mw-view .mw-song-pager button.mw-svg-action:not(:disabled):hover { color:var(--mw-panel-fg,var(--text-normal)); background:var(--mw-panel-hover,var(--background-modifier-hover)); }
+.mw-view .mw-song-pager button.mw-svg-action:disabled { opacity:.3; cursor:default; background:transparent; }
+.mw-view .mw-song-pager button.mw-svg-action :is(.mw-control-icon, svg) { width:16px; min-width:16px; height:16px; flex-basis:16px; }
 .mw-song-pager[hidden] { display:none; }
 .mw-song-pager__rows { display:contents; }
 .mw-cloud .mw-cloud__body { display:flex; flex-direction:column; }
