@@ -1,12 +1,13 @@
 import { Menu, Notice, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
-import type { AlbumMeta, AlbumTrackSnapshot, DiscStyle, SortMode } from "../types";
+import type { AlbumMeta, AlbumTrackSnapshot, SortMode } from "../types";
 import { addFolder, addSongs, createPlaylist, descendants, folderKey, folderPath, moveEntries, moveFolder, removeEntries, removeFolder, WALL_KINDS, type LibraryEntry, type LibraryFolder, type SavedCollection, type WallKind, type WallLocation } from "../core/wallLibrary";
 import { SONG_MIME, COLLECTION_MIME, MouseSelection, readSongs, readCollection, songSource, reorderIds } from "./libraryDrag";
 import { t, styleLabel } from "../i18n";
 import { svgAction } from "./svgAction";
 import { buildDiscElement, makeCoverImg } from "./disc";
 import { DEFAULT_COVER } from "./defaultCover";
+import { WALL_STYLES } from "../core/wallLibrary";
 import { sizedCover } from "../core/metadata";
 import { bindLibraryMenu, type LibraryMenuAction } from "./libraryMenu";
 import { ConfirmModal } from "./ConfirmModal";
@@ -77,7 +78,7 @@ export class LocalMusicWall {
     }
   }
   private popup(anchor: HTMLElement, actions: LibraryMenuAction[]): void {
-    const menu = new Menu(); for (const a of actions) menu.addItem(item => item.setTitle(a.label).setIcon(a.icon).onClick(() => { void Promise.resolve(a.run()).catch(() => new Notice(t("localWall.updateFailed"))); }));
+    const menu = new Menu(); for (const a of actions) menu.addItem(item => item.setSection("music-wall").setTitle(a.label).setIcon(a.icon).onClick(() => { void Promise.resolve(a.run()).catch(() => new Notice(t("localWall.updateFailed"))); }));
     const r = anchor.getBoundingClientRect(); menu.showAtPosition({ x: r.right, y: r.bottom }); this.cleanup.push(() => menu.hide());
   }
   renderNav(parent: HTMLElement, activate: () => void): void {
@@ -163,7 +164,7 @@ export class LocalMusicWall {
       ]),
     ]));
     if (kind === "albums") {
-      const style = svgAction(tools, "disc-3", t("localWall.style"), () => this.popup(style, (["vinyl", "cd", "cassette", "cover"] as DiscStyle[]).map(value => ({ label: styleLabel(value), icon: this.data.appearance.style === value ? "check" : "disc", run: () => this.update(d => { d.appearance.style = value; }) }))));
+      const style = svgAction(tools, "disc-3", t("localWall.style"), () => this.popup(style, WALL_STYLES.map(value => ({ label: value === "colored-vinyl" ? t("localWall.coloredVinyl") : styleLabel(value), icon: this.data.appearance.style === value ? "check" : "disc", run: () => this.update(d => { d.appearance.style = value; }) }))));
     }
   }
   private renderLayouts(parent: HTMLElement): void {
@@ -231,7 +232,7 @@ export class LocalMusicWall {
     const card = parent.createDiv({ cls: "mw-local__card", attr: { "data-entry-id": entry.id, "data-collection-kind": c.kind } });
     const open = card.createEl("button", { cls: "mw-local__open", attr: { type: "button" } });
     const art = open.createDiv({ cls: "mw-local__art" });
-    if (c.kind === "albums" && this.data.appearance.layout === "grid") art.appendChild(buildDiscElement({ albumId: c.meta.albumId, meta: c.meta, source: "search", locked: true, addedAt: entry.addedAt }, this.data.appearance.style, { coverSize: 300 }));
+    if (c.kind === "albums" && this.data.appearance.layout === "grid") art.appendChild(buildDiscElement({ albumId: c.meta.albumId, meta: c.meta, source: "search", locked: true, addedAt: entry.addedAt }, this.data.appearance.style === "colored-vinyl" ? "vinyl" : this.data.appearance.style, { coverSize: 300, coloredVinyl: this.data.appearance.style === "colored-vinyl" }));
     else this.renderCover(art, c.meta);
     const info = open.createDiv({ cls: "mw-local__info" }); info.createDiv({ cls: "mw-local__name", text: c.meta.name });
     info.createDiv({ cls: "mw-local__subtitle", text: c.kind === "local" ? t("localWall.folderCount", { count: c.meta.tracks?.length || 0 }) : c.meta.artist });
@@ -383,7 +384,6 @@ export class LocalMusicWall {
   }
   private renderDetail(parent: HTMLElement, head: HTMLElement): void {
     const fixed = head.createDiv({ cls: "mw-local__fixed" }); this.renderBreadcrumbs(fixed);
-    svgAction(head, "refresh-cw", t("library.refresh"), () => this.loadDetail());
     const e = this.entry!, c = this.collection!;
     if (this.loading) { parent.createDiv({ cls: "mw-cloud__empty", text: t("localWall.loading") }); return; }
     if (this.failed) { parent.createDiv({ cls: "mw-cloud__empty", text: t("localWall.failed") }); svgAction(parent, "refresh-cw", t("library.retry"), () => this.loadDetail(), true); return; }

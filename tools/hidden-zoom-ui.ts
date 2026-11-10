@@ -1,4 +1,5 @@
 /** Reproduce changing global zoom while an Obsidian tab is hidden. */
+import { effectiveZoom } from '../src/ui/zoom';
 export async function verifyHiddenZoom(root: HTMLElement, sync: (scale: number) => void): Promise<{checks: number; fail: string[]}> {
   let checks = 0; const fail: string[] = [];
   const expect = (ok: boolean, label: string) => { checks++; if (!ok) fail.push(label); };
@@ -9,7 +10,7 @@ export async function verifyHiddenZoom(root: HTMLElement, sync: (scale: number) 
     for (const scale of [.7, 1.5, 2, 1]) {
       root.style.display = "none"; await wait();
       expect(root.clientWidth === 0 && root.clientHeight === 0, "hidden tab has no measurable size");
-      document.body.style.setProperty("--mw-zoom", String(scale)); sync(scale);
+      document.body.style.setProperty("--mw-zoom", String(effectiveZoom(scale))); sync(scale);
       expect(Number(root.dataset.mwZoom) === scale, "hidden tab remembers latest requested zoom");
       root.style.display = previousDisplay; await wait();
       const box = root.querySelector<HTMLElement>(":scope > .mw-zoombox")!, outer = root.getBoundingClientRect(), inner = box.getBoundingClientRect();

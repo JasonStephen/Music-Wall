@@ -4,10 +4,12 @@
 import type { DiscStyle, WallItem } from "../types";
 import { sizedCover } from "../core/metadata";
 import { DEFAULT_COVER } from "./defaultCover";
+import { coverTone } from "./accent";
 
 export interface DiscOptions {
   /** 封面取图尺寸（px），网格用小值省流量 */
   coverSize?: number;
+  coloredVinyl?: boolean;
 }
 
 /** 四种唱片样式列表（顺序=预设瓷砖展示顺序） */
@@ -55,6 +57,11 @@ export function buildDiscElement(
   root.className = `mw-disc mw-disc--${style}`;
 
   const coverUrl = sizedCover(item.meta.cover, coverSize);
+  if (style === "vinyl" && opts.coloredVinyl) {
+    root.classList.add("mw-disc--colored-vinyl"); root.dataset.mwVinyl = "color";
+    root.style.setProperty("--mw-case-accent", `hsl(${Math.abs(item.albumId * 137) % 360} 48% 52%)`);
+    void coverTone(coverUrl).then(tone => { if (tone.accent) root.style.setProperty("--mw-case-accent", tone.accent); }).catch(() => {});
+  }
 
   if (style === "cassette") {
     // 壳子（外盒，展示封面）+ 里面会滑出的磁带本体

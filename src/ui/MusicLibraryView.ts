@@ -10,7 +10,7 @@ import { showArtistAlbumMenu } from "./artistAlbumSettings";
 import { sizedCover } from "../core/metadata";
 import { playAlbum } from "../core/playback";
 import { DEFAULT_COVER } from "./defaultCover";
-import { handleZoomWheel, syncZoomBox, disposeZoomBox } from "./zoom";
+import { handleZoomWheel, syncZoomBox, disposeZoomBox, effectiveZoom } from "./zoom";
 import { watchHostInset } from "./hostInset";
 import { MiniPlayer } from "./MiniPlayer";
 import { PickerModal } from "./smallModals";
@@ -46,6 +46,8 @@ export class MusicLibraryView extends ItemView {
   embeddedPlayer: MusicPlayerView | null = null;
   private playerHost: HTMLElement | null = null;
   private playerOpening: Promise<void> | null = null;
+  private playerClosing: Promise<void> | null = null;
+  private playerWanted = false;
   private generation = 0;
   private keyword = "";
   private searchKind: LibrarySearchKind = "songs";
@@ -114,13 +116,14 @@ export class MusicLibraryView extends ItemView {
     this.registerDomEvent(root, "wheel", (event: WheelEvent) => handleZoomWheel(event, this.plugin, root), { capture: true, passive: false });
     this.registerDomEvent(root, "keydown", (event: KeyboardEvent) => { if (event.key === "Escape" && this.drawer) { event.preventDefault(); this.closeDrawer(); } });
     if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateLayout()); this.resize.observe(root); }
-    this.render(); this.stopInset = watchHostInset(root);
+    this.updateLayout(); this.render(); this.stopInset = watchHostInset(root);
     let content = this.wallContent();
     if (this.plugin.wallLibrary) this.register(this.plugin.wallLibrary.on(() => { const next = this.wallContent(); if (next === content) return; content = next; this.localWall?.changed(); if (!this.closed) this.render(); }));
     await this.localWall?.restore();
     if (this.plugin.historyStore) this.register(this.plugin.historyStore.on(() => { if (this.tab === "history" && !this.collection && !this.artist && !this.closed) this.render(); }));
   }
   async onClose(): Promise<void> {
+    this.closed = true;
     await this.collapsePlayer(); this.localWall?.dispose(); this.localWall = null;
     this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null;
     this.appearanceButton = null;
@@ -136,6 +139,9 @@ export class MusicLibraryView extends ItemView {
     this.closeDrawer(); this.render();
   }
   async expandPlayer(): Promise<void> {
+    this.playerWanted = true;
+    if (this.playerClosing) await this.playerClosing;
+    if (this.closed || !this.playerWanted) return;
     if (this.playerOpening) return this.playerOpening;
     if (this.embeddedPlayer) return;
     this.playerOpening = (async () => {
@@ -144,16 +150,50 @@ export class MusicLibraryView extends ItemView {
       this.contentEl.addClass("has-full-player");
       this.contentEl.querySelector<HTMLElement>(".mw-zoombox")?.setAttribute("inert", "");
       player.load(); await player.onOpen();
+      if (this.playerClosing || this.closed || !this.playerWanted || this.embeddedPlayer !== player) return;
+      host.addClass("is-ready");
+      // Commit the final layout before starting the slide, including host insets.
+      player.syncZoomBox(); host.getBoundingClientRect();
+      await new Promise<void>(resolve => this.contentEl.ownerDocument.defaultView!.requestAnimationFrame(() => resolve()));
+      if (this.playerClosing || this.closed || !this.playerWanted || this.embeddedPlayer !== player) return;
       host.addClass("is-open");
     })();
     try { await this.playerOpening; } catch (error) { await this.collapsePlayer(); throw error; } finally { this.playerOpening = null; }
   }
   async collapsePlayer(): Promise<void> {
-    const player = this.embeddedPlayer; this.embeddedPlayer = null;
-    if (player) { await player.onClose(); player.unload(); }
-    this.playerHost?.remove(); this.playerHost = null; this.contentEl.removeClass("has-full-player");
-    this.contentEl.querySelector<HTMLElement>(".mw-zoombox")?.removeAttribute("inert");
-    this.syncZoomBox();
+    this.playerWanted = false;
+    if (this.playerClosing) return this.playerClosing;
+    const player = this.embeddedPlayer, host = this.playerHost;
+    if (!player || !host) return;
+    const opening = this.playerOpening;
+    this.playerClosing = (async () => {
+      if (opening) await opening.catch(() => {});
+      const visible = host.classList.contains("is-open");
+      host.addClass("is-closing"); host.removeClass("is-open");
+      if (visible && !this.closed) await this.waitForPlayerSlide(host);
+      try { await player.onClose(); } finally {
+        player.unload(); host.remove();
+        if (this.embeddedPlayer === player) this.embeddedPlayer = null;
+        if (this.playerHost === host) this.playerHost = null;
+        this.contentEl.removeClass("has-full-player");
+        this.contentEl.querySelector<HTMLElement>(".mw-zoombox")?.removeAttribute("inert");
+        if (!this.closed) this.syncZoomBox();
+      }
+    })();
+    try { await this.playerClosing; } finally { this.playerClosing = null; }
+  }
+  private waitForPlayerSlide(host: HTMLElement): Promise<void> {
+    const win = host.ownerDocument.defaultView!;
+    const style = win.getComputedStyle(host);
+    const milliseconds = (value: string) => value.split(",").map(s => parseFloat(s) * (s.trim().endsWith("ms") ? 1 : 1000));
+    const duration = Math.max(...milliseconds(style.transitionDuration)) + Math.max(...milliseconds(style.transitionDelay));
+    if (!duration) return Promise.resolve();
+    return new Promise(resolve => {
+      const finish = () => { win.clearTimeout(timer); host.removeEventListener("transitionend", end); resolve(); };
+      const end = (event: TransitionEvent) => { if (event.target === host && event.propertyName === "transform") finish(); };
+      const timer = win.setTimeout(finish, duration + 80);
+      host.addEventListener("transitionend", end);
+    });
   }
   refresh(): void {
     if (this.closed || !this.body) return;
@@ -173,7 +213,7 @@ export class MusicLibraryView extends ItemView {
   }
   private updateLayout(): void {
     if (!this.layout) return;
-    const narrow = this.contentEl.clientWidth / (this.plugin.settings.zoomScale || 1) < 700;
+    const narrow = this.contentEl.clientWidth / effectiveZoom(this.plugin.settings.zoomScale) < 700;
     if (narrow !== this.narrow) { this.narrow = narrow; this.drawer = false; }
     this.layout.toggleClass("is-narrow", this.narrow);
     this.layout.toggleClass("is-collapsed", !this.wideExpanded);
@@ -181,16 +221,21 @@ export class MusicLibraryView extends ItemView {
     const hidden = this.narrow && !this.drawer;
     this.sidebar.setAttr("aria-hidden", String(hidden)); this.sidebar.toggleAttribute("inert", hidden);
     this.layout.querySelector<HTMLElement>(".mw-cloud__main")?.toggleAttribute("inert", this.narrow && this.drawer);
-    this.overlay.hidden = !this.narrow || !this.drawer;
+    this.overlay.hidden = !this.narrow;
+    this.overlay.toggleAttribute("inert", !this.drawer);
+    this.overlay.setAttr("aria-hidden", String(!this.drawer));
     for (const button of Array.from(this.layout.querySelectorAll('[data-nav-toggle]'))) button.setAttribute("aria-expanded", String(this.narrow ? this.drawer : this.wideExpanded));
   }
   private toggleNav(): void {
     if (this.narrow) this.drawer = !this.drawer; else this.wideExpanded = !this.wideExpanded;
     this.renderNav(); this.updateLayout();
-    if (this.narrow && this.drawer) this.sidebar.querySelector<HTMLButtonElement>("button")?.focus();
+    if (this.narrow && this.drawer) this.sidebar.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }
   private closeDrawer(): void { this.drawer = false; this.updateLayout(); this.head.querySelector<HTMLButtonElement>('[data-nav-toggle]')?.focus(); }
   private renderNav(): void {
+    const previousTree = this.sidebar.querySelector<HTMLElement>(".mw-local-tree");
+    const previousHeight = previousTree?.getBoundingClientRect().height;
+    const scrollTop = this.sidebar.scrollTop;
     this.sidebar.empty();
     const toggle = svgAction(this.sidebar, this.wideExpanded ? "chevrons-left" : "chevrons-right", t(this.narrow ? "library.closeNav" : this.wideExpanded ? "library.collapseNav" : "library.expandNav"), () => this.toggleNav(), true);
     toggle.dataset.navToggle = "true";
@@ -200,6 +245,17 @@ export class MusicLibraryView extends ItemView {
     }
     const wall = svgAction(this.sidebar, "library", t("localWall.title"), () => this.showWall(), true); wall.dataset.section = "wall";
     this.localWall?.renderNav(this.sidebar, () => this.closeDrawer());
+    const tree = this.sidebar.querySelector<HTMLElement>(".mw-local-tree");
+    const win = this.contentEl.ownerDocument.defaultView;
+    if (tree && previousHeight !== undefined && tree.animate && !win?.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const scale = effectiveZoom(this.plugin.settings.zoomScale);
+      const height = tree.getBoundingClientRect().height / scale;
+      if (Math.abs(height - previousHeight / scale) > 1) tree.animate([
+        { height: `${previousHeight / scale}px`, overflow: "hidden" },
+        { height: `${height}px`, overflow: "hidden" },
+      ], { duration: 220, easing: "ease" });
+    }
+    this.sidebar.scrollTop = scrollTop;
   }
   private render(): void {
     if (this.closed || !this.body) return;

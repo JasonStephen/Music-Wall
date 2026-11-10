@@ -1,7 +1,7 @@
 /* Native inputs retain pointer, keyboard and screen-reader behavior. */
 :is(.mw-player, .mw-mini) input[type="range"].mw-range {
   --mw-range-track: color-mix(in srgb, var(--text-normal) 20%, transparent);
-  --mw-range-fill: var(--mw-np-accent, #4c5bd4);
+  --mw-range-fill: var(--mw-np-accent, var(--mw-ui-accent, #b52b27));
   appearance: none;
   -webkit-appearance: none;
   display: block;

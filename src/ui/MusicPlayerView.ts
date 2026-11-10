@@ -20,7 +20,7 @@ import { type NowPlayingState } from "../core/nowPlaying";
 import { buildDevice } from "./device";
 import { SideDrawer } from "./SideDrawer";
 import { buildBgTile, buildStyleTile } from "./viewPrefs";
-import { disposeZoomBox, handleZoomWheel, syncZoomBox } from "./zoom";
+import { disposeZoomBox, handleZoomWheel, syncZoomBox, effectiveZoom } from "./zoom";
 import { coverTone, backdropForeground, LYRICS_CONTRAST_THRESHOLD, type CoverTone } from "./accent";
 import { setModalTheme } from "./modalTheme";
 import { DEFAULT_COVER, defaultCoverName } from "./defaultCover";
@@ -212,7 +212,9 @@ export class MusicPlayerView extends Component {
     await this.render();
     // 窗格尺寸跟随：window.resize 覆盖不到「拖分隔条 / 分屏 / 收展侧边栏」
     this.watchPaneSize();
-    this.stopHostInset = watchHostInset(this.contentEl);
+    // The library viewport stays stationary while this overlay slides.
+    this.stopHostInset = watchHostInset(this.contentEl, this.contentEl.classList.contains("mw-embedded-player") ? this.contentEl.parentElement || this.contentEl : this.contentEl);
+    this.syncZoomBox(); this.syncLayout();
   }
 
   async back(): Promise<void> { await this.mouseBack(); }
@@ -991,9 +993,9 @@ export class MusicPlayerView extends Component {
   }
   private openPlayerMenu(event: MouseEvent): void {
     const menu = new Menu();
-    menu.addItem(item => item.setTitle(t("player.viewArtist")).setIcon("user-round").onClick(() => void this.openCurrentArtist()));
-    menu.addItem(item => item.setTitle(t("player.viewAlbum")).setIcon("disc").onClick(() => void this.openCurrentAlbum()));
-    menu.addItem(item => item.setTitle(t("player.viewSource")).setIcon("link").onClick(() => void this.openSource()));
+    menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewArtist")).setIcon("user-round").onClick(() => void this.openCurrentArtist()));
+    menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewAlbum")).setIcon("disc").onClick(() => void this.openCurrentAlbum()));
+    menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewSource")).setIcon("link").onClick(() => void this.openSource()));
     menu.showAtPosition({x:event.clientX,y:event.clientY});
   }
 
@@ -1158,8 +1160,8 @@ export class MusicPlayerView extends Component {
       const page = this.shell.querySelector<HTMLElement>(selector);
       if (page) { page.inert = hidden; page.setAttr("aria-hidden", String(hidden)); }
     }
-    this.contentEl.toggleClass("mw-player--lyrics-stacked", !portrait && w > 0 && w / (this.plugin.settings.zoomScale || 1) < 620);
-    this.contentEl.toggleClass("mw-player--narrow", w > 0 && w < NARROW_WIDTH);
+    this.contentEl.toggleClass("mw-player--lyrics-stacked", !portrait && w > 0 && w / effectiveZoom(this.plugin.settings.zoomScale) < 620);
+    this.contentEl.toggleClass("mw-player--narrow", w > 0 && w / effectiveZoom(this.plugin.settings.zoomScale) < NARROW_WIDTH);
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);
     this.applyRegionContrast();

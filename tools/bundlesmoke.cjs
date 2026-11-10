@@ -46,6 +46,7 @@ function el() {
   });
 }
 global.document = {
+  get defaultView() { return global.window; },
   createElement: () => el(),
   createElementNS: () => el(),
   body: el(),
@@ -57,6 +58,8 @@ global.document = {
   querySelectorAll: () => [],
 };
 global.window = {
+  requestAnimationFrame: callback => setTimeout(() => callback(Date.now()), 0),
+  getComputedStyle: () => ({ transitionDuration: '0s', transitionDelay: '0s', getPropertyValue: () => '' }),
   setTimeout,
   clearTimeout,
   setInterval,

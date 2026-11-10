@@ -15,7 +15,7 @@ import {
   t,
   type LanguagePref,
 } from "./i18n";
-import { ALL_STYLES } from "./ui/disc";
+import { WALL_STYLES, type WallDiscStyle } from "./core/wallLibrary";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { coverToneCacheCount, coverToneCacheUsage } from "./ui/accent";
 import { renderArtistAlbumSettings } from "./ui/artistAlbumSettings";
@@ -155,12 +155,12 @@ export class MusicWallSettingTab extends PluginSettingTab {
       new Setting(containerEl)
         .setName(t("localWall.style"))
         .addDropdown((d) => {
-          for (const v of ALL_STYLES) {
-            d.addOption(v, styleLabel(v));
+          for (const v of WALL_STYLES) {
+            d.addOption(v, v === "colored-vinyl" ? t("localWall.coloredVinyl") : styleLabel(v));
           }
           d.setValue(this.plugin.wallLibrary.data.appearance.style).onChange(async (v) => {
-            this.plugin.settings.defaultStyle = v as DiscStyle;
-            await this.plugin.wallLibrary.update(d => { d.appearance.style = v as DiscStyle; });
+            this.plugin.settings.defaultStyle = v === "colored-vinyl" ? "vinyl" : v as DiscStyle;
+            await this.plugin.wallLibrary.update(d => { d.appearance.style = v as WallDiscStyle; });
             await this.plugin.saveSettings();
           });
         });

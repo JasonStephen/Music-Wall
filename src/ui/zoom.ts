@@ -17,6 +17,9 @@
 import { ZOOM_STEP, clampZoom, type MusicWallSettings } from "../types";
 import { t } from "../i18n";
 
+/** User percentages are relative to the enlarged default interface. */
+export function effectiveZoom(scale = 1): number { return clampZoom(scale) * 1.25; }
+
 export interface ZoomHost {
   settings: MusicWallSettings;
   /** 持久化缩放（不触发视图重建） */
@@ -40,7 +43,7 @@ export interface ZoomHost {
 const zoomObservers = new WeakMap<HTMLElement, ResizeObserver>();
 
 function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): void {
-  const z = clampZoom(scale);
+  const z = effectiveZoom(scale);
   const w = root.clientWidth;
   const h = root.clientHeight;
   if (w <= 0 || h <= 0) return;

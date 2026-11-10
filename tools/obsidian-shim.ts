@@ -168,6 +168,7 @@ export class Menu {
         return chain;
       },
       setChecked: (value: boolean) => { entry.checked = value; return chain; },
+      setSection: (_section: string) => chain,
       onClick: (fn: () => void) => {
         entry.run = fn;
         return chain;

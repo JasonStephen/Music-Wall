@@ -21,7 +21,7 @@ Local playlists support editing names, descriptions, and tracks. Covers are gene
 - Ctrl-click (Command-click on macOS) toggles selection; Shift-click selects a range.
 - Drag to reorder at any time. Drag albums or playlists into folders to move them. Sidebar and main content share their order.
 - Drag songs from search or another playlist into a local playlist to copy them, skipping duplicates.
-- Album grids offer vinyl, CD, cassette, and cover styles. Playlist grids and all lists use covers. Appearance preferences apply across the wall.
+- Album grids offer cover, black vinyl, colored vinyl, CD, and cassette styles. Colored vinyl uses colors from the cover. Playlist grids and all lists use covers. Appearance preferences apply across the wall.
 - Use the fixed toolbar to sort, add, search, or change layout. Back and the mouse back button return to the previous page.
 - The player slides up within the music library. Collapse it with the top-left down arrow to resume browsing.
 

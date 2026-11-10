@@ -3,6 +3,8 @@ import type { AlbumMeta, AlbumTrackSnapshot, DiscStyle, MusicWallData, SortMode 
 export const WALL_LIBRARY_PATH = "MusicWall/music-wall.json";
 export type WallKind = "local" | "playlists" | "albums";
 export const WALL_KINDS: WallKind[] = ["local", "playlists", "albums"];
+export const WALL_STYLES = ["cover", "vinyl", "colored-vinyl", "cd", "cassette"] as const;
+export type WallDiscStyle = typeof WALL_STYLES[number];
 export interface LibraryFolder { id: string; kind: WallKind; parent: string | null; name: string; collapsed?: boolean; }
 export interface SavedCollection { id: string; kind: WallKind; meta: AlbumMeta; }
 export interface LibraryEntry { id: string; collection: string; folder: string | null; addedAt: string; rating?: number; metaEdited?: boolean; snapshot?: AlbumMeta; }
@@ -14,13 +16,13 @@ export interface WallLibraryData {
   collections: SavedCollection[];
   entries: LibraryEntry[];
   views: Record<string, FolderView>;
-  appearance: { style: DiscStyle; layout: "grid" | "list" };
+  appearance: { style: WallDiscStyle; layout: "grid" | "list" };
   last: WallLocation;
   migrated: string[];
 }
 export const newId = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const folderKey = (kind: WallKind, folder: string | null) => `${kind}/${folder || ""}`;
-export function emptyLibrary(style: DiscStyle = "vinyl"): WallLibraryData {
+export function emptyLibrary(style: WallDiscStyle = "vinyl"): WallLibraryData {
   return { version: 1, folders: [], collections: [], entries: [], views: {}, appearance: { style, layout: "grid" }, last: { kind: null, folder: null }, migrated: [] };
 }
 export function parseLibrary(text: string): WallLibraryData {
@@ -55,7 +57,7 @@ export function parseLibrary(text: string): WallLibraryData {
     if (e.rating !== undefined && (!Number.isInteger(e.rating) || e.rating < 1 || e.rating > 5 || c.kind === "local")) throw new Error("Invalid rating");
     locations.add(`${e.collection}/${e.folder}`); ids.add(e.id); if (c.kind === "local") locals.add(c.id);
   }
-  if (!d.appearance || !["vinyl", "cd", "cassette", "cover"].includes(d.appearance.style) || !["grid", "list"].includes(d.appearance.layout)) throw new Error("Invalid appearance");
+  if (!d.appearance || !WALL_STYLES.includes(d.appearance.style) || !["grid", "list"].includes(d.appearance.layout)) throw new Error("Invalid appearance");
   for (const v of Object.values(d.views)) if (!v || !["manual", "addedAt", "name", "artist", "year", "rating"].includes(v.sort) || typeof v.asc !== "boolean" || !Array.isArray(v.order) || v.order.some(id => typeof id !== "string")) throw new Error("Invalid order");
   if (!Array.isArray(d.migrated) || d.migrated.some(p => typeof p !== "string")) throw new Error("Invalid migration");
   if (!d.last || d.last.kind !== null && !WALL_KINDS.includes(d.last.kind)) d.last = { kind: null, folder: null };

@@ -16,7 +16,7 @@ export function bindLibraryMenu(host: HTMLElement, actions: () => LibraryMenuAct
   const open = (x: number, y: number) => {
     if (disposed) return;
     stopTimer(); menu?.hide(); menu = new Menu();
-    for (const action of actions()) menu.addItem(item => item.setTitle(action.label).setIcon(action.icon).onClick(() => {
+    for (const action of actions()) menu.addItem(item => item.setSection("music-wall").setTitle(action.label).setIcon(action.icon).onClick(() => {
       void Promise.resolve().then(() => { if (!disposed) return action.run(); }).catch(() => new Notice(t("library.failed")));
     }));
     menu.showAtPosition({ x, y });

@@ -1,4 +1,5 @@
 export const localWallCN = {
+  coloredVinyl: "彩胶",
   clone: "克隆为本地歌单",
   title: "音乐墙", local: "创建的歌单", playlists: "收藏的歌单", albums: "收藏的专辑", folder: "文件夹",
   newFolder: "新建文件夹", newPlaylist: "创建歌单", name: "名称", description: "简介", edit: "编辑", rename: "重命名", move: "移动到文件夹", remove: "移除", delete: "删除",
@@ -12,6 +13,7 @@ export const localWallCN = {
   collapsePlayer: "收起播放器", back: "返回", root: "根目录", save: "保存", noResults: "未找到匹配内容", folderCount: "{count} 项", saved: "已添加到音乐墙", editLayout: "拖动可调整顺序或移入文件夹", updateFailed: "无法保存，请重试", folderConflict: "名称已存在或目标文件夹不可用", dataFailed: "无法读取音乐墙收藏，请检查文件后重新打开", searchPlaceholder: "搜索名称、艺术家或简介", onlineCreated: "账号创建歌单", onlineCollected: "账号收藏歌单",
 };
 export const localWallTW: typeof localWallCN = {
+  coloredVinyl: "彩膠",
   clone: "複製為本機歌單",
   title: "音樂牆", local: "建立的歌單", playlists: "收藏的歌單", albums: "收藏的專輯", folder: "資料夾",
   newFolder: "新增資料夾", newPlaylist: "建立歌單", name: "名稱", description: "簡介", edit: "編輯", rename: "重新命名", move: "移至資料夾", remove: "移除", delete: "刪除",

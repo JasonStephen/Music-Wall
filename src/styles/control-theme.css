@@ -1,0 +1,87 @@
+/* Plugin controls have their own palette, independent of the vault accent. */
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters, .mw-statusbar, .menu:has([data-section="music-wall"])) {
+  --mw-ui-accent: #b52b27;
+  --mw-ui-accent-hover: #99211e;
+  --mw-ui-on-accent: #fff;
+  --accent-h: 2; --accent-s: 65%; --accent-l: 43%;
+  --interactive-accent: var(--mw-ui-accent);
+  --interactive-accent-hover: var(--mw-ui-accent-hover);
+  --interactive-accent-hsl: var(--accent-h), var(--accent-s), var(--accent-l);
+  --color-accent: var(--mw-ui-accent);
+  --color-accent-1: var(--mw-ui-accent);
+  --color-accent-2: var(--mw-ui-accent-hover);
+  --color-accent-hsl: var(--accent-h), var(--accent-s), var(--accent-l);
+  --text-accent: var(--mw-ui-accent);
+  --text-accent-hover: var(--mw-ui-accent-hover);
+  --text-on-accent: var(--mw-ui-on-accent);
+  --text-selection: color-mix(in srgb, var(--mw-ui-accent) 20%, transparent);
+  --background-modifier-active-hover: color-mix(in srgb, var(--mw-ui-accent) 12%, transparent);
+  --background-modifier-form-field-highlighted: color-mix(in srgb, var(--mw-ui-accent) 12%, transparent);
+  --slider-thumb-border-color: var(--mw-ui-accent);
+  --checkbox-color: var(--mw-ui-accent);
+  --checkbox-color-hover: var(--mw-ui-accent-hover);
+  --checkbox-marker-color: var(--mw-ui-on-accent);
+  accent-color: var(--mw-ui-accent);
+}
+.theme-dark :is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters, .mw-statusbar, .menu:has([data-section="music-wall"])),
+.mw-view.mw-cloud[data-library-theme="dark"],
+.mw-view.mw-player:is(.mw-bg--dark, .mw-bg--wood, .mw-art--dark) {
+  --mw-ui-accent: #ff8a91;
+  --mw-ui-accent-hover: #ffadb2;
+  --mw-ui-on-accent: #301215;
+  --accent-h: 356; --accent-s: 100%; --accent-l: 77%;
+}
+.mw-view.mw-cloud[data-library-theme="light"],
+.mw-view.mw-player:is(.mw-bg--white, .mw-art--light) {
+  --mw-ui-accent: #b52b27;
+  --mw-ui-accent-hover: #99211e;
+  --mw-ui-on-accent: #fff;
+  --accent-h: 2; --accent-s: 65%; --accent-l: 43%;
+}
+.mw-view.mw-player {
+  --mw-accent: var(--mw-ui-accent);
+  --mw-np-accent: var(--mw-ui-accent) !important;
+  --mw-np-accent-fg: var(--mw-ui-on-accent) !important;
+}
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), textarea, select) {
+  color: var(--mw-panel-fg, var(--text-normal)) !important;
+  background-color: var(--mw-panel-bg, var(--background-primary)) !important;
+  background-image: none;
+  border-color: var(--mw-panel-line, var(--background-modifier-border)) !important;
+  box-shadow: none;
+}
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), textarea, select):focus {
+  border-color: var(--mw-ui-accent) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mw-ui-accent) 20%, transparent) !important;
+}
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) :is(button, a, input[type="range"], input[type="checkbox"], input[type="radio"], [role="switch"]):focus-visible {
+  outline: 2px solid var(--mw-ui-accent) !important;
+  outline-offset: 2px;
+}
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) button.mod-cta,
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) .checkbox-container.is-enabled {
+  background-color: var(--mw-ui-accent) !important;
+  color: var(--mw-ui-on-accent) !important;
+}
+:is(.mw-view, .mw-settings, .mw-modal-zoom, .mw-artist-filters) button.mod-cta:hover {
+  background-color: var(--mw-ui-accent-hover) !important;
+}
+.mw-view.mw-player .mw-player__pages button,
+.mw-view.mw-player .mw-player__pages button:is(:hover, :focus, :active, [aria-pressed="true"]) {
+  background: transparent !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
+}
+.mw-view.mw-player .mw-player__pages button[aria-pressed="true"] {
+  color: var(--mw-ui-accent) !important;
+}
+.mw-view.mw-player :is(.mw-style-tab[aria-selected="true"], .mw-preset-option[aria-pressed="true"], .mw-preset-tones button[aria-pressed="true"]) {
+  border-color: var(--mw-ui-accent);
+}
+.mw-view.mw-player [aria-checked="true"] > .mw-preset-switch { background:var(--mw-ui-accent); }
+
+.menu:has([data-section="music-wall"]) .menu-item.selected:not(.is-disabled) { background:var(--background-modifier-active-hover) !important; color:var(--mw-ui-accent) !important; }
+.menu:has([data-section="music-wall"]) .menu-item { font-size:calc(var(--font-ui-small, 14px) * 1.25); padding:7.5px 15px; }
+.menu:has([data-section="music-wall"]) .menu-item-icon svg { width:22.5px; height:22.5px; }

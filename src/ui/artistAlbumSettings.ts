@@ -60,11 +60,13 @@ export function showArtistAlbumMenu(plugin: MusicWallPlugin, anchor: HTMLElement
   const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); hide(true); } };
   const reposition = () => {
     const rect = anchor.getBoundingClientRect();
-    popup.style.left = `${Math.max(8, Math.min(rect.right - popup.offsetWidth, win.innerWidth - popup.offsetWidth - 8))}px`;
+    const scale = Number(win.getComputedStyle(popup).getPropertyValue("--mw-zoom")) || 1.25;
+    const width = popup.getBoundingClientRect().width;
+    popup.style.left = `${Math.max(8, Math.min(rect.right - width, win.innerWidth - width - 8))}px`;
     const below = win.innerHeight - rect.bottom - 12, above = rect.top - 12;
-    const down = below >= Math.min(popup.scrollHeight, 420) || below >= above;
-    popup.style.maxHeight = `${Math.max(80, down ? below : above)}px`;
-    popup.style.top = `${down ? rect.bottom + 4 : Math.max(8, rect.top - popup.offsetHeight - 4)}px`;
+    const down = below >= Math.min(popup.scrollHeight * scale, 420 * scale) || below >= above;
+    popup.style.maxHeight = `${Math.max(40, down ? below : above) / scale}px`;
+    popup.style.top = `${down ? rect.bottom + 4 : Math.max(8, rect.top - popup.getBoundingClientRect().height - 4)}px`;
   };
   const scroll = (event: Event) => { if (!popup.contains(event.target as Node)) hide(); };
   popup.createEl("h4", { text: t("artistAlbumFilters.title") });

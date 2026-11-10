@@ -1,5 +1,5 @@
 /** Keep this pane's controls clear of Obsidian's floating status bar. */
-export function watchHostInset(root: HTMLElement): () => void {
+export function watchHostInset(root: HTMLElement, viewport: HTMLElement = root): () => void {
   const doc = root.ownerDocument;
   const win = doc.defaultView;
   if (!win) return () => {};
@@ -16,7 +16,7 @@ export function watchHostInset(root: HTMLElement): () => void {
       status = next;
       if (status) resize?.observe(status);
     }
-    const pane = root.getBoundingClientRect();
+    const pane = viewport.getBoundingClientRect();
     const bar = status?.getBoundingClientRect();
     const zoom = Number(win.getComputedStyle(root).getPropertyValue("--mw-zoom")) || 1;
     const overlaps = bar && bar.width > 0 && bar.height > 0 &&
@@ -27,7 +27,7 @@ export function watchHostInset(root: HTMLElement): () => void {
   };
   const schedule = () => { if (!frame && !disposed) frame = win.requestAnimationFrame(refresh); };
   const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-  resize?.observe(root);
+  resize?.observe(viewport);
   // The status bar can grow with plugin items, be hidden, or move during pane changes.
   const changes = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
   changes?.observe(doc.body, { childList: true, attributes: true, attributeFilter: ["class", "style"] });

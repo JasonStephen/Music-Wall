@@ -14,6 +14,7 @@ const meta = (id=5) => ({ albumId:id,name:'Album '+id,artist:'Artist',cover:'',t
  const local=createPlaylist(d,null,'My playlist'); assert.equal(addSongs(d,local.collection,[{id:8,name:'One',duration:100},{id:8,name:'One',duration:100},{id:9,name:'Two',duration:100}]),2);
  assert.equal(addSongs(d,local.collection,[{id:8,name:'One',duration:100}]),0); assert.equal(addSaved(d,d.collections.find(c=>c.id===local.collection).meta,null),null);
  assert.equal(parseLibrary(JSON.stringify(d)).entries.length,2);
+ const coloredLibrary=emptyLibrary('colored-vinyl');assert.equal(parseLibrary(JSON.stringify(coloredLibrary)).appearance.style,'colored-vinyl');
  const clones=emptyLibrary(),source={...meta(),albumId:0,playlistId:88,description:'Notes',tracks:[{id:9,name:'Second',duration:20},{id:8,name:'First',duration:10}]};
  const cloned=clonePlaylist(clones,source,null),copy=clones.collections.find(c=>c.id===cloned.collection).meta;
  assert.equal(copy.name,source.name);assert.equal(copy.description,source.description);assert.deepEqual(copy.tracks.map(s=>s.id),[9,8]);assert.ok(copy.localPlaylistId);assert.ok(!copy.playlistId);

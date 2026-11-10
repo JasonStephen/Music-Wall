@@ -1,4 +1,5 @@
 import { normalizePlayerPresets } from "./ui/playerPresets";
+import { effectiveZoom } from "./ui/zoom";
 import type { WorkspaceLeaf } from "obsidian";
 // Music Wall 插件主入口：注册扩展名/视图/命令/设置，并实现
 // 网络请求适配、创建/导入/导出/Git 导入等服务。
@@ -281,7 +282,7 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 把缩放系数写到 body 的 CSS 变量上（视图与模态框都继承） */
   applyZoom(): void {
-    const scale = clampZoom(this.settings.zoomScale ?? 1);
+    const scale = effectiveZoom(this.settings.zoomScale ?? 1);
     document.body.style.setProperty(ZOOM_CSS_VAR, String(scale));
     // 只有真的放大时才给弹窗加尺寸上限（见 base.css 的 .mw-modal-zoom 说明）：
     // z = 1 时若也设 92vw/88vh，会把弹窗自己的宽度（如 .mw-album-modal 的 680px）
