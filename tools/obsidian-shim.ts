@@ -1,5 +1,4 @@
 // e2e 专用 obsidian API 垫片：用真实 DOM 实现插件实际用到的最小面，
-// 供 tools/gf-e2e.ts 把真实的 MusicWallView 跑在浏览器里做交互/命中/时序断言。
 // 与产品代码零耦合：仅在本 harness 的 esbuild 打包中通过 --alias:obsidian 替换。
 
 export type App = unknown;

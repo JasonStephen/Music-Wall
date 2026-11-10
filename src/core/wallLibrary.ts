@@ -104,6 +104,13 @@ export function moveFolder(d: WallLibraryData, id: string, parent: string | null
   if (parent && descendants(d, id).has(parent) || d.folders.some(other => other.id !== id && other.kind === f.kind && other.parent === parent && other.name === f.name)) throw new Error("Cannot move folder");
   f.parent = parent;
 }
+export function clonePlaylist(d: WallLibraryData, source: AlbumMeta, folder: string | null): LibraryEntry {
+  const entry = createPlaylist(d, folder, source.name);
+  const c = d.collections.find(c => c.id === entry.collection)!;
+  c.meta.description = source.description || "";
+  addSongs(d, c.id, (source.tracks || []).map(s => ({ ...s })));
+  return entry;
+}
 export function moveEntries(d: WallLibraryData, ids: string[], folder: string | null): void {
   for (const id of ids) {
     const e = d.entries.find(e => e.id === id); if (!e) continue;
@@ -159,7 +166,7 @@ export class WallLibraryStore {
   private async read(): Promise<WallLibraryData> { return await this.adapter.exists(this.path) ? parseLibrary(await this.adapter.read(this.path)) : emptyLibrary(this.data.appearance.style); }
   async ready(): Promise<void> { this.data = await this.read(); }
   on(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  reload(): Promise<void> { return this.enqueue(async () => { this.data = await this.read(); this.emit(); }); }
+  reload(): Promise<void> { return this.enqueue(async () => { const data = await this.read(); if (JSON.stringify(data) !== JSON.stringify(this.data)) { this.data = data; this.emit(); } }); }
   private emit(): void { for (const fn of this.listeners) fn(); }
   private enqueue<T>(action: () => Promise<T>): Promise<T> { const run = this.queue.then(action); this.queue = run.catch(() => {}); return run; }
   update<T>(change: (d: WallLibraryData) => T): Promise<T> {

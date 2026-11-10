@@ -2,6 +2,7 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {pathToFileURL} from 'node:url';
 import {build} from 'esbuild';
 await build({entryPoints:['tools/unified-library-ui.ts'],bundle:true,platform:'browser',format:'iife',outfile:'tools/unified-library-ui.bundle.js',alias:{obsidian:path.resolve('tools/settings-shim.ts')}});
+await build({entryPoints:['src/styles/index.css'],bundle:true,outfile:'styles.css',loader:{'.svg':'dataurl'}});
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'mw-unified-'));
 const child=spawn(process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',['--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--remote-debugging-port=0','--user-data-dir='+profile],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let socket;

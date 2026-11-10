@@ -1,4 +1,4 @@
-// 分类设置页：常规、音乐墙、播放器、账号和 Git 同步。
+// 分类设置页：常规、音乐墙、播放器和账号。
 
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type MusicWallPlugin from "./main";
@@ -9,10 +9,8 @@ import {
   ZOOM_STEP,
   clampZoom,
   type DiscStyle,
-  type ShelfCaption,
 } from "./types";
 import {
-  shelfCaptionLabel,
   styleLabel,
   t,
   type LanguagePref,

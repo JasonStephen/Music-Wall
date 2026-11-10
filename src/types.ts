@@ -275,13 +275,6 @@ export const ZOOM_CSS_VAR = "--mw-zoom";
 export const WALL_FILE_VERSION = 3;
 /** 分组 id 前缀 */
 export const GROUP_ID_PREFIX = "g";
-/** 文件扩展名 */
-export const WALL_EXT = "mw";
-/** ItemView 类型标识 */
-export const WALL_VIEW_TYPE = "music-wall-view";
-/** 唱片卡片跨墙拖拽的 DataTransfer MIME */
-export const WALL_DRAG_MIME = "application/x-music-wall-item";
-
 /** 播放器视图类型标识 */
 export const PLAYER_VIEW_TYPE = "music-wall-player";
 export const LIBRARY_VIEW_TYPE = "music-wall-library";

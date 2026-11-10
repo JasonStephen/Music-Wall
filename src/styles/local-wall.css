@@ -78,15 +78,31 @@
 .mw-wall-dialog__choice small { color:var(--text-muted); }
 .mw-wall-dialog__actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
 .mw-wall-dialog__error { color:var(--text-error); font-size:12px; margin-top:8px; }
-.mw-cloud.has-full-player > .mw-zoombox { visibility:hidden; }
+.mw-cloud.has-full-player > .mw-zoombox { pointer-events:none; }
 .mw-cloud > .mw-embedded-player { position:absolute; inset:0; z-index:50; margin:0; padding:0; width:100%; height:100%; overflow:hidden; }
 .mw-embedded-player .mw-player__collapse { flex:0 0 auto; color:inherit; }
 .mw-embedded-player .mw-player__source { flex:1; min-width:0; }
+.mw-cloud .mw-cloud__head > .mw-local__fixed { flex:0 0 100%; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; min-width:0; padding-top:12px; }
+.mw-local__fixed .mw-local__breadcrumbs { margin:0; align-self:center; }
+.mw-local__fixed .mw-local__tools { margin:0; justify-content:flex-end; }
+.mw-local__fixed .mw-local__search { grid-column:1 / -1; margin:0; flex-wrap:nowrap; }
+.mw-local__fixed .mw-local__search input { max-width:none; }
+.mw-local__layouts { display:flex; gap:4px; margin-left:auto; }
+.mw-local__card.is-selected, .mw-cloud__track.is-selected { background:var(--mw-panel-hover); outline:2px solid var(--interactive-accent); outline-offset:-2px; }
+.mw-cloud .mw-local__song { grid-template-columns:minmax(0,1fr) auto auto auto; }
+.mw-local__song, .mw-local__card, .mw-cloud__track { user-select:none; }
+.mw-cloud > .mw-embedded-player { transform:translateY(100%); animation:mw-player-rise .24s ease-out both; }
+.mw-cloud > .mw-embedded-player.is-open { transform:translateY(0); }
+.mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:36px minmax(0,1fr) auto; }
+.mw-embedded-player.mw-player .mw-player__collapse { grid-column:1; grid-row:1; justify-self:start; width:32px; height:32px; padding:5px; }
+.mw-embedded-player.mw-player .mw-player__source { grid-column:2; grid-row:1; }
+.mw-embedded-player.mw-player .mw-player-presets { grid-column:3; grid-row:1; }
+@keyframes mw-player-rise { from { transform:translateY(100%); } to { transform:translateY(0); } }
 @container mw-pane (max-width:600px) {
   .mw-local__landing { gap:12px; }
   .mw-cloud button.mw-local__portal { width:150px; min-height:170px; padding:18px; }
   .mw-local__grid { grid-template-columns:repeat(auto-fill,minmax(min(100%,130px),1fr)); gap:10px; }
-  .mw-local__tools { width:100%; justify-content:flex-end; }
+  .mw-local__fixed .mw-local__tools { width:auto; }
   .mw-local__detail-art { width:90px; height:90px; flex-basis:90px; }
 }
-@media (prefers-reduced-motion:reduce) { .mw-cloud button.mw-local__portal:hover { transform:none; } }
+@media (prefers-reduced-motion:reduce) { .mw-cloud button.mw-local__portal:hover { transform:none; } .mw-cloud > .mw-embedded-player { animation:none; transform:none; } }

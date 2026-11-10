@@ -1,7 +1,8 @@
 import { Menu, Notice, setIcon } from "obsidian";
 import type MusicWallPlugin from "../main";
 import type { AlbumMeta, AlbumTrackSnapshot, DiscStyle, SortMode } from "../types";
-import { addFolder, createPlaylist, descendants, folderKey, folderPath, moveEntries, moveFolder, removeEntries, removeFolder, WALL_KINDS, type LibraryEntry, type LibraryFolder, type SavedCollection, type WallKind, type WallLocation } from "../core/wallLibrary";
+import { addFolder, addSongs, createPlaylist, descendants, folderKey, folderPath, moveEntries, moveFolder, removeEntries, removeFolder, WALL_KINDS, type LibraryEntry, type LibraryFolder, type SavedCollection, type WallKind, type WallLocation } from "../core/wallLibrary";
+import { SONG_MIME, COLLECTION_MIME, MouseSelection, readSongs, readCollection, songSource, reorderIds } from "./libraryDrag";
 import { t, styleLabel } from "../i18n";
 import { svgAction } from "./svgAction";
 import { buildDiscElement, makeCoverImg } from "./disc";
@@ -18,6 +19,10 @@ const MIME = "application/x-music-wall-library";
 const iconFor = (kind: WallKind) => kind === "albums" ? "disc-3" : kind === "local" ? "list-music" : "bookmark";
 interface WallHost {
   render(): void;
+  renderNav(): void;
+  remember(): void;
+  back(): void;
+  enter(): void;
   openSearch(kind: "albums" | "playlists"): void;
   renderTracks(parent: HTMLElement, tracks: AlbumTrackSnapshot[], collection: AlbumMeta): void;
   trackActions(track: AlbumTrackSnapshot, collection: AlbumMeta, index: number): LibraryMenuAction[];
@@ -27,7 +32,9 @@ export class LocalMusicWall {
   private keyword = "";
   private allSearch = false;
   private recursive = false;
-  private arranging = false;
+  private cards = new MouseSelection<string>();
+  private songs = new MouseSelection<number>();
+  private expanded = new Set<string>();
   private selected = new Set<number>();
   private songQuery = "";
   private songSort = "manual";
@@ -48,15 +55,19 @@ export class LocalMusicWall {
   private async update(change: Parameters<typeof this.plugin.wallLibrary.update>[0]): Promise<void> { await this.plugin.wallLibrary.update(change); }
   private saveLocation(): void { const last = { ...this.location }; void this.update(d => { d.last = last; }).catch(() => new Notice(t("localWall.updateFailed"))); }
   open(kind: WallKind | null, folder: string | null = null, entry?: string): void {
+    this.host.remember(); this.cards.clear(); this.songs.clear();
+    this.host.enter();
     this.request++; this.location = { kind, folder, entry }; this.keyword = ""; this.detail = null; this.selected.clear(); this.songQuery = ""; this.songSort = "manual"; this.loading = false; this.failed = false; this.partial = false;
     this.saveLocation(); this.host.render();
     if (entry) void this.loadDetail();
   }
   async restore(): Promise<void> { if (this.location.entry) await this.loadDetail(); }
   back(): void {
-    if (this.location.entry) this.open(this.location.kind, this.location.folder);
-    else if (this.location.folder) this.open(this.location.kind, this.data.folders.find(f => f.id === this.location.folder)?.parent || null);
-    else this.open(null);
+    this.host.back();
+  }
+  capture(): () => void {
+    const state = { location: { ...this.location }, keyword: this.keyword, detail: this.detail, songQuery: this.songQuery, failed: this.failed, partial: this.partial };
+    return () => { ++this.request; Object.assign(this, state); this.loading = false; this.cards.clear(); this.songs.clear(); this.selected.clear(); this.saveLocation(); if (this.location.entry && !this.detail) void this.loadDetail(); };
   }
   private menu(host: HTMLElement, actions: () => LibraryMenuAction[], nav = false): void {
     const menu = bindLibraryMenu(host, actions); (nav ? this.navCleanup : this.cleanup).push(menu.dispose);
@@ -76,7 +87,7 @@ export class LocalMusicWall {
       const section = tree.createDiv({ cls: "mw-local-tree__section" });
       const root = section.createDiv({ cls: "mw-local-tree__row" });
       const state = this.rootCollapsed.has(kind);
-      const toggle = svgAction(root, state ? "chevron-right" : "chevron-down", t(`localWall.${kind}`), () => { if (state) this.rootCollapsed.delete(kind); else this.rootCollapsed.add(kind); this.host.render(); });
+      const toggle = svgAction(root, state ? "chevron-right" : "chevron-down", t(`localWall.${kind}`), () => { if (state) this.rootCollapsed.delete(kind); else this.rootCollapsed.add(kind); this.host.renderNav(); });
       toggle.setAttr("aria-expanded", String(!state));
       const button = svgAction(root, iconFor(kind), t(`localWall.${kind}`), () => { activate(); this.open(kind); }, true);
       button.dataset.wallKind = kind; if (this.location.kind === kind && !this.location.folder && !this.location.entry) button.setAttr("aria-current", "page");
@@ -85,17 +96,23 @@ export class LocalMusicWall {
       if (!state) this.treeFolders(section, kind, null, 0, activate);
     }
   }
-  private rootCollapsed = new Set<WallKind>();
+  private rootCollapsed = new Set<WallKind>(WALL_KINDS);
   private treeFolders(parent: HTMLElement, kind: WallKind, folder: string | null, depth: number, activate: () => void): void {
     for (const f of this.sortedFolders(kind, folder)) {
       const row = parent.createDiv({ cls: "mw-local-tree__row" }); row.style.setProperty("--mw-tree-depth", String(depth + 1));
-      const hasChildren = this.data.folders.some(child => child.parent === f.id);
-      const toggle = svgAction(row, f.collapsed ? "chevron-right" : "chevron-down", f.name, () => this.update(d => { const current = d.folders.find(x => x.id === f.id); if (current) current.collapsed = !current.collapsed; }));
-      toggle.setAttr("aria-expanded", String(!f.collapsed)); if (!hasChildren) toggle.style.visibility = "hidden";
+      const hasChildren = this.data.folders.some(child => child.parent === f.id) || this.data.entries.some(e => e.folder === f.id);
+      const toggle = svgAction(row, this.expanded.has(f.id) ? "chevron-down" : "chevron-right", f.name, () => { if (this.expanded.has(f.id)) this.expanded.delete(f.id); else this.expanded.add(f.id); this.host.renderNav(); });
+      toggle.setAttr("aria-expanded", String(this.expanded.has(f.id))); if (!hasChildren) toggle.style.visibility = "hidden";
       const button = svgAction(row, "folder", f.name, () => { activate(); this.open(kind, f.id); }, true);
       button.dataset.wallFolder = f.id; if (this.location.folder === f.id) button.setAttr("aria-current", "page");
       this.dragSource(row, { type: "folder", id: f.id, kind }); this.dropTarget(row, kind, f.id); this.menu(row, () => this.folderActions(f), true);
-      if (!f.collapsed) this.treeFolders(parent, kind, f.id, depth + 1, activate);
+      if (this.expanded.has(f.id)) this.treeFolders(parent, kind, f.id, depth + 1, activate);
+    }
+    for (const e of this.sortedEntries(kind, folder)) {
+      const c = this.data.collections.find(c => c.id === e.collection)!;
+      const row = parent.createDiv({ cls: "mw-local-tree__row", attr: { "data-nav-entry": e.id } }); row.style.setProperty("--mw-tree-depth", String(depth + 1));
+      svgAction(row, iconFor(kind), c.meta.name, () => { activate(); this.open(kind, folder, e.id); }, true);
+      this.dragSource(row, { type: "entry", id: e.id, kind }); this.entryDrop(row, e, c); this.menu(row, () => this.entryActions(e, c), true);
     }
   }
   render(parent: HTMLElement, head: HTMLElement): void {
@@ -104,13 +121,14 @@ export class LocalMusicWall {
     if (this.location.entry && !this.entry) { this.location.entry = undefined; this.detail = null; }
     if (this.location.entry) { this.renderDetail(parent, head); return; }
     if (!this.location.kind) { this.renderLanding(parent); return; }
-    this.renderBreadcrumbs(parent); this.renderToolbar(head);
-    const controls = parent.createDiv({ cls: "mw-local__search" });
+    const fixed = head.createDiv({ cls: "mw-local__fixed" });
+    this.renderBreadcrumbs(fixed); this.renderToolbar(fixed);
+    const controls = fixed.createDiv({ cls: "mw-local__search" });
     const search = controls.createEl("input", { attr: { type: "search", placeholder: t("localWall.search"), "aria-label": t("localWall.search") } }); search.value = this.keyword;
     search.addEventListener("input", () => { this.keyword = search.value; this.renderContents(contents); });
     const recursive = svgAction(controls, "folders", t("localWall.includeChildren"), () => { this.recursive = !this.recursive; recursive.setAttr("aria-pressed", String(this.recursive)); this.renderContents(contents); }); recursive.setAttr("aria-pressed", String(this.recursive));
     const all = svgAction(controls, "search", t("localWall.searchAll"), () => { this.allSearch = !this.allSearch; all.setAttr("aria-pressed", String(this.allSearch)); this.renderContents(contents); }); all.setAttr("aria-pressed", String(this.allSearch));
-    if (this.arranging) parent.createDiv({ cls: "mw-local__hint", text: t("localWall.editLayout") });
+    const layouts = controls.createDiv({ cls: "mw-local__layouts" }); this.renderLayouts(layouts);
     const contents = parent.createDiv({ cls: "mw-local__contents" }); this.renderContents(contents);
   }
   private renderLanding(parent: HTMLElement): void {
@@ -147,10 +165,11 @@ export class LocalMusicWall {
     if (kind === "albums") {
       const style = svgAction(tools, "disc-3", t("localWall.style"), () => this.popup(style, (["vinyl", "cd", "cassette", "cover"] as DiscStyle[]).map(value => ({ label: styleLabel(value), icon: this.data.appearance.style === value ? "check" : "disc", run: () => this.update(d => { d.appearance.style = value; }) }))));
     }
+  }
+  private renderLayouts(parent: HTMLElement): void {
     for (const [layout, icon] of [["grid", "layout-grid"], ["list", "list"]] as const) {
-      const b = svgAction(tools, icon, t(`localWall.${layout}`), () => this.update(d => { d.appearance.layout = layout; })); b.setAttr("aria-pressed", String(layout === this.data.appearance.layout));
+      const b = svgAction(parent, icon, t(`localWall.${layout}`), () => this.update(d => { d.appearance.layout = layout; })); b.setAttr("aria-pressed", String(layout === this.data.appearance.layout));
     }
-    const arrange = svgAction(tools, this.arranging ? "check" : "move", t(this.arranging ? "localWall.manualDone" : "localWall.manual"), async () => { this.arranging = !this.arranging; if (this.arranging) await this.setSort("manual"); else this.host.render(); }); arrange.setAttr("aria-pressed", String(this.arranging));
   }
   private view() { return this.data.views[folderKey(this.location.kind!, this.location.folder)] || { sort: "addedAt" as SortMode, asc: true, order: [] }; }
   private ensureView(d: typeof this.data) { const key = folderKey(this.location.kind!, this.location.folder); return d.views[key] || (d.views[key] = { sort: "addedAt", asc: true, order: [] }); }
@@ -174,12 +193,22 @@ export class LocalMusicWall {
       const open = card.createEl("button", { cls: "mw-local__open", attr: { type: "button" } });
       setIcon(open.createSpan({ cls: "mw-local__folder-art" }), "folder"); open.createDiv({ cls: "mw-local__name", text: f.name });
       const total = this.data.folders.filter(c => c.parent === f.id).length + this.data.entries.filter(e => e.folder === f.id).length;
-      open.createDiv({ cls: "mw-local__subtitle", text: t("localWall.folderCount", { count: total }) }); open.addEventListener("click", () => this.open(kind, f.id));
+      open.createDiv({ cls: "mw-local__subtitle", text: t("localWall.folderCount", { count: total }) });
+      this.selectCard(card, f.id, () => this.open(kind, f.id));
       this.menu(card, () => this.folderActions(f)); this.dragSource(card, { type: "folder", id: f.id, kind }); this.dropTarget(card, kind, f.id);
     }
-    const view = this.view(), rank = new Map(view.order.map((id, i) => [id, i]));
-    const entries = this.data.entries.filter(e => { const c = this.data.collections.find(c => c.id === e.collection); return c?.kind === kind && inside(e.folder) && (!q || `${c.meta.name} ${c.meta.artist} ${c.meta.description || ""}`.toLowerCase().includes(q)); });
-    entries.sort((a, b) => {
+    const entries = this.sortedEntries(kind, folder).filter(e => inside(e.folder) && (!q || this.matches(e, q)));
+    if (q || this.recursive) {
+      for (const e of this.data.entries) { const c = this.data.collections.find(c => c.id === e.collection); if (c?.kind === kind && inside(e.folder) && !entries.includes(e) && (!q || this.matches(e, q))) entries.push(e); }
+    }
+    for (const e of entries) { const c = this.data.collections.find(c => c.id === e.collection)!; this.renderCard(grid, e, e.snapshot ? { ...c, meta: e.snapshot } : c); count++; }
+    this.paintSelection();
+    if (!count) parent.createDiv({ cls: "mw-cloud__empty", text: t(q ? "localWall.noResults" : "localWall.emptyFolder") });
+  }
+  private matches(e: LibraryEntry, q: string): boolean { const c = this.data.collections.find(c => c.id === e.collection)!; return `${c.meta.name} ${c.meta.artist} ${c.meta.description || ""}`.toLowerCase().includes(q); }
+  private sortedEntries(kind: WallKind, folder: string | null): LibraryEntry[] {
+    const view = this.data.views[folderKey(kind, folder)] || { sort: "addedAt", asc: true, order: [] }, rank = new Map(view.order.map((id, i) => [id, i]));
+    return this.data.entries.filter(e => e.folder === folder && this.data.collections.some(c => c.id === e.collection && c.kind === kind)).sort((a, b) => {
       const ca = this.data.collections.find(c => c.id === a.collection)!, cb = this.data.collections.find(c => c.id === b.collection)!;
       let cmp = 0;
       if (view.sort === "manual") cmp = (rank.get(a.id) ?? this.data.entries.indexOf(a) + rank.size) - (rank.get(b.id) ?? this.data.entries.indexOf(b) + rank.size);
@@ -188,8 +217,15 @@ export class LocalMusicWall {
       else cmp = String(ca.meta[view.sort] || "").localeCompare(String(cb.meta[view.sort] || ""), undefined, { numeric: true });
       return cmp * (view.asc ? 1 : -1);
     });
-    for (const e of entries) { const c = this.data.collections.find(c => c.id === e.collection)!; this.renderCard(grid, e, e.snapshot ? { ...c, meta: e.snapshot } : c); count++; }
-    if (!count) parent.createDiv({ cls: "mw-cloud__empty", text: t(q ? "localWall.noResults" : "localWall.emptyFolder") });
+  }
+  private visibleCards(): string[] { return Array.from(this.main?.querySelectorAll<HTMLElement>("[data-entry-id], [data-folder-id]") || []).map(el => el.dataset.entryId || el.dataset.folderId!); }
+  private paintSelection(): void { for (const el of Array.from(this.main?.querySelectorAll<HTMLElement>("[data-entry-id], [data-folder-id]") || [])) { const selected = this.cards.ids.has(el.dataset.entryId || el.dataset.folderId!); el.toggleClass("is-selected", selected); el.setAttr("aria-selected", String(selected)); } }
+  private selectCard(card: HTMLElement, id: string, open: () => void): void {
+    card.addEventListener("click", event => {
+      if ((event.target as Element).closest(".mw-local__more")) return;
+      this.cards.click(id, this.visibleCards(), event); this.paintSelection();
+      if (!event.ctrlKey && !event.metaKey && !event.shiftKey) open();
+    });
   }
   private renderCard(parent: HTMLElement, entry: LibraryEntry, c: SavedCollection): void {
     const card = parent.createDiv({ cls: "mw-local__card", attr: { "data-entry-id": entry.id, "data-collection-kind": c.kind } });
@@ -201,17 +237,23 @@ export class LocalMusicWall {
     info.createDiv({ cls: "mw-local__subtitle", text: c.kind === "local" ? t("localWall.folderCount", { count: c.meta.tracks?.length || 0 }) : c.meta.artist });
     if (entry.rating) info.createDiv({ cls: "mw-local__rating", text: "★".repeat(entry.rating), attr: { "aria-label": `${t("localWall.rating")} ${entry.rating}` } });
     if (this.keyword || this.recursive) info.createDiv({ cls: "mw-local__path", text: folderPath(this.data, entry.folder) });
-    open.addEventListener("click", () => this.open(c.kind, entry.folder, entry.id));
+    this.selectCard(card, entry.id, () => this.open(c.kind, entry.folder, entry.id));
     this.menu(card, () => this.entryActions(entry, c)); this.dragSource(card, { type: "entry", id: entry.id, kind: c.kind });
+    this.entryDrop(card, entry, c);
+  }
+  private entryDrop(card: HTMLElement, entry: LibraryEntry, c: SavedCollection): void {
+    if (c.kind === "local") this.songTarget(card, c.id);
     card.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes(MIME)) { event.preventDefault(); card.addClass("is-drop-before"); } });
     card.addEventListener("dragleave", () => card.removeClass("is-drop-before"));
     card.addEventListener("drop", event => {
-      card.removeClass("is-drop-before"); const payload = this.readDrop(event); if (!payload || payload.type !== "entry" || payload.kind !== c.kind || payload.id === entry.id || this.keyword || this.recursive) return;
+      card.removeClass("is-drop-before"); const payload = this.readDrop(event); if (!payload || payload.type !== "entry" || payload.kind !== c.kind || payload.id === entry.id) return;
       event.preventDefault(); event.stopPropagation();
       void this.update(d => {
-        moveEntries(d, [payload.id], entry.folder);
-        const v = this.ensureView(d), ids = [...new Set([...v.order, ...d.entries.filter(e => e.folder === entry.folder && d.collections.some(c => c.id === e.collection && c.kind === payload.kind)).map(e => e.id)])].filter(id => id !== payload.id);
-        ids.splice(Math.max(0, ids.indexOf(entry.id)), 0, payload.id); v.sort = "manual"; v.asc = true; v.order = ids;
+        const chosen = payload.ids || [payload.id], moving = chosen.filter(id => d.entries.some(e => e.id === id)), visible = this.sortedEntries(c.kind, entry.folder).map(e => e.id);
+        for (const id of chosen) if (d.folders.some(f => f.id === id)) moveFolder(d, id, entry.folder);
+        moveEntries(d, moving, entry.folder);
+        const key = folderKey(c.kind, entry.folder), v = d.views[key] || (d.views[key] = { sort: "manual", asc: true, order: [] });
+        v.order = [...this.sortedFolders(c.kind, entry.folder).map(f => f.id), ...reorderIds([...new Set([...visible, ...moving])], moving, entry.id, this.dropAfter(event, card))]; v.sort = "manual"; v.asc = true;
       }).catch(() => new Notice(t("localWall.folderConflict")));
     });
   }
@@ -233,9 +275,10 @@ export class LocalMusicWall {
     return [
       { label: t("panel.play"), icon: "play", run: async () => { await playAlbum({ ...c.meta, wallEntryId: e.id }, this.plugin.getPlaybackDeps()); } },
       { label: t(c.kind === "albums" ? "queue.add" : "queue.addPlaylist"), icon: "list-plus", run: () => this.plugin.enqueueAlbum({ ...c.meta, wallEntryId: e.id }) },
-      { label: t("localWall.move"), icon: "folder-input", run: () => this.pickMove(c.kind, async id => this.update(d => moveEntries(d, [e.id], id))) },
+      ...(c.kind !== "albums" ? [{ label: t("localWall.clone"), icon: "copy", run: () => this.plugin.cloneLocalPlaylist(c.meta) }] : []),
+      { label: t("localWall.move"), icon: "folder-input", run: () => this.pickMove(c.kind, async id => this.update(d => { const ids = this.cards.ids.has(e.id) ? [...this.cards.ids] : [e.id]; for (const value of ids) if (d.folders.some(f => f.id === value)) moveFolder(d, value, id); moveEntries(d, ids.filter(value => d.entries.some(e => e.id === value)), id); })) },
       ...(c.kind !== "local" ? [{ label: t("localWall.rate"), icon: "star", run: () => new RatingModal(this.plugin.app, { albumName: c.meta.name, current: e.rating, onSave: rating => { void this.update(d => { const current = d.entries.find(x => x.id === e.id); if (current) current.rating = rating; }).catch(() => new Notice(t("localWall.updateFailed"))); } }).open() }] : []),
-      { label: t(c.kind === "local" ? "localWall.delete" : "localWall.remove"), icon: "trash-2", run: () => this.confirm(t(c.kind === "local" ? "localWall.deletePlaylist" : "localWall.removeConfirm"), () => this.update(d => removeEntries(d, [e.id]))) },
+      { label: t(c.kind === "local" ? "localWall.delete" : "localWall.remove"), icon: "trash-2", run: () => this.confirm(t(c.kind === "local" ? "localWall.deletePlaylist" : "localWall.removeConfirm"), () => this.update(d => { const ids = this.cards.ids.has(e.id) ? [...this.cards.ids] : [e.id]; for (const id of ids) if (d.folders.some(f => f.id === id)) removeFolder(d, id); removeEntries(d, ids); this.cards.clear(); })) },
     ];
   }
   private confirm(message: string, action: () => Promise<void>): void { new ConfirmModal(this.plugin.app, { title: t("localWall.title"), message, danger: true, onConfirm: action }).open(); }
@@ -265,26 +308,48 @@ export class LocalMusicWall {
   }
   private dragSource(el: HTMLElement, payload: { type: "folder" | "entry"; id: string; kind: WallKind }): void {
     el.draggable = true;
-    el.addEventListener("dragstart", event => { if (!event.dataTransfer) return; event.stopPropagation(); event.dataTransfer.setData(MIME, JSON.stringify(payload)); event.dataTransfer.effectAllowed = "move"; });
+    el.addEventListener("dragstart", event => {
+      if (!event.dataTransfer) return; event.stopPropagation();
+      const visible = this.visibleCards(), ids = visible.includes(payload.id) ? this.cards.drag(payload.id, visible) : [payload.id];
+      this.paintSelection(); event.dataTransfer.setData(MIME, JSON.stringify({ ...payload, ids })); event.dataTransfer.effectAllowed = "move";
+    });
   }
-  private readDrop(event: DragEvent): { type: "folder" | "entry"; id: string; kind: WallKind } | null {
+  private readDrop(event: DragEvent): { type: "folder" | "entry"; id: string; ids?: string[]; kind: WallKind } | null {
     try { const p = JSON.parse(event.dataTransfer?.getData(MIME) || ""); return ["folder", "entry"].includes(p.type) && typeof p.id === "string" && WALL_KINDS.includes(p.kind) ? p : null; } catch { return null; }
   }
   private dropTarget(el: HTMLElement, kind: WallKind, folder: string | null): void {
-    el.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes(MIME)) { event.preventDefault(); event.stopPropagation(); el.addClass("is-drop-target"); } });
+    el.addEventListener("dragover", event => { if (event.dataTransfer?.types.some(type => [MIME, COLLECTION_MIME].includes(type))) { event.preventDefault(); event.stopPropagation(); el.addClass("is-drop-target"); } });
     el.addEventListener("dragleave", () => el.removeClass("is-drop-target"));
     el.addEventListener("drop", event => {
-      el.removeClass("is-drop-target"); const p = this.readDrop(event); if (!p || p.kind !== kind) return;
+      el.removeClass("is-drop-target");
+      const meta = readCollection(event);
+      if (meta) {
+        if ((meta.playlistId ? "playlists" : "albums") !== kind) return;
+        event.preventDefault(); event.stopPropagation();
+        void this.plugin.fetchCollectionDetail(meta).then(full => this.plugin.saveLocalCollection(full, folder)).catch(() => new Notice(t("localWall.updateFailed"))); return;
+      }
+      const p = this.readDrop(event); if (!p || p.kind !== kind) return;
       event.preventDefault(); event.stopPropagation();
       void this.update(d => {
         const source = d.folders.find(f => f.id === p.id), target = d.folders.find(f => f.id === folder);
-        if (this.arranging && p.type === "folder" && source && target && source.id !== target.id && source.parent === target.parent) {
+        const moving = p.ids || [p.id];
+        if (p.type === "folder" && source && target && source.id !== target.id && source.parent === target.parent && this.dropEdge(event, el)) {
           const key = folderKey(kind, target.parent), v = d.views[key] || (d.views[key] = { sort: "manual", asc: true, order: [] });
-          const ids = [...new Set([...v.order, ...d.folders.filter(f => f.kind === kind && f.parent === target.parent).map(f => f.id)])].filter(id => id !== source.id);
-          ids.splice(Math.max(0, ids.indexOf(target.id)), 0, source.id); v.order = ids; v.sort = "manual"; v.asc = true;
-        } else if (p.type === "folder") moveFolder(d, p.id, folder); else moveEntries(d, [p.id], folder);
+          const folders = this.sortedFolders(kind, target.parent).map(f => f.id);
+          v.order = [...reorderIds(folders, moving.filter(id => folders.includes(id)), target.id, this.dropAfter(event, el)), ...this.sortedEntries(kind, target.parent).map(e => e.id)]; v.sort = "manual"; v.asc = true;
+        } else {
+          for (const id of moving) if (d.folders.some(f => f.id === id)) moveFolder(d, id, folder);
+          moveEntries(d, moving.filter(id => d.entries.some(e => e.id === id)), folder);
+        }
       }).catch(() => new Notice(t("localWall.folderConflict")));
     });
+  }
+  private dropAfter(event: DragEvent, el: HTMLElement): boolean { const r = el.getBoundingClientRect(); return el.classList.contains("mw-local__card") && this.data.appearance.layout === "grid" ? event.clientX > r.left + r.width / 2 : event.clientY > r.top + r.height / 2; }
+  private dropEdge(event: DragEvent, el: HTMLElement): boolean { const r = el.getBoundingClientRect(); const x = el.classList.contains("mw-local__card") && this.data.appearance.layout === "grid" ? (event.clientX - r.left) / r.width : (event.clientY - r.top) / r.height; return x < .25 || x > .75; }
+  private songTarget(el: HTMLElement, collection: string): void {
+    el.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes(SONG_MIME)) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; el.addClass("is-drop-target"); } });
+    el.addEventListener("dragleave", () => el.removeClass("is-drop-target"));
+    el.addEventListener("drop", event => { const p = readSongs(event); if (!p) return; event.preventDefault(); event.stopPropagation(); el.removeClass("is-drop-target"); void this.update(d => { addSongs(d, collection, p.tracks); }).catch(() => new Notice(t("localWall.updateFailed"))); });
   }
   async loadDetail(): Promise<void> {
     const e = this.entry, c = this.collection; if (!e || !c) return;
@@ -317,7 +382,7 @@ export class LocalMusicWall {
     }
   }
   private renderDetail(parent: HTMLElement, head: HTMLElement): void {
-    this.renderBreadcrumbs(parent); svgAction(head, "arrow-left", t("localWall.back"), () => this.back());
+    const fixed = head.createDiv({ cls: "mw-local__fixed" }); this.renderBreadcrumbs(fixed);
     svgAction(head, "refresh-cw", t("library.refresh"), () => this.loadDetail());
     const e = this.entry!, c = this.collection!;
     if (this.loading) { parent.createDiv({ cls: "mw-cloud__empty", text: t("localWall.loading") }); return; }
@@ -330,6 +395,7 @@ export class LocalMusicWall {
     svgAction(header, "play", t("panel.play"), () => playAlbum(meta, this.plugin.getPlaybackDeps())).disabled = !meta.tracks?.length;
     svgAction(header, "list-plus", t(c.kind === "albums" ? "queue.add" : "queue.addPlaylist"), () => this.plugin.enqueueAlbum(meta));
     if (c.kind !== "local") {
+      if (c.kind === "playlists") svgAction(header, "copy", t("localWall.clone"), () => this.plugin.cloneLocalPlaylist(meta));
       svgAction(header, "star", e.rating ? `${t("localWall.rating")} ${e.rating}` : t("localWall.rate"), () => this.entryActions(e, c).find(a => a.icon === "star")!.run() as void);
       svgAction(header, "link", t("libraryDetails.copyLink"), () => navigator.clipboard.writeText(`https://music.163.com/${c.kind === "albums" ? "album" : "playlist"}?id=${meta.playlistId || meta.albumId}`));
       this.host.renderTracks(parent, meta.tracks || [], meta); return;
@@ -337,17 +403,15 @@ export class LocalMusicWall {
     svgAction(header, "pencil", t("localWall.rename"), () => new WallTextModal(this.plugin.app, t("localWall.name"), c.meta.name, name => this.update(d => { const item = d.collections.find(x => x.id === c.id); if (item) item.meta.name = name; })).open());
     svgAction(header, "text", t("localWall.description"), () => new WallTextModal(this.plugin.app, t("localWall.description"), c.meta.description || "", description => this.update(d => { const item = d.collections.find(x => x.id === c.id); if (item) item.meta.description = description; }), true).open());
     if (this.partial) parent.createDiv({ cls: "mw-local__hint", text: t("localWall.offline") });
-    this.renderLocalSongs(parent, meta);
+    this.renderLocalSongs(parent, meta, fixed);
   }
-  private renderLocalSongs(parent: HTMLElement, meta: AlbumMeta): void {
-    const controls = parent.createDiv({ cls: "mw-local__song-tools" });
+  private renderLocalSongs(parent: HTMLElement, meta: AlbumMeta, fixed: HTMLElement): void {
+    const controls = fixed.createDiv({ cls: "mw-local__song-tools" });
     const input = controls.createEl("input", { attr: { type: "search", placeholder: t("library.search"), "aria-label": t("library.search") } }); input.value = this.songQuery;
     const sort = controls.createEl("select", { attr: { "aria-label": t("localWall.trackSort") } });
     for (const [value, key] of [["manual", "manual"], ["name", "songName"], ["artists", "artist"], ["albumName", "album"], ["added", "addedAt"]]) sort.createEl("option", { value, text: t(`localWall.${key}`) }); sort.value = this.songSort;
     sort.addEventListener("change", () => { this.songSort = sort.value; render(); });
     svgAction(controls, "arrow-up-down", t(this.songAsc ? "localWall.ascending" : "localWall.descending"), () => { this.songAsc = !this.songAsc; render(); });
-    svgAction(controls, "check-check", t("localWall.selectAll"), () => { for (const s of filtered()) this.selected.add(s.id); render(); });
-    svgAction(controls, "x", t("localWall.clearSelection"), () => { this.selected.clear(); render(); });
     const selected = controls.createSpan({ cls: "mw-local__hint" });
     const add = svgAction(controls, "list-plus", t("localWall.addSongs"), () => this.plugin.addSongsToLocalPlaylist((meta.tracks || []).filter(s => this.selected.has(s.id))));
     const remove = svgAction(controls, "trash-2", t("localWall.removeSongs"), () => this.confirm(t("localWall.removeSongsConfirm"), () => this.update(d => {
@@ -355,6 +419,7 @@ export class LocalMusicWall {
       c.meta.tracks = (c.meta.tracks || []).filter(s => !this.selected.has(s.id)); c.meta.trackCount = c.meta.tracks.length; this.selected.clear();
     })));
     const list = parent.createDiv({ cls: "mw-cloud__tracks mw-local__songs" });
+    this.songTarget(list, meta.localPlaylistId!);
     const filtered = () => {
       const q = this.songQuery.toLowerCase(); const tracks = (this.detail?.tracks || []).filter(s => `${s.name} ${s.artists || ""} ${s.albumName || ""}`.toLowerCase().includes(q));
       if (this.songSort !== "manual" && this.songSort !== "added") tracks.sort((a, b) => String(a[this.songSort as keyof AlbumTrackSnapshot] || "").localeCompare(String(b[this.songSort as keyof AlbumTrackSnapshot] || "")) * (this.songAsc ? 1 : -1));
@@ -364,22 +429,32 @@ export class LocalMusicWall {
       list.empty(); selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size;
       for (const s of filtered()) {
         const row = list.createDiv({ cls: "mw-cloud__track mw-local__song", attr: { "data-local-song": String(s.id) } });
-        const checkbox = row.createEl("input", { type: "checkbox", attr: { "aria-label": s.name } }); checkbox.checked = this.selected.has(s.id);
-        checkbox.addEventListener("change", () => { if (checkbox.checked) this.selected.add(s.id); else this.selected.delete(s.id); selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size; });
+        row.toggleClass("is-selected", this.selected.has(s.id));
+        row.addEventListener("click", event => {
+          if ((event.target as Element).closest("button, a, input")) return;
+          this.songs.click(s.id, filtered().map(s => s.id), event); this.selected = this.songs.ids;
+          for (const item of Array.from(list.querySelectorAll<HTMLElement>("[data-local-song]"))) item.toggleClass("is-selected", this.selected.has(Number(item.dataset.localSong)));
+          selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size;
+        });
         const title = row.createDiv({ cls: "mw-cloud__track-info" }); title.createDiv({ cls: "mw-cloud__name", text: s.name }); title.createDiv({ cls: "mw-cloud__track-meta", text: [s.artists, s.albumName].filter(Boolean).join(" · ") });
         if (s.unavailable) title.createDiv({ cls: "mw-local__hint", text: t("localWall.unavailable") });
         row.createSpan({ cls: "mw-cloud__duration", text: `${Math.floor(s.duration / 60000)}:${String(Math.floor(s.duration / 1000) % 60).padStart(2, "0")}` });
         const index = this.detail!.tracks!.findIndex(x => x.id === s.id);
         svgAction(row, "play", t("panel.play"), () => playAlbum({ ...this.detail! }, this.plugin.getPlaybackDeps(), index));
         this.menu(row, () => [...this.host.trackActions(s, this.detail!, index), { label: t("localWall.remove"), icon: "trash-2", run: () => this.update(d => { const c = d.collections.find(x => x.id === meta.localPlaylistId); if (c) { c.meta.tracks = (c.meta.tracks || []).filter(x => x.id !== s.id); c.meta.trackCount = c.meta.tracks.length; } }) }]);
-        row.draggable = !this.songQuery && this.songSort === "manual" && this.songAsc;
-        row.addEventListener("dragstart", event => { event.stopPropagation(); event.dataTransfer?.setData("application/x-music-wall-song", JSON.stringify({ collection: meta.localPlaylistId, id: s.id })); });
+        songSource(row, () => { const ids = this.songs.drag(s.id, filtered().map(s => s.id)); this.selected = this.songs.ids; return { collection: meta.localPlaylistId, ids, tracks: filtered().filter(s => ids.includes(s.id)) }; });
         row.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("application/x-music-wall-song") && row.draggable) event.preventDefault(); });
         row.addEventListener("drop", event => {
           if (!row.draggable) return; event.preventDefault();
-          let p: { collection: string; id: number }; try { p = JSON.parse(event.dataTransfer?.getData("application/x-music-wall-song") || ""); } catch { return; }
-          if (p.collection !== meta.localPlaylistId || p.id === s.id) return;
-          void this.update(d => { const c = d.collections.find(c => c.id === p.collection); if (!c) return; const tracks = c.meta.tracks || [], from = tracks.findIndex(x => x.id === p.id); if (from < 0) return; const [song] = tracks.splice(from, 1), to = tracks.findIndex(x => x.id === s.id); if (to < 0) return; tracks.splice(to, 0, song); }).catch(() => new Notice(t("localWall.updateFailed")));
+          const p = readSongs(event); if (!p) return; event.stopPropagation();
+          void this.update(d => {
+            const c = d.collections.find(c => c.id === meta.localPlaylistId); if (!c) return;
+            if (p.collection !== meta.localPlaylistId) { addSongs(d, c.id, p.tracks); return; }
+            const tracks = c.meta.tracks || [], ids = reorderIds(filtered().map(s => String(s.id)), p.ids.map(String), String(s.id), this.dropAfter(event, row));
+            const byId = new Map(tracks.map(s => [String(s.id), s]));
+            const visibleIds = new Set(ids); let position = 0;
+            c.meta.tracks = tracks.map(track => visibleIds.has(String(track.id)) ? byId.get(ids[position++])! : track); this.songSort = "manual"; this.songAsc = true;
+          }).catch(() => new Notice(t("localWall.updateFailed")));
         });
       }
       if (!(meta.tracks || []).length) list.createDiv({ cls: "mw-cloud__empty", text: t("localWall.emptySongs") });

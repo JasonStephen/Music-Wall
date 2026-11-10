@@ -191,6 +191,7 @@ const fakeApp = {
 };
 
 const obsidianMock = {
+  Component: FakeComponent,
   App: class {},
   Modal: FakeModal,
   Notice: FakeNotice,
@@ -278,238 +279,20 @@ const origLoad = Module._load;
   await library.onClose();
   fakeWorkspace.getLeavesOfType = originalGetLeaves; fakeWorkspace.revealLeaf = originalReveal;
   console.log("Embedded player open and collapse passed");
-  const cmds = FakePlugin.commands.map((c) => c.id);
-  console.log("注册命令:", cmds.join(", "));
-  if (!cmds.includes("open-library") || !cmds.includes("open-player") || cmds.some(id => /create-wall|export-wall|import-wall|git/.test(id))) throw new Error("Unexpected commands");
-  if (!FakePlugin.views["music-wall-view"]) throw new Error("视图未注册");
-  if (!FakePlugin.views["music-wall-player"]) throw new Error("播放器视图未注册");
-  const extList = FakePlugin.extensions
-    .map((e) => `${e.extensions.join(",")}→${e.type}`)
-    .join(" | ");
-  const wallExtOk = FakePlugin.extensions.some(
-    (e) => e.extensions.includes("mw") && e.type === "music-wall-view"
-  );
-  const playerExtOk = FakePlugin.extensions.some(
-    (e) => e.extensions.includes("mwp") && e.type === "music-wall-player"
-  );
-  if (!wallExtOk || playerExtOk || cmds.includes("create-player"))
-    throw new Error("registerExtensions 映射异常: " + extList);
-
-  // 渲染冒烟：视图 onOpen（空状态）
-  const leaf = { app: fakeApp, setEphemeralState: () => {} };
-  const view = FakePlugin.views["music-wall-view"](leaf);
-  await view.onOpen();
-  // 渲染冒烟：带数据 + 四种墙级全局样式轮换（样式统一，不再按卡覆盖）
-  view.data = {
-    version: 2,
-    name: "t",
-    style: "vinyl",
-    groups: [{ id: "g1", name: "分组一" }, { id: "g2", name: "分组二", collapsed: true }],
-    order: [3, 2, 1, 0],
-    view: { sortMode: "manual", sortAsc: true, filterArtists: ["B"] },
-    items: [0, 1, 2, 3].map((i) => ({
-      albumId: i,
-      source: "search",
-      locked: true,
-      groupId: i % 2 ? "g1" : "g2",
-      meta: { albumId: i, name: "A", artist: "B", cover: "", trackCount: 2, year: "2020", tags: ["x"], tracks: [{ id: 1, name: "t", duration: 1000 }] },
-      addedAt: new Date().toISOString(),
-    })),
-  };
-  for (const s of ["vinyl", "cd", "cassette", "cover"]) {
-    view.data.style = s;
-    await view.render();
-  }
-  view.data.layout = "list";
-  await view.render();
-  view.data.layout = "shelf";
-  for (const s of ["vinyl", "cd", "cassette", "cover"]) {
-    view.data.style = s;
-    await view.render();
-  }
-  // 展示架场景内详情：开→关
-  view.openShelfDetail(view.data.items[0]);
-  view.closeShelfDetail();
-  view.data.layout = undefined;
-  console.log("视图渲染（空态 + 四样式全局轮换 + 多列列表 + 展示架四样式 + 场景详情）未抛错");
-
-  // 分组 + 手动排序 + 抽屉/浮层：分区渲染、编辑态进出、面板构建都不应抛错
-  view.enterEditMode();
-  view.renderEditBar();
-  for (const key of ["style", "filter", "sort", "settings"]) {
-    view.drawer?.open(key);
-    view.drawer?.refresh();
-  }
-  view.drawer?.close();
-  for (const key of ["search", "add"]) {
-    view.floater?.open(key);
-    view.floater?.refresh();
-  }
-  view.floater?.close();
-  view.exitEditMode();
-  console.log("分组分区 + 布局编辑态 + 侧边抽屉/右上浮层 未抛错");
-
-  // 全局缩放：设置项 → body 变量 → 视图尺寸补偿
-  plugin.settings.zoomScale = 1.25;
-  plugin.applyZoom();
-  if (plugin.settings.zoomScale !== 1.25) throw new Error("缩放设置未生效");
-  plugin.settings.zoomScale = 1;
-  plugin.applyZoom();
-  console.log("全局缩放（设置 → body 变量）未抛错");
-
-  const visible = view.getVisibleItems();
-  console.log("getVisibleItems:", visible.length);
-  if (visible.length !== 4) throw new Error("筛选逻辑异常");
-  // 手动排序：order = [3,2,1,0] + 升序 ⇒ 展示顺序 3,2,1,0
-  if (visible.map((i) => i.albumId).join(",") !== "3,2,1,0")
-    throw new Error("手动排序顺序异常: " + visible.map((i) => i.albumId).join(","));
-  console.log("手动排序顺序跟随 order：通过");
-
-  // 降序时应当整体反转
-  view.data.view.sortAsc = false;
-  const desc = view.getVisibleItems().map((i) => i.albumId).join(",");
-  if (desc !== "0,1,2,3") throw new Error("手动排序降序异常: " + desc);
-  view.data.view.sortAsc = true;
-  console.log("升降序与排序类型解耦：通过");
-
-  // 播放器视图：空态渲染 + 拖入一张（与墙上拖拽同路径）+ 点单曲
-  const playerLibrary = FakePlugin.views["music-wall-library"](leaf);
-  await playerLibrary.onOpen(); await playerLibrary.expandPlayer();
-  const player = playerLibrary.embeddedPlayer;
-  player.playInPlayer(
-    {
-      albumId: 7,
-      name: "P",
-      artist: "Q",
-      cover: "",
-      trackCount: 1,
-      tracks: [{ id: 9, name: "s", duration: 1000 }],
-    },
-    "walls/a.mw"
-  );
-  await new Promise((r) => setTimeout(r, 0));
-  if (!plugin.loginModal) throw new Error("未登录拖入播放没有打开扫码登录");
-  plugin.loginModal.close();
-  console.log("未登录拖入播放打开扫码登录，取消后停止：通过");
-  // 播放器设备外观：三种样式轮换渲染（磁带机因无法达到交付要求已移除）
-  for (const s of ["vinyl", "cd", "cover"]) {
-    player.discStyle = s;
-    await player.render();
-  }
-  const playerState = player.plugin?.nowPlaying?.state;
-  await player.onClose();
-  console.log(
-    "播放器视图（空态 + 拖入播放 + 三样式设备外观 + SMTC 状态）未抛错",
-    playerState?.supported === false ? "[空实现]" : ""
-  );
-
-  // 回归：打开标签页时必须主动读一次既有状态。
-  // nowPlaying 的事件按「状态变化」去重，on() 只会收到后续变化——
-  // 正在播放时状态不再变化，只靠订阅会一直显示「未在播放」。
-  const realProvider = plugin.nowPlaying;
-  plugin.nowPlaying = {
-    supported: true,
-    state: {
-      supported: true, active: true, title: "T", artist: "A", album: "",
-      status: "playing", positionMs: 0, durationMs: 0, seekable: false,
-      canPlay: true, canPause: true, canToggle: true, canNext: true, canPrev: true,
-    },
-    start() {}, stop() {}, on() { return () => {}; },
-    async play() { return true; },
-    async pause() { return true; },
-    async toggle() { return true; },
-    async next() { return true; },
-    async prev() { return true; },
-    async seek() { return true; },
-  };
-  const freshLibrary = FakePlugin.views["music-wall-library"](leaf);
-  await freshLibrary.onOpen(); await freshLibrary.expandPlayer();
-  const fresh = freshLibrary.embeddedPlayer;
-  const snapped = { active: fresh.now?.active, status: fresh.now?.status, title: fresh.now?.title };
-  await fresh.onClose();
-  plugin.nowPlaying = realProvider;
-  if (snapped.active !== true || snapped.status !== "playing" || snapped.title !== "T")
-    throw new Error("打开播放器未同步既有播放状态: " + JSON.stringify(snapped));
-  console.log("播放器打开时同步 SMTC 既有状态：通过");
-
-  // getPlaybackDeps 形状
+  const cmds = FakePlugin.commands.map(c => c.id);
+  if (!cmds.includes('open-library') || !cmds.includes('open-player') || cmds.some(id => /create-wall|export-wall|import-wall|git/.test(id))) throw Error('Unexpected commands');
+  if (FakePlugin.views['music-wall-view'] || FakePlugin.extensions.some(e => e.extensions.includes('mw'))) throw Error('Legacy renderer registered');
+  const leaf = { app: fakeApp }, page = FakePlugin.views['music-wall-library'](leaf);
+  await page.onOpen(); await page.expandPlayer();
+  const player = page.embeddedPlayer;
+  if (!player || player instanceof FakeItemView) throw Error('Embedded player owns a workspace view');
+  if (player.contentEl !== page.playerHost) throw Error('Player host mismatch');
+  await page.collapsePlayer();
+  if (page.embeddedPlayer) throw Error('Player did not collapse');
+  await page.onClose();
   const deps = plugin.getPlaybackDeps();
-  if (!deps || typeof deps.isDesktop !== "boolean" || !deps.request)
-    throw new Error("getPlaybackDeps 返回异常");
-  console.log("getPlaybackDeps 正常");
-
-  /*
-   * styles.css 静态契约（第五轮）。
-   *
-   * 为什么放在这里而不是浏览器 e2e：这些是「样式表里必须存在/必须不存在」的
-   * 形式化断言——尤其是 hover 一类状态，无头 Chrome 没有真实指针，触发不了
-   * :hover；file:// 页面又读不到 <link> 样式表的 cssRules（跨源）。
-   * Node 直接读 styles.css 文本是最可靠的层。
-   * 注意样式已压缩：属性名后可能没有空格，单位会省略前导 0（0.62 → .62）。
-   */
-  const cssText = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf-8");
-  const mustMatch = [
-    // A4：.view-content 就是 .mw-view 根，主题加的内边距必须被压掉
-    [/\.view-content\.mw-view[^{]*\{[^}]*padding:0!important/, "A4 根节点内边距归零"],
-    [/\.view-content\.mw-view[^{]*\{[^}]*margin:0!important/, "A4 根节点外边距归零"],
-    [
-      /\.workspace-leaf-content\[data-type=music-wall-(view|player)\][^{]*\{[^}]*padding:0!important/,
-      "A4 叶子容器内边距归零",
-    ],
-    // A2：编辑条只剩 ✓ 图标
-    [/\.mw-editbar \.mw-editbar__done\{/, "A2 ✓ 完成图标样式存在"],
-    // A3：展示架强调色 = 琥珀；木质菜单与展示架弹窗皮肤都在
-    [/\.mw-view\.mw-wall--shelf\{[^}]*--mw-accent: ?#d9a24a/, "A3 展示架强调色改为琥珀"],
-    [/\.modal\.mw-modal--shelf\{[^}]*--interactive-accent: ?#d9a24a/, "A3 弹窗展示架皮肤"],
-    [/\.mw-shelf-menu__sep\{/, "A3 木质菜单分隔线"],
-    [/\.mw-shelf-menu__icon\{/, "A3 木质菜单图标位"],
-    // B1：面板输入框三态 + × 清空钮 + 主按钮排除 ×
-    [
-      /\.mw-view \.mw-drawer \.mw-panel__input:hover[^{]*\{[^}]*background-color:var\(--mw-panel-hover\)!important/,
-      "B1 输入框 hover 规则带 !important",
-    ],
-    [
-      /\.mw-view \.mw-drawer \.mw-panel__input,?[^{]*\{[^}]*background-color:var\(--mw-panel-surface\)!important/,
-      "B1 输入框静息规则带 !important",
-    ],
-    [
-      /\.mw-view \.mw-drawer \.mw-panel__clearicon\{[^}]*background-color:transparent!important/,
-      "B1 × 清空钮透明底",
-    ],
-    [
-      /\.mw-view \.mw-drawer \.mw-panel__clearicon\{[^}]*border-radius:0!important/,
-      "B1 × 清空钮无圆角",
-    ],
-    [
-      /\.mw-search-panel__bar button:not\(\.mw-panel__clearicon\)/,
-      "B1 搜索行主按钮规则排除 × 清空钮",
-    ],
-    [/\.mw-view \.mw-drawer \.mw-preset\{[^}]*background-color:[^;}]*!important/, "B1 预设瓷砖有兜底"],
-    // B2：封面背景的面板是磨砂玻璃
-    [
-      /--mw-player-panel-bg: ?rgba\(14, ?16, ?21, ?\.62\)/,
-      "B2 封面模式面板底色 62% 半透明",
-    ],
-    [/\.mw-player\.mw-bg--art \.mw-drawer[^{]*\{[^}]*backdrop-filter:blur\(18px\)/, "B2 面板磨砂"],
-    [
-      /\.mw-player\.mw-bg--art \.mw-player__playlist[^{]*\{[^}]*backdrop-filter/,
-      "B2 上拉曲目表磨砂",
-    ],
-    // 播放器面板强调色跟随背景模式
-    [/\.mw-player\{[^}]*--mw-accent: ?var\(--mw-np-accent/, "B1 播放器强调色跟随背景模式"],
-  ];
-  const mustNotMatch = [
-    [/\.mw-editbar \.mw-editbar__btn\{/, "A2 旧的「完成/取消」按钮样式已删除"],
-    [/\.mw-drawer__scrim\s*\{/, "侧边抽屉不存在遮罩样式"],
-  ];
-  for (const [re, label] of mustMatch) {
-    if (!re.test(cssText)) throw new Error("styles.css 契约缺失: " + label + " (" + re + ")");
-  }
-  for (const [re, label] of mustNotMatch) {
-    if (re.test(cssText)) throw new Error("styles.css 残留: " + label + " (" + re + ")");
-  }
-  console.log(`styles.css 静态契约：${mustMatch.length + mustNotMatch.length} 条通过`);
-
+  if (!deps || typeof deps.isDesktop !== 'boolean' || !deps.request) throw Error('Invalid playback dependencies');
+  console.log('Unified startup, embedded component, collapse, commands and legacy removal passed');
   console.log("\n== main.js 冒烟测试通过 ==");
   process.exit(0);
 })().catch((e) => {

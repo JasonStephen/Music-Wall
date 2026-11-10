@@ -37,7 +37,7 @@
   overflow: hidden;
 }
 /* 少数主题把内边距加在叶子上而不是 .view-content 上，一并归零 */
-.workspace-leaf-content[data-type="music-wall-view"],
+.workspace-leaf-content[data-type="music-wall-library"],
 .workspace-leaf-content[data-type="music-wall-player"] {
   padding: 0 !important;
   margin: 0 !important;

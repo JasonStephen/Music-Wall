@@ -125,7 +125,7 @@ const coverSvg = (label: string): string =>
     installDomHelpers();
     const mount = document.getElementById("mount")!;
     const app = { vault: { on: () => ({}) }, workspace: { on: () => ({}) } };
-    const view = new MusicPlayerView(new WorkspaceLeaf(app), makePlugin() as never);
+    const view = new MusicPlayerView(new WorkspaceLeaf(app), { ...makePlugin(), app } as never);
     viewRef = view;
 
     mount.appendChild(view.contentEl);

@@ -1,5 +1,6 @@
 import { MusicLibraryView } from '../src/ui/MusicLibraryView';
-import { WallLibraryStore, addFolder, addSaved, createPlaylist, addSongs, moveFolder, type WallKind } from '../src/core/wallLibrary';
+import { WallLibraryStore, addFolder, addSaved, createPlaylist, addSongs, clonePlaylist, moveFolder, folderKey, type WallKind } from '../src/core/wallLibrary';
+import { SONG_MIME, COLLECTION_MIME } from '../src/ui/libraryDrag';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { InternalPlayer } from '../src/core/internalPlayer';
 import { HistoryStore } from '../src/core/history';
@@ -16,14 +17,14 @@ let dispose = async () => {};
  const memory = new Map<string,string>();const adapter={exists:async(p:string)=>memory.has(p),read:async(p:string)=>memory.get(p)!,write:async(p:string,s:string)=>{memory.set(p,s)},mkdir:async(p:string)=>{memory.set(p,'')}};
  const store=new WallLibraryStore(adapter);await store.ready();
  const cover=probeCoverUri('6e8eaf');const tracks=Array.from({length:7},(_,i)=>({id:100+i,name:`Song ${i+1}`,artists:'Artist',albumName:`Album ${i+1}`,albumId:i+1,duration:200000,cover:probeCoverUri(['6e8eaf','b96d85','b9a276','798b6c'][i%4])}));
- let folder='',nested='',localId='',localEntry='',albumEntry='',playlistEntry='';
+ let folder='',nested='',localId='',localEntry='',albumEntry='',playlistEntry='',emptyEntry='',emptyId='';
  await store.update(d=>{
   folder=addFolder(d,'albums',null,'Cinematic Music').id;nested=addFolder(d,'albums',folder,'Epic').id;
   for(let i=1;i<=14;i++){const e=addSaved(d,{albumId:i,name:`Night Drive ${i}`,artist:'The Midnight',cover,trackCount:7,tracks},folder)!;if(i===1)albumEntry=e.id;}
   addSaved(d,{albumId:30,name:'Nested collection',artist:'Artist',cover,trackCount:7,tracks},nested);
   playlistEntry=addSaved(d,{albumId:0,playlistId:2,name:'Saved collection',artist:'Owner',cover,trackCount:7,tracks},null)!.id;
   const entry=createPlaylist(d,null,'My playlist');localId=entry.collection;localEntry=entry.id;addSongs(d,localId,tracks);
-  createPlaylist(d,null,'Empty playlist');
+  const empty=createPlaylist(d,null,'Empty playlist');emptyEntry=empty.id;emptyId=empty.collection;
  });
  const engine=new InternalPlayer({resolve:async()=>({url:'https://example.test/audio',trial:false}),load:async()=>new Blob(['audio']),audio:()=>new Audio() as any,notice(){},webAudio:false});
  const history=new HistoryStore(adapter,'history');await history.ready();
@@ -31,39 +32,94 @@ let dispose = async () => {};
  const workspace:any={activeLeaf:null,getLeavesOfType(){return []},getActiveViewOfType(){return view},getLeaf(){tabCount++;throw Error('Unexpected tab');}};
  const plugin:any={settings:{...DEFAULT_SETTINGS,neteaseCookie:'MUSIC_U=test',neteaseUserId:'42',zoomScale:config.zoom||1,libraryAppearance:config.theme||'light'},wallLibrary:store,internalPlayer:engine,nowPlaying:engine,historyStore:history,historyScope:()=> '42',
   ensureNowPlayingStarted(){},ensureNeteaseLogin:async()=>true,saveData:async()=>{},saveZoom:async()=>{},refreshLibraryLayouts(){},scanWallItems:async()=>[],lyrics:{get:async()=>({lines:[],translation:[]})},
-  libraryApi:{clear(){},songs:async(ids:number[])=>{if(offline)throw Error();return tracks.filter(s=>ids.includes(s.id))},searchContent:async()=>({songs:tracks,albums:[],artists:[],playlists:[],more:false}),userPlaylists:async()=>[],detail:async()=>({albumId:0,playlistId:2,name:'Live playlist',artist:'Owner',cover,tracks,trackCount:7})},
+  libraryApi:{clear(){},songs:async(ids:number[])=>{if(offline)throw Error();return tracks.filter(s=>ids.includes(s.id))},searchContent:async()=>({songs:tracks,albums:[],artists:[],playlists:[],more:false}),userPlaylists:async()=>[],playlistStats:async()=>({count:7,duration:1400000}),detail:async()=>({albumId:0,playlistId:2,name:'Live playlist',artist:'Owner',cover,tracks,trackCount:7})},
   fetchCollectionDetail:async(meta:any)=>{detailCalls++;if(meta.localPlaylistId)return store.data.collections.find(c=>c.id===meta.localPlaylistId)!.meta;return {...meta,name:'Live detail '+detailCalls,tracks}},
   fetchAlbumDetail:async(id:number)=>({albumId:id,name:'Album',artist:'Artist',cover,tracks,trackCount:7}),
   getPlaybackDeps:()=>({isDesktop:false,request(){},loadCollection:plugin.fetchCollectionDetail,playInside:async(meta:any,index:number)=>meta.localPlaylistId||meta.playlistId?engine.playPlaylist(meta,index):engine.playAlbum(meta,index)}),
   openPlayerView:async()=>view.expandPlayer(),returnFromPlayer:async()=>view.collapsePlayer(),enqueueAlbum:async(meta:any)=>engine.enqueuePlaylist(meta),
   saveLocalCollection:async(meta:any,f:string|null)=>store.update(d=>!!addSaved(d,meta,f)),addLibraryAlbum(){},
+  cloneLocalPlaylist(meta:any){new WallDestinationModal(leaf.app as any,t('localWall.selectFolder'),[{id:null,name:'Created playlists'}],async f=>{const full=meta.tracks?meta:await plugin.fetchCollectionDetail(meta);await store.update(d=>clonePlaylist(d,full,f));}).open()},
   addSongsToLocalPlaylist(songs:any[]){new WallDestinationModal(leaf.app as any,t('localWall.selectPlaylist'),store.data.collections.filter(c=>c.kind==='local').map(c=>({id:c.id,name:c.meta.name,disabled:songs.every(s=>c.meta.tracks?.some(x=>x.id===s.id))})),async id=>store.update(d=>addSongs(d,id!,songs))).open()},
  };
- const leaf:any=new WorkspaceLeaf({workspace});view=new MusicLibraryView(leaf,plugin);leaf.view=view;workspace.activeLeaf=leaf;mount.appendChild(view.contentEl);await view.onOpen();
+ const leaf:any=new WorkspaceLeaf({workspace});plugin.app=leaf.app;view=new MusicLibraryView(leaf,plugin);leaf.view=view;workspace.activeLeaf=leaf;mount.appendChild(view.contentEl);await view.onOpen();
  check([...view.contentEl.querySelectorAll<HTMLElement>('[data-wall-portal]')].map(e=>e.dataset.wallPortal).join(',')==='local,playlists,albums','Three portals in order');
  check(view.getIcon()==='library'&&view.getDisplayText()===t('localWall.title'),'Wall title and icon');
  check([...view.contentEl.querySelectorAll<HTMLElement>('.mw-cloud__sidebar > [data-section]')].map(e=>e.dataset.section).join(',')==='search,likes,created,collected,history,wall','Wall section follows history');
  const v=view as any,wall=v.localWall;
+ check(view.contentEl.querySelectorAll('[data-wall-folder], [data-nav-entry]').length===0,'All sidebar categories start collapsed');
  view.showWall('albums',folder);await tick();check(view.contentEl.querySelectorAll('[data-entry-id]').length===14,'Direct saved albums');check(view.contentEl.querySelectorAll('.mw-local__folder').length===1,'Folder and albums share grid');
+ const listing=view.contentEl.querySelector('.mw-local__contents');
+ (view.contentEl.querySelectorAll<HTMLButtonElement>('.mw-local-tree__section > .mw-local-tree__row > button:first-child')[2]).click();await tick();
+ check(listing===view.contentEl.querySelector('.mw-local__contents'),'Expanding sidebar preserves body DOM');
+ view.contentEl.querySelector<HTMLElement>(`[data-wall-folder="${folder}"]`)!.parentElement!.querySelector<HTMLButtonElement>('button')!.click();await tick();
+ check(listing===view.contentEl.querySelector('.mw-local__contents'),'Expanding nested sidebar preserves body DOM');
+ const cards=()=>[...view.contentEl.querySelectorAll<HTMLElement>('[data-entry-id]')];
+ let visible=cards();visible[0].querySelector('button')!.dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));visible[3].querySelector('button')!.dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}));
+ check(view.contentEl.querySelectorAll('.mw-local__card.is-selected').length===4&&!wall.location.entry,'Ctrl and Shift select cards without opening');
+ const originalOrder=visible.map(e=>e.dataset.entryId!),cardTransfer=new DataTransfer();visible[0].dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:cardTransfer}));visible[6].dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:cardTransfer}));await tick(70);
+ check(store.data.views[folderKey('albums',folder)].order.filter(id=>originalOrder.includes(id)).join(',')===[...originalOrder.slice(4,6),...originalOrder.slice(0,4),...originalOrder.slice(6)].join(','),'Batch drag preserves visible order');
+ const gridOrder=cards().map(e=>e.dataset.entryId),navOrder=[...view.contentEl.querySelectorAll<HTMLElement>('[data-nav-entry]')].map(e=>e.dataset.navEntry);
+ check(gridOrder.join(',')===navOrder.join(','),'Sidebar and main use identical order');
+ wall.cards.clear();
+ const navItems=()=>[...view.contentEl.querySelectorAll<HTMLElement>('[data-nav-entry]')];
+ const sidebarBefore=navItems().map(e=>e.dataset.navEntry!),navTransfer=new DataTransfer();
+ navItems()[0].dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:navTransfer}));
+ const navTarget=navItems()[4],navRect=navTarget.getBoundingClientRect();navTarget.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:navTransfer,clientY:navRect.top+Math.max(navRect.height-1,1)}));await tick(70);
+ const expectedSidebar=[...sidebarBefore.slice(1,5),sidebarBefore[0],...sidebarBefore.slice(5)];
+ check(cards().map(e=>e.dataset.entryId).join(',')===expectedSidebar.join(',')&&navItems().map(e=>e.dataset.navEntry).join(',')===expectedSidebar.join(','),'Sidebar drag sorts main and sidebar together');
+ const fixed=view.contentEl.querySelector<HTMLElement>('.mw-local__fixed')!,fixedTop=fixed.getBoundingClientRect().top;view.contentEl.querySelector<HTMLElement>('.mw-cloud__body')!.scrollTop=120;
+ check(fixed.getBoundingClientRect().top===fixedTop&&!!fixed.querySelector('.mw-local__search .mw-local__layouts'),'Fixed search row contains grid/list controls');
+ view.showWall('playlists');view.showWall('albums',nested);await tick();v.mouseBack();await tick();check(wall.location.kind==='playlists'&&wall.location.folder===null,'Mouse back restores previous page, not parent');
+ view.showWall('albums',folder);
  const before=detailCalls;view.showWall('albums',folder,albumEntry);await tick(60);check(detailCalls===before+1&&view.contentEl.textContent!.includes('Live detail'),'Fresh album details');
  view.showWall('albums',folder);view.showWall('albums',folder,albumEntry);await tick(60);check(detailCalls===before+2,'Reopening fetches again');
  await view.showCollection({albumId:77,name:'From player',artist:'Artist',cover});check(!!view.contentEl.querySelector('.mw-cloud__collection')&&!view.contentEl.querySelector('.mw-local__contents'),'Open online album from local wall');
  view.showWall('playlists',null);await tick();check(view.contentEl.querySelectorAll('.mw-disc').length===0,'Saved playlists use covers');
  view.showWall('local',null);await tick();check(view.contentEl.querySelectorAll('.mw-local__mosaic').length===1,'Local cover mosaic');check(!!view.contentEl.querySelector('.mw-local__placeholder svg'),'Empty playlist SVG');
  view.showWall('local',null,localEntry);await tick(80);check(view.contentEl.querySelectorAll('[data-local-song]').length===7,'Local song details');
- const first=view.contentEl.querySelector<HTMLInputElement>('.mw-local__song input')!;first.checked=true;first.dispatchEvent(new Event('change'));check(view.contentEl.textContent!.includes(t('localWall.selected',{count:1})),'Song selection');
+ const first=view.contentEl.querySelector<HTMLElement>('.mw-local__song .mw-cloud__name')!;first.dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));check(view.contentEl.textContent!.includes(t('localWall.selected',{count:1})),'Ctrl song selection');
+ const songRows=()=>[...view.contentEl.querySelectorAll<HTMLElement>('[data-local-song]')];songRows()[3].querySelector('.mw-cloud__name')!.dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}));
+ check(view.contentEl.querySelectorAll('.mw-local__song.is-selected').length===4,'Shift song range selection');
+ first.dispatchEvent(new MouseEvent('click',{bubbles:true}));
  plugin.addSongsToLocalPlaylist([tracks[0]]);await tick();const disabled=document.querySelector<HTMLButtonElement>('.mw-wall-dialog__choice')!;check(disabled.disabled,'Duplicate target disabled');document.querySelector('.modal-container')?.remove();
  const rows=[...view.contentEl.querySelectorAll<HTMLElement>('[data-local-song]')];const transfer=new DataTransfer();rows[0].dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer}));rows[2].dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:transfer}));await tick(80);check(store.data.collections.find(c=>c.id===localId)!.meta.tracks![1].id===tracks[0].id,'Song drag order persisted');
  offline=true;await wall.loadDetail();check(view.contentEl.querySelectorAll('[data-local-song]').length===7&&view.contentEl.textContent!.includes(t('localWall.offline')),'Offline songs preserved');offline=false;
+ const copyTransfer=new DataTransfer();songRows()[0].dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:copyTransfer}));
+ const localToggle=view.contentEl.querySelectorAll<HTMLButtonElement>('.mw-local-tree__section > .mw-local-tree__row > button:first-child')[0];localToggle.click();await tick();
+ const target=view.contentEl.querySelector<HTMLElement>(`[data-nav-entry="${emptyEntry}"]`)!;target.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:copyTransfer}));await tick(80);
+ check(store.data.collections.find(c=>c.id===emptyId)!.meta.tracks?.length===1&&store.data.collections.find(c=>c.id===localId)!.meta.tracks?.length===7,'Song drag copies to sidebar playlist without removing source');
+ target.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:copyTransfer}));await tick();check(store.data.collections.find(c=>c.id===emptyId)!.meta.tracks?.length===1,'Song drag deduplicates');
+ const dragHost=view.contentEl.createDiv();v.renderTracks(dragHost,[{id:999,name:'Search song',duration:1}]);const searchRow=dragHost.querySelector<HTMLElement>('[data-song-id]')!,searchTransfer=new DataTransfer();searchRow.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:searchTransfer}));
+ view.contentEl.querySelector<HTMLElement>(`[data-nav-entry="${emptyEntry}"]`)!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:searchTransfer}));await tick();
+ check(store.data.collections.find(c=>c.id===emptyId)!.meta.tracks?.some(s=>s.id===999),'Search song drag adds to local playlist');
+ const albumsTransfer=new DataTransfer();albumsTransfer.setData(COLLECTION_MIME,JSON.stringify({albumId:999,name:'Dragged album',artist:'Artist',cover,trackCount:7}));
+ view.contentEl.querySelector<HTMLElement>('[data-wall-kind="albums"]')!.parentElement!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:albumsTransfer}));await tick(80);
+ check(store.data.entries.some(e=>e.collection==='albums:999'&&e.folder===null),'External album drag saves into sidebar category');
+ const full=await plugin.fetchCollectionDetail({albumId:0,playlistId:99,name:'Clone me',artist:'Owner',cover,trackCount:7});plugin.cloneLocalPlaylist(full);await tick();document.querySelector<HTMLButtonElement>('.mw-wall-dialog__choice')!.click();await tick(80);
+ check(store.data.collections.some(c=>c.kind==='local'&&c.meta.name===full.name&&c.meta.tracks?.map(s=>s.id).join(',')===full.tracks.map((s:any)=>s.id).join(',')),'Playlist clone preserves name and complete ordered song list');
  view.showWall('albums',folder);await tick();const body=view.contentEl.querySelector<HTMLElement>('.mw-cloud__body')!;body.scrollTop=120;const scroll=body.scrollTop;
- await view.expandPlayer();await tick(80);check(!!view.contentEl.querySelector('.mw-embedded-player .mw-player__collapse svg'),'Embedded collapse SVG');check(tabCount===0,'Player creates no workspace leaf');
+ await view.expandPlayer();await tick(300);check(!!view.contentEl.querySelector('.mw-embedded-player .mw-player__collapse svg'),'Embedded collapse SVG');check(tabCount===0,'Player creates no workspace leaf');
+ const playerRect=view.contentEl.querySelector<HTMLElement>('.mw-embedded-player')!.getBoundingClientRect(), libraryRect=view.contentEl.getBoundingClientRect(), collapseRect=view.contentEl.querySelector<HTMLElement>('.mw-player__collapse')!.getBoundingClientRect();
+ check(Math.abs(playerRect.height-libraryRect.height)<2&&Math.abs(playerRect.top-libraryRect.top)<2,'Player covers full library height');
+ check(collapseRect.left<playerRect.left+65*(config.zoom||1)&&collapseRect.top<playerRect.top+60*(config.zoom||1),'Collapse button at top left');
  view.contentEl.querySelector<HTMLButtonElement>('.mw-player__collapse')!.click();await tick(80);check(!view.embeddedPlayer&&body.scrollTop===scroll,'Collapse restores browsing and scroll');
+ await view.expandPlayer();await tick();view.contentEl.dispatchEvent(new MouseEvent('mouseup',{button:3,bubbles:true,cancelable:true}));await tick(80);check(!view.embeddedPlayer,'Mouse side back collapses the embedded player');
  const search=view.contentEl.querySelector<HTMLInputElement>('.mw-local__search input')!;search.value='Nested';search.dispatchEvent(new Event('input'));check(view.contentEl.querySelectorAll('[data-entry-id]').length===1,'Folder search includes descendants');
  view.showWall('albums',folder);await store.update(d=>{d.appearance.layout='list'});check(view.contentEl.querySelectorAll('.mw-disc').length===0,'List uses covers only');
  await store.update(d=>{d.appearance.layout='grid';d.appearance.style='cassette'});check(view.contentEl.querySelectorAll('.mw-case').length>0,'Album cassette grid');
  view.showWall('playlists',null);check(view.contentEl.querySelectorAll('.mw-case').length===0,'Global album style does not change playlist covers');
+ let folderA='',folderB='';await store.update(d=>{folderA=addFolder(d,'playlists',null,'Folder A').id;folderB=addFolder(d,'playlists',null,'Folder B').id;});
+ wall.cards.clear();const folderCard=(id:string)=>view.contentEl.querySelector<HTMLElement>(`[data-folder-id="${id}"]`)!;
+ const folderTransfer=new DataTransfer();folderCard(folderB).dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:folderTransfer}));
+ const aRect=folderCard(folderA).getBoundingClientRect();folderCard(folderA).dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:folderTransfer,clientX:aRect.left+1,clientY:aRect.top+1}));await tick(70);
+ check([...view.contentEl.querySelectorAll<HTMLElement>('[data-folder-id]')].map(e=>e.dataset.folderId).join(',')===[folderB,folderA].join(','),'Folder edge drag changes sibling order');
+ wall.cards.clear();const moveTransfer=new DataTransfer();folderCard(folderB).dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:moveTransfer}));
+ const center=folderCard(folderA).getBoundingClientRect();folderCard(folderA).dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:moveTransfer,clientX:center.left+center.width/2,clientY:center.top+center.height/2}));await tick(70);
+ check(store.data.folders.find(f=>f.id===folderB)?.parent===folderA,'Folder center drag moves into destination');
+ const remotePlaylist=new DataTransfer();remotePlaylist.setData(COLLECTION_MIME,JSON.stringify({albumId:0,playlistId:501,name:'Dragged playlist',artist:'Owner',cover}));folderCard(folderA).dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:remotePlaylist}));await tick(70);
+ check(store.data.entries.some(e=>e.collection==='playlists:501'&&e.folder===folderA),'Remote playlist drop saves into a folder');
  if(config.page==='local')view.showWall('local',null,localEntry);else if(config.page==='albums')view.showWall('albums',folder);else if(config.page==='player'){await engine.playPlaylist({...store.data.collections.find(c=>c.id===localId)!.meta,wallEntryId:localEntry});await view.expandPlayer();}else view.showWall();
- await tick(100);
+ await tick(320);
  const root=view.contentEl;const bodyRect=root.querySelector('.mw-cloud__body')!.getBoundingClientRect();const roots=root.getBoundingClientRect();
  check(root.scrollWidth<=root.clientWidth+1,'No root horizontal overflow');check(root.querySelector<HTMLElement>('.mw-cloud__body')!.scrollWidth<=root.querySelector<HTMLElement>('.mw-cloud__body')!.clientWidth+1,'No body horizontal overflow');
  check(!/localWall\.|labels\.sort\.|\?\?\?/.test(root.textContent||''),'All labels resolved');

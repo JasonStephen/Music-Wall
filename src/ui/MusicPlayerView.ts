@@ -1,15 +1,10 @@
 import { PRESET_CHOICES, presetForeground, presetIcon, resolvePlayerPreset, type PresetGroup } from "./playerPresets";
 import { bindMouseBack } from "./mouseBack";
-// 独立音乐播放器页面。
-// 页面本身不落盘任何播放数据：只保留「最近一次拖入的专辑」为运行时状态。
-// 结构：当前播放区（SMTC 或最近一次拖入的专辑）+ 曲目列表（可点单曲播放）。
-// 唱片可从任意音乐墙拖入本页（复用 WALL_DRAG_MIME），或经墙上菜单「加入播放器」。
 
-import { ItemView, Menu, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { Component, Menu, Notice, WorkspaceLeaf, setIcon, type App } from "obsidian";
 import type MusicWallPlugin from "../main";
 import {
   PLAYER_VIEW_TYPE,
-  WALL_DRAG_MIME,
   clampZoom,
   type AlbumMeta,
   type DiscStyle,
@@ -38,6 +33,7 @@ import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 import { PickerModal } from "./smallModals";
 import { PlayerLyrics } from "./PlayerLyrics";
 import { svgAction } from "./svgAction";
+import { COLLECTION_MIME, readCollection } from "./libraryDrag";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -61,7 +57,9 @@ function fmtClock(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export class MusicPlayerView extends ItemView {
+export class MusicPlayerView extends Component {
+  readonly app: App;
+  readonly contentEl: HTMLElement;
   private plugin: MusicWallPlugin;
   /** 最近一次拖入 / 加入的专辑（运行时，不落盘） */
   private current: { meta: AlbumMeta; srcPath: string } | null = null;
@@ -107,9 +105,10 @@ export class MusicPlayerView extends ItemView {
   /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
   private paneObserver: ResizeObserver | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: MusicWallPlugin, host?: HTMLElement, private active?: () => boolean) {
-    super(leaf);
-    if (host) Object.defineProperty(this, "contentEl", { value: host, configurable: true });
+  constructor(private leaf: WorkspaceLeaf, plugin: MusicWallPlugin, host?: HTMLElement, private active?: () => boolean) {
+    super();
+    this.app = plugin.app;
+    this.contentEl = host || document.createElement("div");
     this.plugin = plugin;
     this.now = this.currentNow();
     this.bg = plugin.settings.playerBackground ?? "dark";
@@ -159,7 +158,7 @@ export class MusicPlayerView extends ItemView {
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
       if ((e.code === "Space" || e.key === " ") && !e.defaultPrevented && !e.isComposing
         && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
-        && (this.active ? this.active() : this.app.workspace.getActiveViewOfType(MusicPlayerView) === this) && this.now.canToggle) {
+        && (this.active ? this.active() : this.app.workspace.activeLeaf === this.leaf) && this.now.canToggle) {
         const target = e.target instanceof Element ? e.target : document.activeElement;
         const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
         if (target && !target.closest(controls)
@@ -170,7 +169,7 @@ export class MusicPlayerView extends ItemView {
       }
       if (this.plugin.settings.numericSeekEnabled && /^[0-9]$/.test(e.key) && !e.defaultPrevented && !e.isComposing
         && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat
-        && (this.active ? this.active() : this.app.workspace.getActiveViewOfType(MusicPlayerView) === this) && this.now.seekable && this.now.durationMs > 0) {
+        && (this.active ? this.active() : this.app.workspace.activeLeaf === this.leaf) && this.now.seekable && this.now.durationMs > 0) {
         const target = e.target instanceof Element ? e.target : document.activeElement;
         const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
         if (!target || !target.closest(controls)) {
@@ -216,6 +215,7 @@ export class MusicPlayerView extends ItemView {
     this.stopHostInset = watchHostInset(this.contentEl);
   }
 
+  async back(): Promise<void> { await this.mouseBack(); }
   private async mouseBack(): Promise<void> {
     if (this.popover) { this.togglePopover(null); return; }
     if (this.playlistOpen) { this.togglePlaylist(false); return; }
@@ -274,32 +274,17 @@ export class MusicPlayerView extends ItemView {
   // ---- 拖拽接收 ----
 
   private onDragOver(e: DragEvent): void {
-    if (!e.dataTransfer?.types.includes(WALL_DRAG_MIME)) return;
+    if (!e.dataTransfer?.types.includes(COLLECTION_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     this.contentEl.addClass("is-dragover");
   }
 
   private async onDrop(e: DragEvent): Promise<void> {
-    const raw = e.dataTransfer?.getData(WALL_DRAG_MIME);
     this.contentEl.removeClass("is-dragover");
-    if (!raw) return;
+    const meta = readCollection(e); if (!meta) return;
     e.preventDefault();
-    let payload: { srcPath?: string; albumId?: number };
-    try {
-      payload = JSON.parse(raw) as { srcPath?: string; albumId?: number };
-    } catch {
-      return;
-    }
-    const srcPath = payload.srcPath ?? "";
-    const albumId = payload.albumId;
-    if (!srcPath || typeof albumId !== "number") return;
-    const item = await this.plugin.resolveWallItem(srcPath, albumId);
-    if (!item) {
-      new Notice(t("player.noSource"));
-      return;
-    }
-    this.playInPlayer(item.meta, srcPath);
+    this.playInPlayer(await this.plugin.fetchCollectionDetail(meta), "");
   }
 
   // ---- 匹配与进度 ----

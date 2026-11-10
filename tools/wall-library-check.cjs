@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { buildSync } = require('esbuild');
 const result = buildSync({ entryPoints: ['src/core/wallLibrary.ts'], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['obsidian'] });
 const m = { exports: {} }; new Function('module','exports','require',result.outputFiles[0].text)(m,m.exports,require);
-const { emptyLibrary, parseLibrary, addFolder, addSaved, createPlaylist, addSongs, moveFolder, moveEntries, removeEntries, removeFolder, migrateWall, folderPath, WallLibraryStore } = m.exports;
+const { emptyLibrary, parseLibrary, addFolder, addSaved, createPlaylist, clonePlaylist, addSongs, moveFolder, moveEntries, removeEntries, removeFolder, migrateWall, folderPath, WallLibraryStore } = m.exports;
 const meta = (id=5) => ({ albumId:id,name:'Album '+id,artist:'Artist',cover:'',trackCount:1,tracks:[{id:id*10,name:'Song',duration:1000}] });
 (async () => {
  const d=emptyLibrary(), a=addFolder(d,'albums',null,'A'), b=addFolder(d,'albums',a.id,'B'), p=addFolder(d,'playlists',null,'A');
@@ -14,6 +14,11 @@ const meta = (id=5) => ({ albumId:id,name:'Album '+id,artist:'Artist',cover:'',t
  const local=createPlaylist(d,null,'My playlist'); assert.equal(addSongs(d,local.collection,[{id:8,name:'One',duration:100},{id:8,name:'One',duration:100},{id:9,name:'Two',duration:100}]),2);
  assert.equal(addSongs(d,local.collection,[{id:8,name:'One',duration:100}]),0); assert.equal(addSaved(d,d.collections.find(c=>c.id===local.collection).meta,null),null);
  assert.equal(parseLibrary(JSON.stringify(d)).entries.length,2);
+ const clones=emptyLibrary(),source={...meta(),albumId:0,playlistId:88,description:'Notes',tracks:[{id:9,name:'Second',duration:20},{id:8,name:'First',duration:10}]};
+ const cloned=clonePlaylist(clones,source,null),copy=clones.collections.find(c=>c.id===cloned.collection).meta;
+ assert.equal(copy.name,source.name);assert.equal(copy.description,source.description);assert.deepEqual(copy.tracks.map(s=>s.id),[9,8]);assert.ok(copy.localPlaylistId);assert.ok(!copy.playlistId);
+ copy.tracks[0].name='Edited';assert.equal(source.tracks[0].name,'Second');
+ const emptyClone=clonePlaylist(clones,{...source,tracks:[]},null);assert.equal(clones.collections.find(c=>c.id===emptyClone.collection).meta.tracks.length,0);
  const bad=JSON.parse(JSON.stringify(d));bad.entries.find(e=>e.id===local.id).rating=3;assert.throws(()=>parseLibrary(JSON.stringify(bad)));
  const migrated=emptyLibrary(); const wall={items:[{albumId:1,meta:meta(1),groupId:'g',rating:5,metaEdited:true,addedAt:'first'},{albumId:2,meta:meta(2),addedAt:'second'}],groups:[{id:'g',name:'Group',collapsed:true}],order:[2,1],view:{sortMode:'manual',sortAsc:true}};
  assert.equal(migrateWall(migrated,'MusicWall/Genre/Old.mw',wall),2);assert.equal(migrateWall(migrated,'MusicWall/Genre/Old.mw',wall),0);
