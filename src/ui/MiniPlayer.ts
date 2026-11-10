@@ -256,23 +256,27 @@ export class MiniPlayer {
     const icon = player.volume === 0 ? "volume-x" : player.volume < .5 ? "volume-1" : "volume-2";
     if (icon !== this.volumeIcon) { this.volumeIcon = icon; setIcon(this.volumeButton, icon); }
     this.qualityText.setText(player.quality ? qualityLabel(player.quality) : "…");
-    const collection = this.queueControls.collection;
+    const showAlbumTracks = this.queueControls.view === "album";
+    this.playlistBody.hidden = !showAlbumTracks;
+    const collection = showAlbumTracks ? this.queueControls.collection : null;
     const albumKey = `${this.queueControls.view}|${collection?.albumId}|${collection?.playlistId}|${collection?.name}|${collection?.tracks?.length}|${player.revision}`;
     if (this.albumKey !== albumKey || this.albumTracks !== collection?.tracks) {
       this.albumTracks = collection?.tracks;
       this.albumKey = albumKey; this.playlistBody.empty(); this.trackRows = [];
-      this.playlistBody.createDiv({ cls: "mw-mini__playlist-title", text: collection?.name || t("library.empty") });
-      const tracks = this.playlistBody.createDiv({ cls: "mw-mini__tracks" });
-      const pager = new SongPager(tracks, (page, track: AlbumTrackSnapshot, index) => {
-        const row = page.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
-        row.dataset.trackIndex = String(index);
-        row.toggleClass("is-current", this.queueControls.isCurrent(index));
-        row.createSpan({ text: String(index + 1).padStart(2, "0") });
-        row.createSpan({ cls: "mw-mini__track-name", text: track.name });
-        row.createSpan({ text: clock(track.duration) });
-        row.addEventListener("click", () => void this.selectTrack(index)); this.trackRows.push(row);
-      }, () => { this.trackRows = []; });
-      pager.setItems(collection?.tracks || []);
+      if (showAlbumTracks) {
+        this.playlistBody.createDiv({ cls: "mw-mini__playlist-title", text: collection?.name || t("library.empty") });
+        const tracks = this.playlistBody.createDiv({ cls: "mw-mini__tracks" });
+        const pager = new SongPager(tracks, (page, track: AlbumTrackSnapshot, index) => {
+          const row = page.createEl("button", { cls: "mw-mini__track", attr: { "aria-label": t("internal.playTrack", { name: track.name }) } });
+          row.dataset.trackIndex = String(index);
+          row.toggleClass("is-current", this.queueControls.isCurrent(index));
+          row.createSpan({ text: String(index + 1).padStart(2, "0") });
+          row.createSpan({ cls: "mw-mini__track-name", text: track.name });
+          row.createSpan({ text: clock(track.duration) });
+          row.addEventListener("click", () => void this.selectTrack(index)); this.trackRows.push(row);
+        }, () => { this.trackRows = []; });
+        pager.setItems(collection?.tracks || []);
+      }
     }
     this.trackRows.forEach(row => { const current = this.queueControls.isCurrent(Number(row.dataset.trackIndex)); row.toggleClass("is-current", current); row.setAttr("aria-current", String(current)); });
     const qualityKey = `${player.availableQualities.join()}|${player.quality}|${player.loading}`;

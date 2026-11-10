@@ -847,7 +847,8 @@ export class MusicPlayerView extends Component {
     setIcon(close, "chevron-down");
     close.title = t("player.closePlaylist");
     close.addEventListener("click", () => this.togglePlaylist(false));
-    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateHighlights(); }, () => { this.plugin.settings.playbackOrder = this.plugin.internalPlayer.order; void this.plugin.saveData(this.plugin.settings); });
+    if (this.plugin.internalPlayer) this.queueControls = new QueueControls(panel.createDiv(), this.plugin.internalPlayer, () => this.plugin.ensureNeteaseLogin(), () => { this.updateTrackList(); this.updateHighlights(); }, () => { this.plugin.settings.playbackOrder = this.plugin.internalPlayer.order; void this.plugin.saveData(this.plugin.settings); });
+    this.el.tracks = panel.createDiv({ cls: "mw-np__tracks" });
   }
 
   /** 曲目列表重建；仅内置播放支持点击切歌，客户端歌单顺序不受影响。 */
@@ -856,6 +857,10 @@ export class MusicPlayerView extends Component {
     if (!host) return;
     host.empty();
     this.trackRows = [];
+    const songsInQueue = this.plugin.settings.playbackMode === "internal" && this.queueControls?.view === "playlist";
+    host.toggleClass("is-hidden", songsInQueue);
+    this.el.tracksTitle?.toggleClass("is-hidden", songsInQueue);
+    if (songsInQueue) return;
     const album = this.plugin.settings.playbackMode === "internal" && this.queueControls ? this.queueControls.collection : this.displayAlbum();
     const tracks = album?.tracks ?? [];
     const internal = this.plugin.settings.playbackMode === "internal";
