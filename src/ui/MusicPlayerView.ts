@@ -37,6 +37,7 @@ import { CoverBackdrop } from "./CoverBackdrop";
 import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 import { PickerModal } from "./smallModals";
 import { PlayerLyrics } from "./PlayerLyrics";
+import { svgAction } from "./svgAction";
 
 /** 面板最小宽度：低于则上下堆叠 */
 const NARROW_WIDTH = 720;
@@ -106,8 +107,9 @@ export class MusicPlayerView extends ItemView {
   /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
   private paneObserver: ResizeObserver | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: MusicWallPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: MusicWallPlugin, host?: HTMLElement, private active?: () => boolean) {
     super(leaf);
+    if (host) Object.defineProperty(this, "contentEl", { value: host, configurable: true });
     this.plugin = plugin;
     this.now = this.currentNow();
     this.bg = plugin.settings.playerBackground ?? "dark";
@@ -157,7 +159,7 @@ export class MusicPlayerView extends ItemView {
     this.registerDomEvent(document, "keydown", (e: KeyboardEvent) => {
       if ((e.code === "Space" || e.key === " ") && !e.defaultPrevented && !e.isComposing
         && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
-        && this.app.workspace.getActiveViewOfType(MusicPlayerView) === this && this.now.canToggle) {
+        && (this.active ? this.active() : this.app.workspace.getActiveViewOfType(MusicPlayerView) === this) && this.now.canToggle) {
         const target = e.target instanceof Element ? e.target : document.activeElement;
         const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
         if (target && !target.closest(controls)
@@ -168,7 +170,7 @@ export class MusicPlayerView extends ItemView {
       }
       if (this.plugin.settings.numericSeekEnabled && /^[0-9]$/.test(e.key) && !e.defaultPrevented && !e.isComposing
         && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat
-        && this.app.workspace.getActiveViewOfType(MusicPlayerView) === this && this.now.seekable && this.now.durationMs > 0) {
+        && (this.active ? this.active() : this.app.workspace.getActiveViewOfType(MusicPlayerView) === this) && this.now.seekable && this.now.durationMs > 0) {
         const target = e.target instanceof Element ? e.target : document.activeElement;
         const controls = "input, textarea, select, button, a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='button'], [role='slider'], .modal-container, .prompt";
         if (!target || !target.closest(controls)) {
@@ -432,6 +434,7 @@ export class MusicPlayerView extends ItemView {
   /** 顶栏：只有标题 + 右上角一个样式图标（点开滑出「样式 / 背景」抽屉） */
   private buildBar(root: HTMLElement): HTMLElement {
     const bar = root.createDiv({ cls: "mw-player__bar" });
+    if (this.active) svgAction(bar, "chevron-down", t("localWall.collapsePlayer"), () => this.plugin.returnFromPlayer()).addClass("mw-player__collapse");
     this.el.source = bar.createEl("button", { cls: "clickable-icon mw-player__source", attr: { type: "button" } });
     this.el.source.addEventListener("click", () => void this.openSource());
     const tools = bar.createDiv({ cls: "mw-player-presets", attr: { role: "group", "aria-label": t("playerPresets.title") } });
@@ -1218,6 +1221,7 @@ export class MusicPlayerView extends ItemView {
   private async openSource(): Promise<void> {
     const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
     if (!meta) return;
+    if (meta.wallEntryId) { await this.plugin.revealLocalEntry(meta.wallEntryId); return; }
     if (meta.playbackWallPath) {
       await this.plugin.revealWallAlbum(meta.playbackWallPath, meta.playlistId ? -meta.playlistId : meta.albumId);
     } else await this.plugin.openLibraryCollection(meta);

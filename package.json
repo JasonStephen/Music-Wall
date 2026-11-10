@@ -1,7 +1,7 @@
 {
   "name": "music-wall",
-  "version": "1.3.4-exp-1",
-  "description": "Obsidian 音乐墙插件（网易云专辑 · 唱片墙可视化）",
+  "version": "1.4.0-exp-1",
+  "description": "Obsidian 音乐墙：整理专辑与歌单，创建本地歌单，在音乐库中播放。",
   "main": "main.js",
   "type": "module",
   "scripts": {

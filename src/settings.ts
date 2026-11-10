@@ -44,7 +44,7 @@ export class MusicWallSettingTab extends PluginSettingTab {
     containerEl.addClass("mw-settings");
     const tabs = containerEl.createDiv({ cls: "mw-settings__tabs", attr: { role: "tablist", "aria-label": t("settingsCategories.title") } });
     const panel = containerEl.createDiv({ cls: "mw-settings__panel", attr: { role: "tabpanel", id: "mw-settings-panel", "aria-labelledby": `mw-settings-tab-${this.activeTab}` } });
-    const keys = ["general", "wall", "player", "cache", "account", "sync"] as const;
+    const keys = ["general", "wall", "player", "cache", "account"] as const;
     for (const key of keys) {
       const selected = key === this.activeTab;
       const button = tabs.createEl("button", { cls: "mw-settings__tab", attr: { type: "button", role: "tab", id: `mw-settings-tab-${key}`, "aria-controls": "mw-settings-panel", "aria-selected": String(selected), tabindex: selected ? "0" : "-1" } });
@@ -134,14 +134,6 @@ export class MusicWallSettingTab extends PluginSettingTab {
           );
         });
 
-      new Setting(containerEl).setName(t("wallAppearance.title")).addDropdown(dropdown => {
-        for (const mode of ["system", "light", "dark"] as const) dropdown.addOption(mode, t(`libraryAppearance.${mode}`));
-        dropdown.setValue(this.plugin.settings.wallAppearance || "system").onChange(async mode => {
-          this.plugin.settings.wallAppearance = mode as "system" | "light" | "dark";
-          this.plugin.refreshWallAppearance(); await this.plugin.saveData(this.plugin.settings);
-        });
-      });
-
       new Setting(containerEl)
         .setName(t("settings.zoom.name"))
         .setDesc(t("settings.zoom.desc"))
@@ -163,33 +155,17 @@ export class MusicWallSettingTab extends PluginSettingTab {
       containerEl.createEl("h3", { text: t("artistAlbumFilters.title") });
       renderArtistAlbumSettings(containerEl, this.plugin);
       new Setting(containerEl)
-        .setName(t("settings.defaultStyle.name"))
+        .setName(t("localWall.style"))
         .addDropdown((d) => {
           for (const v of ALL_STYLES) {
             d.addOption(v, styleLabel(v));
           }
-          d.setValue(this.plugin.settings.defaultStyle).onChange(async (v) => {
+          d.setValue(this.plugin.wallLibrary.data.appearance.style).onChange(async (v) => {
             this.plugin.settings.defaultStyle = v as DiscStyle;
+            await this.plugin.wallLibrary.update(d => { d.appearance.style = v as DiscStyle; });
             await this.plugin.saveSettings();
           });
         });
-
-      const CAPTION_KEYS: ShelfCaption[] = ["hidden", "pull", "always"];
-      new Setting(containerEl)
-        .setName(t("settings.shelfCaption.name"))
-        .setDesc(t("settings.shelfCaption.desc"))
-        .addDropdown((d) => {
-          for (const v of CAPTION_KEYS) {
-            d.addOption(v, shelfCaptionLabel(v));
-          }
-          d.setValue(this.plugin.settings.shelfCaption).onChange(async (v) => {
-            this.plugin.settings.shelfCaption = v as ShelfCaption;
-            await this.plugin.saveSettings();
-            this.plugin.refreshOpenViews();
-          });
-        });
-
-
 
     }
     if (this.activeTab === "player") {

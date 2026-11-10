@@ -32,10 +32,13 @@ export interface AlbumTrackSnapshot {
   albumId?: number;
   albumName?: string;
   cover?: string;
+  unavailable?: boolean;
 }
 
 /** 专辑元数据快照 */
 export interface AlbumMeta {
+  localPlaylistId?: string;
+  wallEntryId?: string;
   albumId: number;
   playlistId?: number;
   /** Runtime playback origin; never written back to the source wall. */

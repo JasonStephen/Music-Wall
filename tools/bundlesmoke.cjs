@@ -83,6 +83,8 @@ Object.defineProperty(global, "navigator", {
 
 // ---- obsidian mock ----
 class FakeComponent {
+  load() {}
+  unload() {}
   registerEvent() {}
   register() {}
   registerDomEvent() {}
@@ -173,7 +175,7 @@ const fakeWorkspace = {
   revealLeaf() {},
 };
 const fakeVault = {
-  adapter: { basePath: "/tmp/fake-vault" },
+  adapter: { basePath: "/tmp/fake-vault", exists: async () => false },
   on() { return {}; },
   getFiles: () => [],
   getAbstractFileByPath: () => null,
@@ -260,35 +262,25 @@ const origLoad = Module._load;
   fakeWorkspace.getLeaf = () => { playerLeaves++; return openedLeaf; };
   fakeWorkspace.revealLeaf = () => { playerReveals++; };
   await Promise.all([plugin.openPlayerView(), plugin.openPlayerView()]);
-  if (playerLeaves !== 1 || openedType !== "music-wall-player") throw new Error("播放器首次打开或并发去重失败");
-  fakeWorkspace.getLeavesOfType = (type) => type === "music-wall-player" ? [{ view: { leaf: openedLeaf } }] : [];
+  if (playerLeaves !== 1 || openedType !== "music-wall-library") throw new Error("播放器首次打开或并发去重失败");
+  fakeWorkspace.getLeavesOfType = (type) => type === "music-wall-library" ? [{ view: { leaf: openedLeaf } }] : [];
   await plugin.openPlayerView();
   if (playerLeaves !== 1 || playerReveals !== 2) throw new Error("播放器重复打开未聚焦原标签页");
   fakeWorkspace.getLeaf = originalGetLeaf; fakeWorkspace.getLeavesOfType = originalGetLeaves; fakeWorkspace.revealLeaf = originalReveal;
   console.log("播放器无文件打开、并发去重与已有标签页聚焦：通过");
-  // Exercise the real cross-tab source tracking, including closed/reused sources.
-  const libraryLeaf = { view: null }, library = FakePlugin.views["music-wall-library"](libraryLeaf);
-  libraryLeaf.view = library; let restored = 0, revealed = null;
-  library.captureReturnState = () => async target => { if (target !== library) throw Error("Wrong recreated library"); restored++; };
-  fakeWorkspace.getLeavesOfType = type => type === "music-wall-library" ? [libraryLeaf] : type === "music-wall-player" ? [openedLeaf] : [];
-  fakeWorkspace.revealLeaf = leaf => { revealed = leaf; };
-  await plugin.openPlayerView(libraryLeaf); await plugin.returnFromPlayer();
-  if (revealed !== libraryLeaf || restored) throw Error("Live source tab was not revealed intact");
+  const libraryLeaf = { app: fakeApp, view: null }, library = FakePlugin.views["music-wall-library"](libraryLeaf);
+  libraryLeaf.view = library; await library.onOpen();
+  fakeWorkspace.getLeavesOfType = type => type === "music-wall-library" ? [libraryLeaf] : [];
   await plugin.openPlayerView(libraryLeaf);
-  let closed = true;
-  fakeWorkspace.getLeavesOfType = type => type === "music-wall-library" && !closed ? [libraryLeaf] : type === "music-wall-player" ? [openedLeaf] : [];
-  const originalOpenLibrary = plugin.openLibraryView;
-  plugin.openLibraryView = async () => { closed = false; };
+  if (!library.embeddedPlayer) throw Error("Player was not embedded");
   await plugin.returnFromPlayer();
-  if (restored !== 1) throw Error("Closed source tab was not recreated from its snapshot");
-  await plugin.openPlayerView(libraryLeaf); await plugin.openPlayerView({view:{}}); revealed = null; await plugin.returnFromPlayer();
-  if (revealed) throw Error("Independent player entry retained stale source");
-  plugin.openLibraryView = originalOpenLibrary;
+  if (library.embeddedPlayer) throw Error("Player did not collapse");
+  await library.onClose();
   fakeWorkspace.getLeavesOfType = originalGetLeaves; fakeWorkspace.revealLeaf = originalReveal;
-  console.log("播放器跨标签返回：保留原页、关闭后恢复、独立入口清除旧来源：通过");
+  console.log("Embedded player open and collapse passed");
   const cmds = FakePlugin.commands.map((c) => c.id);
   console.log("注册命令:", cmds.join(", "));
-  if (cmds.length < 6) throw new Error("命令注册数量不足");
+  if (!cmds.includes("open-library") || !cmds.includes("open-player") || cmds.some(id => /create-wall|export-wall|import-wall|git/.test(id))) throw new Error("Unexpected commands");
   if (!FakePlugin.views["music-wall-view"]) throw new Error("视图未注册");
   if (!FakePlugin.views["music-wall-player"]) throw new Error("播放器视图未注册");
   const extList = FakePlugin.extensions
@@ -381,8 +373,9 @@ const origLoad = Module._load;
   console.log("升降序与排序类型解耦：通过");
 
   // 播放器视图：空态渲染 + 拖入一张（与墙上拖拽同路径）+ 点单曲
-  const player = FakePlugin.views["music-wall-player"](leaf);
-  await player.onOpen();
+  const playerLibrary = FakePlugin.views["music-wall-library"](leaf);
+  await playerLibrary.onOpen(); await playerLibrary.expandPlayer();
+  const player = playerLibrary.embeddedPlayer;
   player.playInPlayer(
     {
       albumId: 7,
@@ -429,8 +422,9 @@ const origLoad = Module._load;
     async prev() { return true; },
     async seek() { return true; },
   };
-  const fresh = FakePlugin.views["music-wall-player"](leaf);
-  await fresh.onOpen();
+  const freshLibrary = FakePlugin.views["music-wall-library"](leaf);
+  await freshLibrary.onOpen(); await freshLibrary.expandPlayer();
+  const fresh = freshLibrary.embeddedPlayer;
   const snapped = { active: fresh.now?.active, status: fresh.now?.status, title: fresh.now?.title };
   await fresh.onClose();
   plugin.nowPlaying = realProvider;

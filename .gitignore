@@ -43,6 +43,7 @@ docs/
 tools/player-ui-e2e.bundle.js
 tools/library-ui-e2e.bundle.js
 tools/settings-e2e.bundle.js
+tools/unified-library-ui.bundle.js
 tools/git-sync-ui-e2e.bundle.js
 
 # Codex conversation attachments

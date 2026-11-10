@@ -1,6 +1,8 @@
+import { localWallCN } from "./localWall";
 // 简体中文（基准/回退语言：结构变更以此为源，zh-TW 与 en 用 typeof 约束对齐）。
 
 export const zhCN = {
+  localWall: localWallCN,
   albumRelease: "{month}发行",
   history: {"songs": "历史播放单曲", "albums": "历史专辑", "playlists": "历史歌单", "search": "搜索历史", "remove": "删除这条历史记录", "removeSearch": "删除搜索记录：{name}", "clearKind": "清空当前分类", "clearConfirm": "是否清空当前分类的历史记录？删除后无法恢复。"},
   artistAlbumFilters: {title: "艺术家专辑列表设置", singles: "按曲目数量过滤", singlesDesc: "隐藏曲目数量不超过下方数值的专辑。", limit: "曲目数量上限", limitDesc: "过滤此数量及以下的专辑，默认 1。", remixes: "关键词过滤", remixesDesc: "标题包含任一关键词即隐藏；分号分隔，不区分大小写。", keywords: "过滤关键词", reset: "重置默认", apply: "应用", invalidLimit: "请输入大于或等于 0 的整数。"},

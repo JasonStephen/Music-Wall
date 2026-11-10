@@ -1,0 +1,24 @@
+export const localWallCN = {
+  title: "音乐墙", local: "创建的歌单", playlists: "收藏的歌单", albums: "收藏的专辑", folder: "文件夹",
+  newFolder: "新建文件夹", newPlaylist: "创建歌单", name: "名称", description: "简介", edit: "编辑", rename: "重命名", move: "移动到文件夹", remove: "移除", delete: "删除",
+  deleteFolder: "删除此文件夹及其中的全部收藏？", deletePlaylist: "删除此歌单及其曲目列表？", removeConfirm: "移除选中的收藏？",
+  add: "添加", addSongs: "添加到创建的歌单", addedSongs: "已添加 {count} 首歌曲", duplicate: "已在此文件夹中", songExists: "已包含此歌曲", emptyPlaylists: "请先创建一个歌单",
+  selectFolder: "选择文件夹", selectPlaylist: "选择歌单", all: "全部", search: "搜索当前文件夹及子文件夹", searchAll: "搜索整个分类", includeChildren: "包含子文件夹",
+  manual: "调整布局", manualDone: "完成调整", sort: "排序", ascending: "升序", descending: "降序", grid: "网格", list: "列表", style: "专辑样式",
+  links: "粘贴链接添加", linksHint: "每行输入一个网易云链接", linksResult: "新增 {added} 个，已存在 {skipped} 个，失败 {failed} 个", searchAdd: "搜索添加",
+  empty: "暂无收藏", emptySongs: "歌单中还没有歌曲", emptyFolder: "此文件夹为空", loading: "正在加载…", failed: "加载失败，请重试", offline: "部分歌曲未能更新，已保留原有曲目", unavailable: "暂不可用",
+  selectAll: "全选", selected: "已选 {count} 首", clearSelection: "取消选择", removeSongs: "移除所选歌曲", removeSongsConfirm: "从歌单中移除所选歌曲？", trackSort: "歌曲排序", songName: "歌曲名称", artist: "艺术家", album: "专辑", addedAt: "添加顺序", duration: "时长", rating: "评分", rate: "评分",
+  collapsePlayer: "收起播放器", back: "返回", root: "根目录", save: "保存", noResults: "未找到匹配内容", folderCount: "{count} 项", saved: "已添加到音乐墙", editLayout: "拖动可调整顺序或移入文件夹", updateFailed: "无法保存，请重试", folderConflict: "名称已存在或目标文件夹不可用", dataFailed: "无法读取音乐墙收藏，请检查文件后重新打开", searchPlaceholder: "搜索名称、艺术家或简介", onlineCreated: "网易云创建的歌单", onlineCollected: "网易云收藏的歌单",
+};
+export const localWallTW: typeof localWallCN = {
+  title: "音樂牆", local: "建立的歌單", playlists: "收藏的歌單", albums: "收藏的專輯", folder: "資料夾",
+  newFolder: "新增資料夾", newPlaylist: "建立歌單", name: "名稱", description: "簡介", edit: "編輯", rename: "重新命名", move: "移至資料夾", remove: "移除", delete: "刪除",
+  deleteFolder: "刪除此資料夾及其中的全部收藏？", deletePlaylist: "刪除此歌單及其曲目清單？", removeConfirm: "移除選取的收藏？",
+  add: "新增", addSongs: "加入建立的歌單", addedSongs: "已加入 {count} 首歌曲", duplicate: "已在此資料夾中", songExists: "已包含此歌曲", emptyPlaylists: "請先建立一個歌單",
+  selectFolder: "選擇資料夾", selectPlaylist: "選擇歌單", all: "全部", search: "搜尋目前資料夾及子資料夾", searchAll: "搜尋整個分類", includeChildren: "包含子資料夾",
+  manual: "調整排列", manualDone: "完成調整", sort: "排序", ascending: "遞增", descending: "遞減", grid: "網格", list: "清單", style: "專輯樣式",
+  links: "貼上連結新增", linksHint: "每行輸入一個網易雲連結", linksResult: "新增 {added} 個，已存在 {skipped} 個，失敗 {failed} 個", searchAdd: "搜尋新增",
+  empty: "暫無收藏", emptySongs: "歌單中還沒有歌曲", emptyFolder: "此資料夾為空", loading: "正在載入…", failed: "載入失敗，請重試", offline: "部分歌曲未能更新，已保留原有曲目", unavailable: "暫不可用",
+  selectAll: "全選", selected: "已選 {count} 首", clearSelection: "取消選取", removeSongs: "移除所選歌曲", removeSongsConfirm: "從歌單中移除所選歌曲？", trackSort: "歌曲排序", songName: "歌曲名稱", artist: "藝術家", album: "專輯", addedAt: "新增順序", duration: "時長", rating: "評分", rate: "評分",
+  collapsePlayer: "收起播放器", back: "返回", root: "根目錄", save: "儲存", noResults: "未找到符合內容", folderCount: "{count} 項", saved: "已加入音樂牆", editLayout: "拖曳可調整順序或移入資料夾", updateFailed: "無法儲存，請重試", folderConflict: "名稱已存在或目標資料夾無法使用", dataFailed: "無法讀取音樂牆收藏，請檢查檔案後重新開啟", searchPlaceholder: "搜尋名稱、藝術家或簡介", onlineCreated: "網易雲建立的歌單", onlineCollected: "網易雲收藏的歌單",
+};

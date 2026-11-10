@@ -20,8 +20,11 @@ import { svgAction } from "./svgAction";
 import { searchHistory } from "./searchHistory";
 import { ConfirmModal } from "./ConfirmModal";
 import type { HistoryKind, HistoryEntry } from "../core/history";
+import { LocalMusicWall } from "./LocalMusicWall";
+import { MusicPlayerView } from "./MusicPlayerView";
+import type { WallKind } from "../core/wallLibrary";
 
-type Tab = "home" | "created" | "collected" | "likes" | "search" | "history";
+type Tab = "home" | "created" | "collected" | "likes" | "search" | "history" | "wall";
 const emptySearch = (): LibrarySearchResult => ({ songs: [], artists: [], albums: [], playlists: [], more: false });
 
 export class MusicLibraryView extends ItemView {
@@ -37,7 +40,11 @@ export class MusicLibraryView extends ItemView {
   private statsRunning = 0;
   private statsEpoch = 0;
   private statsCache = new Map<string, Promise<CollectionStats>>();
-  private tab: Tab = "home";
+  private tab: Tab = "wall";
+  private localWall: LocalMusicWall | null = null;
+  embeddedPlayer: MusicPlayerView | null = null;
+  private playerHost: HTMLElement | null = null;
+  private playerOpening: Promise<void> | null = null;
   private generation = 0;
   private keyword = "";
   private searchKind: LibrarySearchKind = "songs";
@@ -69,11 +76,24 @@ export class MusicLibraryView extends ItemView {
   private onAppearanceChange = () => this.updateAppearance();
   constructor(leaf: WorkspaceLeaf, private plugin: MusicWallPlugin) { super(leaf); }
   getViewType(): string { return LIBRARY_VIEW_TYPE; }
-  getDisplayText(): string { return this.tab === "likes" && !this.albumItem && !this.artistItem && !this.playlistItem ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.albumItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
-  getIcon(): string { return "list-music"; }
+  getDisplayText(): string { return this.tab === "wall" ? t("localWall.title") : this.tab === "likes" && !this.albumItem && !this.artistItem && !this.playlistItem ? t("library.likes") : this.collection?.name || this.playlistItem?.name || this.albumItem?.name || this.artistItem?.name || t(`library.${this.tab}`); }
+  getIcon(): string { return "library"; }
+  getState(): Record<string, unknown> { return { tab: this.tab, keyword: this.keyword, searchKind: this.searchKind, wall: this.localWall?.location }; }
+  async setState(state: Record<string, unknown>): Promise<void> {
+    if (["home", "created", "collected", "likes", "search", "history", "wall"].includes(String(state.tab))) this.tab = state.tab as Tab;
+    if (typeof state.keyword === "string") this.keyword = state.keyword;
+    if (["songs", "artists", "albums", "playlists"].includes(String(state.searchKind))) this.searchKind = state.searchKind as LibrarySearchKind;
+    if (this.body) { if (this.tab === "wall") this.render(); else await this.loadContent(); }
+  }
   async onOpen(): Promise<void> {
     this.register(bindMouseBack(this.contentEl, () => this.mouseBack()));
     this.closed = false; this.auth = this.plugin.settings.neteaseCookie;
+    if (this.plugin.wallLibrary) this.localWall = new LocalMusicWall(this.plugin, {
+      render: () => this.render(),
+      openSearch: kind => { this.searchKind = kind; void this.navigate("search"); },
+      renderTracks: (parent, tracks, collection) => this.renderTracks(parent, tracks, collection),
+      trackActions: (track, collection, index) => this.trackActions(track, collection, index),
+    });
     const root = this.contentEl; root.empty(); root.addClass("mw-view", "mw-cloud");
     const win = root.ownerDocument.defaultView;
     this.appearanceMedia = typeof win?.matchMedia === "function" ? win.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -85,21 +105,47 @@ export class MusicLibraryView extends ItemView {
     const main = this.layout.createDiv({ cls: "mw-cloud__main" });
     this.head = main.createDiv({ cls: "mw-cloud__head" });
     this.body = main.createDiv({ cls: "mw-cloud__body" });
-    this.miniPlayer = new MiniPlayer(box, this.plugin, () => this.app.workspace?.activeLeaf === this.leaf);
+    this.miniPlayer = new MiniPlayer(box, this.plugin, () => !this.embeddedPlayer && this.app.workspace?.activeLeaf === this.leaf);
     this.registerDomEvent(root, "wheel", (event: WheelEvent) => handleZoomWheel(event, this.plugin, root), { capture: true, passive: false });
     this.registerDomEvent(root, "keydown", (event: KeyboardEvent) => { if (event.key === "Escape" && this.drawer) { event.preventDefault(); this.closeDrawer(); } });
     if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateLayout()); this.resize.observe(root); }
     this.render(); this.stopInset = watchHostInset(root);
+    if (this.plugin.wallLibrary) this.register(this.plugin.wallLibrary.on(() => { this.localWall?.changed(); if (!this.closed) this.render(); }));
+    await this.localWall?.restore();
     if (this.plugin.historyStore) this.register(this.plugin.historyStore.on(() => { if (this.tab === "history" && !this.collection && !this.artist && !this.closed) this.render(); }));
   }
   async onClose(): Promise<void> {
+    await this.collapsePlayer(); this.localWall?.dispose(); this.localWall = null;
     this.appearanceMedia?.removeEventListener("change", this.onAppearanceChange); this.appearanceMedia = null;
     this.appearanceButton = null;
     this.resetCardStats(); this.statsCache.clear();
     this.closed = true; ++this.generation; ++this.playIntent;
     this.clearMenus(); this.artistPicker?.close(); this.stopInset?.(); this.resize?.disconnect(); this.miniPlayer?.dispose(); this.miniPlayer = null; disposeZoomBox(this.contentEl);
   }
-  syncZoomBox(): void { syncZoomBox(this.contentEl, this.plugin.settings.zoomScale); this.updateLayout(); }
+  syncZoomBox(): void { syncZoomBox(this.contentEl, this.plugin.settings.zoomScale); this.updateLayout(); this.embeddedPlayer?.syncZoomBox(); }
+  showWall(kind: WallKind | null = null, folder: string | null = null, entry?: string): void {
+    this.tab = "wall"; this.collection = null; this.artist = null; this.albumItem = null; this.playlistItem = null; this.artistItem = null; ++this.generation;
+    this.localWall?.open(kind, folder, entry); this.closeDrawer(); this.render();
+  }
+  async expandPlayer(): Promise<void> {
+    if (this.playerOpening) return this.playerOpening;
+    if (this.embeddedPlayer) return;
+    this.playerOpening = (async () => {
+      const host = this.playerHost = this.contentEl.createDiv({ cls: "mw-embedded-player" });
+      const player = this.embeddedPlayer = new MusicPlayerView(this.leaf, this.plugin, host, () => this.app.workspace.activeLeaf === this.leaf);
+      this.contentEl.addClass("has-full-player");
+      this.contentEl.querySelector<HTMLElement>(".mw-zoombox")?.setAttribute("inert", "");
+      player.load(); await player.onOpen();
+    })();
+    try { await this.playerOpening; } catch (error) { await this.collapsePlayer(); throw error; } finally { this.playerOpening = null; }
+  }
+  async collapsePlayer(): Promise<void> {
+    const player = this.embeddedPlayer; this.embeddedPlayer = null;
+    if (player) { await player.onClose(); player.unload(); }
+    this.playerHost?.remove(); this.playerHost = null; this.contentEl.removeClass("has-full-player");
+    this.contentEl.querySelector<HTMLElement>(".mw-zoombox")?.removeAttribute("inert");
+    this.syncZoomBox();
+  }
   refresh(): void {
     if (this.closed || !this.body) return;
     const auth = this.plugin.settings.neteaseCookie;
@@ -109,7 +155,7 @@ export class MusicLibraryView extends ItemView {
       this.auth = auth; this.history = []; this.albumItem = null; this.artistPicker?.close(); ++this.generation; this.plugin.libraryApi.clear();
       this.statsCache.clear();
       this.collection = null; this.playlistItem = null; this.artist = null; this.artistItem = null; this.lists = []; this.results = emptySearch(); this.offset = 0;
-      this.loading = false; this.retry = null; this.tab = "home";
+      this.loading = false; this.retry = null; if (this.tab !== "wall") this.tab = "home";
     }
     if (this.artist && this.artist.filterKey !== artistAlbumFilterKey(this.plugin.settings)) {
       void this.reloadArtistAlbums(); return;
@@ -140,9 +186,11 @@ export class MusicLibraryView extends ItemView {
     const toggle = svgAction(this.sidebar, this.wideExpanded ? "chevrons-left" : "chevrons-right", t(this.narrow ? "library.closeNav" : this.wideExpanded ? "library.collapseNav" : "library.expandNav"), () => this.toggleNav(), true);
     toggle.dataset.navToggle = "true";
     for (const [tab, icon] of [["search", "search"], ["likes", "heart"], ["created", "list-music"], ["collected", "bookmark"], ["history", "history"]] as const) {
-      const button = svgAction(this.sidebar, icon, t(`library.${tab}`), () => this.navigate(tab), true);
+      const button = svgAction(this.sidebar, icon, t(tab === "created" ? "localWall.onlineCreated" : tab === "collected" ? "localWall.onlineCollected" : `library.${tab}`), () => this.navigate(tab), true);
       button.dataset.section = tab; if (this.tab === tab) button.setAttr("aria-current", "page");
     }
+    const wall = svgAction(this.sidebar, "library", t("localWall.title"), () => this.showWall(), true); wall.dataset.section = "wall";
+    this.localWall?.renderNav(this.sidebar, () => { this.tab = "wall"; this.closeDrawer(); });
   }
   private render(): void {
     if (this.closed || !this.body) return;
@@ -150,6 +198,7 @@ export class MusicLibraryView extends ItemView {
       void this.reloadArtistAlbums(); return;
     }
     this.resetCardStats();
+    const scroll = this.body.scrollTop;
     this.clearMenus(); this.renderNav(); this.head.empty(); this.body.empty();
     const nav = svgAction(this.head, "menu", t("library.expandNav"), () => this.toggleNav()); nav.dataset.navToggle = "true"; nav.addClass("mw-cloud__menu");
     const heading = this.head.createDiv({ cls: "mw-cloud__heading" });
@@ -166,7 +215,8 @@ export class MusicLibraryView extends ItemView {
     const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void; tabHeaderInnerTitleEl?: HTMLElement };
     leaf.updateHeader?.(); leaf.tabHeaderInnerTitleEl?.setText(this.getDisplayText());
     (this as unknown as { containerEl?: HTMLElement }).containerEl?.querySelector<HTMLElement>(".view-header-title")?.setText(this.getDisplayText());
-    if (this.tab === "home") this.renderHome();
+    if (this.tab === "wall") this.localWall?.render(this.body, this.head);
+    else if (this.tab === "home") this.renderHome();
     else {
       if (this.tab === "search" && !this.collection && !this.playlistItem && !this.artistItem && !this.albumItem) { this.renderSearch(this.body); this.renderSearchTabs(); }
       if (this.loading) this.body.createDiv({ cls: "mw-cloud__empty", text: t("mini.loading") });
@@ -178,7 +228,7 @@ export class MusicLibraryView extends ItemView {
       else if (this.tab === "search") this.renderResults();
       else this.renderLists(this.body, this.lists);
     }
-    this.syncZoomBox();
+    this.body.scrollTop = scroll; this.syncZoomBox();
   }
   private renderHome(): void {
     const home = this.body.createDiv({ cls: "mw-cloud__home" });
@@ -411,8 +461,10 @@ export class MusicLibraryView extends ItemView {
   }
   private mouseBack(): void {
     if (this.closed) return;
+    if (this.embeddedPlayer) return;
     if (this.miniPlayer?.closeForBack()) return;
     if (this.drawer) { this.closeDrawer(); return; }
+    if (this.tab === "wall") { this.localWall?.back(); return; }
     if (this.history.length || this.collection || this.artist || this.playlistItem || this.albumItem || this.artistItem) this.back();
   }
   /** Runtime snapshot used only if the source tab was closed while playing. */
@@ -434,13 +486,15 @@ export class MusicLibraryView extends ItemView {
     if (this.tab === "likes") this.tab = "home"; this.render();
   }
   async showCollection(meta: AlbumMeta): Promise<void> {
+    await this.collapsePlayer();
+    if (meta.wallEntryId) { await this.collapsePlayer(); await this.plugin.revealLocalEntry(meta.wallEntryId); return; }
     if ((!meta.playlistId && meta.albumId <= 0) || (meta.playlistId && meta.playlistId < 0) || meta.name === t("queue.playlistQueue")) { this.remember(); this.tab = "search"; this.albumItem = null; this.artist = null; this.artistItem = null; this.playlistItem = null; this.collection = meta; ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
     if (meta.playlistId) return this.openPlaylist({ id: meta.playlistId, name: meta.name, creator: meta.artist, cover: meta.cover, count: meta.trackCount, owner: 0, special: 0 });
     return this.openAlbum(meta);
   }
   private async openAlbum(album: AlbumSummary, remember = true): Promise<void> {
     if (remember) this.remember();
-    if (this.tab === "home") this.tab = "search";
+    if (this.tab === "home" || this.tab === "wall") this.tab = "search";
     this.albumItem = album; this.playlistItem = null; this.collection = null; this.artist = null; this.artistItem = null;
     return this.request(() => this.plugin.fetchAlbumDetail(album.albumId), meta => { this.collection = meta; this.recordViewed("albums", meta); }, () => this.openAlbum(album, false));
   }
@@ -522,6 +576,7 @@ export class MusicLibraryView extends ItemView {
     catch { if (this.current(token, cookie)) { this.loading = false; this.retry = retry; this.render(); } }
   }
   private async reload(): Promise<void> {
+    if (this.tab === "wall" && this.localWall?.location.entry) return this.localWall.loadDetail();
     if (this.albumItem) return this.openAlbum(this.albumItem, false);
     if (this.playlistItem) return this.openPlaylist(this.playlistItem, false);
     if (this.artist) return this.openArtist(this.artist.artist, false);
@@ -529,7 +584,7 @@ export class MusicLibraryView extends ItemView {
   }
   private async loadContent(more = false): Promise<void> {
     const cookie = this.plugin.settings.neteaseCookie, tab = this.tab;
-    if (tab === "home" || tab === "history" || (tab === "search" && !this.keyword) || (!cookie && tab !== "search")) { ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
+    if (tab === "home" || tab === "wall" || tab === "history" || (tab === "search" && !this.keyword) || (!cookie && tab !== "search")) { ++this.generation; this.loading = false; this.retry = null; this.render(); return; }
     if (tab === "search") {
       const offset = more ? this.offset + 30 : 0, kind = this.searchKind, keyword = this.keyword;
       const scroll = more ? this.body.scrollTop : 0;
@@ -553,13 +608,13 @@ export class MusicLibraryView extends ItemView {
     svgAction(empty, "log-in", t("auth.signIn"), () => this.signIn(), true);
   }
   private async openPlaylist(item: CloudPlaylist, remember = true): Promise<void> {
-    if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
+    if (remember) this.remember(); if (this.tab === "home" || this.tab === "wall") this.tab = "search";
     this.playlistItem = item; this.collection = null; this.albumItem = null; this.artist = null; this.artistItem = null;
     return this.request(() => this.plugin.libraryApi.detail(item, this.plugin.settings.neteaseCookie), collection => { this.collection = collection; this.recordViewed("playlists", collection); }, () => this.openPlaylist(item, false));
   }
-  async showArtist(artist: CloudArtist): Promise<void> { await this.openArtist(artist); }
+  async showArtist(artist: CloudArtist): Promise<void> { await this.collapsePlayer(); await this.openArtist(artist); }
   private async openArtist(artist: CloudArtist, remember = true): Promise<void> {
-    if (remember) this.remember(); if (this.tab === "home") this.tab = "search";
+    if (remember) this.remember(); if (this.tab === "home" || this.tab === "wall") this.tab = "search";
     this.artistItem = artist; this.artist = null; this.artistSection = "songs"; this.collection = null; this.playlistItem = null; this.albumItem = null;
     return this.request(() => this.plugin.libraryApi.artistDetail(artist, this.plugin.settings.neteaseCookie, this.plugin.settings, this.artistRequestGuard()), content => { this.artist = content; }, () => this.openArtist(artist, false));
   }
@@ -624,6 +679,7 @@ export class MusicLibraryView extends ItemView {
     return [
       { label: t("panel.play"), icon: "play", run: () => collection ? this.play(collection, index) : this.single(track, true) },
       { label: t("library.playNext"), icon: "list-plus", run: () => this.single(track, false) },
+      { label: t("localWall.addSongs"), icon: "list-music", run: () => this.plugin.addSongsToLocalPlaylist([track]) },
       { label: t("libraryDetails.viewAlbum"), icon: "disc", run: () => this.trackAlbum(track, collection) },
       { label: t("libraryDetails.viewArtist"), icon: "user-round", run: () => this.trackArtist(track) },
       { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("song", track.id) },

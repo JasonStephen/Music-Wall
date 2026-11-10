@@ -34,6 +34,8 @@ import {
 } from "./core/metadata";
 import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
 import { wallCollectionId } from "./core/collection";
+import { WallLibraryStore, WALL_LIBRARY_PATH, addSaved, addSongs, folderPath, type WallKind } from "./core/wallLibrary";
+import { WallDestinationModal } from "./ui/WallDestinationModal";
 import { checkGit } from "./core/git";
 import { LoginDiagnosticError } from "./core/loginDiagnostics";
 import { qrLoginRequester } from "./core/mobileLoginRequest";
@@ -71,7 +73,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.4-exp-1";
+const BUILD_TAG = "1.4.0-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -89,6 +91,7 @@ export default class MusicWallPlugin extends Plugin {
   libraryApi: MusicLibraryApi;
   collectionStatsCache: CollectionStatsCache;
   historyStore: HistoryStore;
+  wallLibrary: WallLibraryStore;
   historyScope(): string { return this.settings.neteaseUserId || "guest"; }
   async clearManagedCache(kind: "lyrics" | "stats" | "cover" | "playback" | "search" | "all"): Promise<void> {
     if (kind === "lyrics" || kind === "all") await this.lyrics.clear();
@@ -128,6 +131,9 @@ export default class MusicWallPlugin extends Plugin {
   async onload(): Promise<void> {
     console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
     await this.loadSettings();
+    this.wallLibrary = new WallLibraryStore(this.app.vault.adapter, WALL_LIBRARY_PATH, this.settings.defaultStyle);
+    try { await this.wallLibrary.ready(); }
+    catch (error) { new Notice(t("localWall.dataFailed")); throw error; }
 
     this.requester = async (req) => {
       const res = await requestUrl({
@@ -182,7 +188,7 @@ export default class MusicWallPlugin extends Plugin {
     // the last active player/library as soon as its view factory is registered.
     this.registerView(WALL_VIEW_TYPE, (leaf) => new MusicWallView(leaf, this));
     this.registerExtensions([WALL_EXT], WALL_VIEW_TYPE);
-    this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicPlayerView(leaf, this));
+    this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
     this.registerView(LIBRARY_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));
     let lastSong = "", lastCollection = "";
     this.register(this.internalPlayer.on(() => {
@@ -200,54 +206,9 @@ export default class MusicWallPlugin extends Plugin {
       if (collectionKey !== lastCollection) { lastCollection = collectionKey; void this.historyStore.record(scope, kind, album).catch(() => {}); }
     }));
 
-    this.addRibbonIcon("library", t("cmd.createWall"), () => {
-      void this.createNewWallCommand();
-    });
-    this.addRibbonIcon("disc", t("cmd.openPlayer"), () => void this.openPlayerView());
-    this.addRibbonIcon("list-music", t("library.title"), () => void this.openLibraryView());
-    this.addCommand({ id: "open-library", name: t("library.title"), callback: () => void this.openLibraryView() });
-
-    this.addCommand({
-      id: "create-wall",
-      name: t("cmd.createWallFile"),
-      callback: () => void this.createNewWallCommand(),
-    });
-    this.addCommand({
-      id: "open-player",
-      name: t("cmd.openPlayer"),
-      callback: () => void this.openPlayerView(),
-    });
-    this.addCommand({
-      id: "search-add-album",
-      name: t("cmd.addAlbum"),
-      checkCallback: (checking) => {
-        const view = this.activeWallView();
-        if (!view) return false;
-        if (!checking) view.openSearchModal();
-        return true;
-      },
-    });
-    this.addCommand({
-      id: "export-wall",
-      name: t("cmd.exportWall"),
-      checkCallback: (checking) => {
-        const view = this.activeWallView();
-        if (!view) return false;
-        if (!checking) void this.exportCurrentWall(view);
-        return true;
-      },
-    });
-    this.addCommand({
-      id: "import-wall",
-      name: t("cmd.importWall"),
-      callback: () => void this.importMwFile(this.activeWallView()),
-    });
-    this.addCommand({
-      id: "git-import-wall",
-      name: t("gitSync.pullCommand"),
-      callback: () => void this.gitSync("pull"),
-    });
-    this.addCommand({ id: "git-push-wall", name: t("gitSync.pushCommand"), callback: () => void this.gitSync("push") });
+    this.addRibbonIcon("library", t("localWall.title"), () => void this.openLibraryView());
+    this.addCommand({ id: "open-library", name: t("localWall.title"), callback: () => void this.openLibraryView() });
+    this.addCommand({ id: "open-player", name: t("cmd.openPlayer"), callback: () => void this.openPlayerView() });
 
     this.addCommand({
       id: "pick-playback-playlist",
@@ -285,19 +246,6 @@ export default class MusicWallPlugin extends Plugin {
 
     // 文件列表右键文件夹/库根目录 → 直接新建「新的音乐墙.mw」并打开
     // （点开 .mw 文件由 registerExtensions + FileView 原生处理，无需 file-open 转换）
-    this.registerEvent(
-      this.app.workspace.on("file-menu", (menu, target) => {
-        if (!(target instanceof TFolder)) return;
-        menu.addItem((item) =>
-          item
-            .setTitle(t("cmd.createWall"))
-            .setIcon("library")
-            .onClick(() => void this.createNewWallIn(target))
-        );
-      })
-    );
-
-    // 库内 .mw 变动：失效播放器匹配缓存并稍后重绘播放器页
     const invalidate = () => this.invalidateWallItems();
     this.registerEvent(this.app.vault.on("modify", invalidate));
     this.registerEvent(this.app.vault.on("create", invalidate));
@@ -305,7 +253,9 @@ export default class MusicWallPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("rename", invalidate));
 
     // 拖拽迁移：唱片卡片可拖到文件列表中的 .mw 上（运行时事件，防御式注册）
-    this.registerFileDrop();
+    this.registerEvent(this.app.vault.on("modify", file => {
+      if (file.path === WALL_LIBRARY_PATH) void this.wallLibrary.reload().catch(() => new Notice(t("localWall.dataFailed")));
+    }));
   }
 
   onunload(): void {
@@ -400,9 +350,10 @@ export default class MusicWallPlugin extends Plugin {
     for (const view of this.allWallViews()) view.refreshAppearance();
   }
   allPlayerViews(): MusicPlayerView[] {
-    return this.app.workspace
-      .getLeavesOfType(PLAYER_VIEW_TYPE)
-      .map((l) => l.view as MusicPlayerView);
+    return this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE).flatMap(l => {
+      const player = (l.view as MusicLibraryView).embeddedPlayer;
+      return player ? [player] : [];
+    });
   }
 
   // ================= SMTC / 播放器 =================
@@ -419,6 +370,10 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 库内全部 .mw 条目（异步扫描 + 缓存），供播放器匹配正在播放的曲目 */
   async scanWallItems(): Promise<WallItem[]> {
+    if (this.wallLibrary) return this.wallLibrary.data.entries.flatMap(e => {
+      const c = this.wallLibrary.data.collections.find(c => c.id === e.collection); if (!c || c.kind === "local") return [];
+      return [{ albumId: wallCollectionId(c.meta), meta: c.meta, source: "search" as const, locked: true, addedAt: e.addedAt, rating: e.rating }];
+    });
     if (this.wallItemCache) return this.wallItemCache;
     if (this.wallItemScan) return this.wallItemScan;
     this.wallItemScan = (async () => {
@@ -506,33 +461,14 @@ export default class MusicWallPlugin extends Plugin {
   }
 
   async openPlayerView(source = this.app.workspace.activeLeaf): Promise<void> {
-    if (source?.view instanceof MusicLibraryView) {
-      const snapshot = source.view.captureReturnState();
-      this.playerReturn = { leaf: source, view: source.view, restore: async () => {
-        await this.openLibraryView();
-        const target = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
-        if (target instanceof MusicLibraryView) await snapshot(target);
-      } };
-    } else if (source?.view instanceof MusicWallView && source.view.getFile()) {
-      const path = source.view.getFile()!.path;
-      this.playerReturn = { leaf: source, view: source.view, restore: async () => {
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) await this.openWall(file);
-      } };
-    } else if (!source || !(source.view instanceof MusicPlayerView)) this.playerReturn = null;
-    if (this.openingPlayer) return this.openingPlayer;
-    this.openingPlayer = this.openStandaloneView(PLAYER_VIEW_TYPE);
-    try { await this.openingPlayer; } finally { this.openingPlayer = null; }
+    await this.openLibraryView();
+    const view = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof MusicLibraryView) await view.expandPlayer();
   }
   async returnFromPlayer(): Promise<void> {
-    if (this.returningPlayer || !this.playerReturn || this.unloading) return;
-    const source = this.playerReturn; this.returningPlayer = true;
-    try {
-      const leaves = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE).concat(this.app.workspace.getLeavesOfType(WALL_VIEW_TYPE));
-      if (leaves.includes(source.leaf) && source.leaf.view === source.view) await this.app.workspace.revealLeaf(source.leaf);
-      else await source.restore();
-      if (this.playerReturn === source) this.playerReturn = null;
-    } finally { this.returningPlayer = false; }
+    for (const leaf of this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)) {
+      if (leaf.view instanceof MusicLibraryView) await leaf.view.collapsePlayer();
+    }
   }
   async openLibraryView(): Promise<void> {
     if (this.openingLibrary) return this.openingLibrary;
@@ -567,28 +503,49 @@ export default class MusicWallPlugin extends Plugin {
     const generation = this.authGeneration;
     meta = await this.fetchCollectionDetail(meta);
     if (generation !== this.authGeneration || this.unloading) return;
-    if (meta.playlistId) { this.internalPlayer.enqueuePlaylist(meta); new Notice(t("queue.playlistAdded")); return; }
+    if (meta.playlistId || meta.localPlaylistId) { this.internalPlayer.enqueuePlaylist(meta); new Notice(t("queue.playlistAdded")); return; }
     new Notice(t(this.internalPlayer.enqueueAlbum(meta) ? "queue.added" : "queue.duplicate"));
   }
   /** Search results can be collected into any wall without binding the library to a file. */
   addLibraryAlbum(meta: AlbumMeta): void {
-    if (meta.playlistId ? !Number.isSafeInteger(meta.playlistId) || meta.playlistId <= 0 : meta.albumId <= 0) return;
-    const files = this.wallFiles();
-    if (!files.length) { new Notice(t("library.noWalls")); return; }
-    new WallTreePickerModal(this.app, t("library.addToWall"), files.map(file => ({ label: file.basename, path: file.path })), index => {
-      const target = files[index]; if (!target || this.unloading) return;
-      const open = this.allWallViews().find(view => view.getFile()?.path === target.path);
-      if (open) { open.addAlbum(meta, "search"); return; }
-      const item: WallItem = { albumId: wallCollectionId(meta), meta, source: "search", locked: true, addedAt: new Date().toISOString() };
-      void (async () => {
-        let added = false;
-        await this.app.vault.process(target, content => {
-          const data = parseWall(content); added = insertItem(data, item);
-          return added ? JSON.stringify(data, null, 2) : content;
-        });
-        new Notice(t(added ? "wall.card.added" : "wall.card.alreadyIn", { name: meta.name }));
-      })().catch(() => new Notice(t("library.failed")));
+    const kind: WallKind = meta.playlistId ? "playlists" : "albums";
+    if (kind === "albums" ? !(meta.albumId > 0) : !(meta.playlistId! > 0)) return;
+    const data = this.wallLibrary.data;
+    const key = `${kind}:${meta.playlistId || meta.albumId}`;
+    const saved = new Set(data.entries.filter(e => e.collection === key).map(e => e.folder));
+    new WallDestinationModal(this.app, t("localWall.selectFolder"), [
+      { id: null, name: t(`localWall.${kind}`), icon: kind === "albums" ? "disc" : "bookmark", disabled: saved.has(null) },
+      ...data.folders.filter(f => f.kind === kind).map(f => ({ id: f.id, name: folderPath(data, f.id), disabled: saved.has(f.id) })),
+    ], async folder => {
+      const added = await this.saveLocalCollection(meta, folder);
+      new Notice(t(added ? "localWall.saved" : "localWall.duplicate"));
     }).open();
+  }
+  async saveLocalCollection(meta: AlbumMeta, folder: string | null): Promise<boolean> {
+    return this.wallLibrary.update(d => !!addSaved(d, meta, folder));
+  }
+  addSongsToLocalPlaylist(songs: import("./types").AlbumTrackSnapshot[]): void {
+    if (!songs.length) return;
+    const data = this.wallLibrary.data;
+    const playlists = data.collections.filter(c => c.kind === "local");
+    if (!playlists.length) { new Notice(t("localWall.emptyPlaylists")); return; }
+    new WallDestinationModal(this.app, t("localWall.selectPlaylist"), playlists.map(c => {
+      const ids = new Set(c.meta.tracks?.map(s => s.id));
+      const disabled = songs.every(s => ids.has(s.id));
+      const entry = data.entries.find(e => e.collection === c.id);
+      return { id: c.id, name: c.meta.name, detail: disabled ? t("localWall.songExists") : folderPath(data, entry?.folder || null), disabled, icon: "list-music" };
+    }), async id => {
+      const count = await this.wallLibrary.update(d => addSongs(d, id!, songs));
+      new Notice(t("localWall.addedSongs", { count }));
+    }).open();
+  }
+  async revealLocalEntry(id: string): Promise<void> {
+    const entry = this.wallLibrary.data.entries.find(e => e.id === id);
+    const collection = this.wallLibrary.data.collections.find(c => c.id === entry?.collection);
+    if (!entry || !collection) return;
+    await this.openLibraryView();
+    const view = this.app.workspace.getLeavesOfType(LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof MusicLibraryView) { await view.collapsePlayer(); view.showWall(collection.kind, entry.folder, entry.id); }
   }
   /** 解析来源墙中的条目（播放器接收拖拽用） */
   async resolveWallItem(srcPath: string, albumId: number): Promise<WallItem | null> {
@@ -819,12 +776,17 @@ export default class MusicWallPlugin extends Plugin {
 
   /** Fetch details on every open/play; wall metadata is only a display snapshot. */
   async fetchCollectionDetail(meta: AlbumMeta): Promise<AlbumMeta> {
+    if (meta.localPlaylistId) {
+      const c = this.wallLibrary.data.collections.find(c => c.id === meta.localPlaylistId && c.kind === "local");
+      if (!c) throw new Error(t("localWall.failed"));
+      return { ...c.meta, wallEntryId: meta.wallEntryId };
+    }
     let detail: AlbumMeta;
     if (meta.playlistId && meta.playlistId > 0) {
       detail = await this.libraryApi.detail({ id: meta.playlistId, name: meta.name, creator: meta.artist, cover: meta.cover, count: meta.trackCount, owner: 0, special: 0 }, this.settings.neteaseCookie);
     } else if (!meta.playlistId && meta.albumId > 0) detail = await this.fetchAlbumDetail(meta.albumId);
     else return meta;
-    return { ...detail, playbackWallPath: meta.playbackWallPath };
+    return { ...detail, playbackWallPath: meta.playbackWallPath, wallEntryId: meta.wallEntryId };
   }
 
   /** 供播放/详情面板使用的播放依赖 */
@@ -854,7 +816,7 @@ export default class MusicWallPlugin extends Plugin {
         ? async (meta, startIndex) => {
           if (!isCurrent()) return false;
           const collection = wallPath ? { ...meta, playbackWallPath: wallPath } : meta;
-          return meta.playlistId ? this.internalPlayer.playPlaylist(collection, startIndex) : this.internalPlayer.playAlbum(collection, startIndex);
+          return meta.playlistId || meta.localPlaylistId ? this.internalPlayer.playPlaylist(collection, startIndex) : this.internalPlayer.playAlbum(collection, startIndex);
         }
         : undefined,
       onPlaylistResolved: (id) => {
