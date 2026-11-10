@@ -97,9 +97,10 @@ export class MusicLibraryApi {
   }
   async detail(item: CloudPlaylist, cookie: string): Promise<AlbumMeta> {
     const body = await this.call("/api/v6/playlist/detail", { id: item.id, n: 100000, s: 0 }, cookie);
+    if (!body.playlist || Number(body.playlist.id) !== item.id) throw new Error(t("library.failed"));
     const ids: number[] = (body.playlist?.trackIds || []).map((entry: any) => Number(entry.id)).filter((id: number) => id > 0);
     const tracks = await this.songs(ids, cookie);
-    return { albumId: 0, playlistId: item.id, name: body.playlist?.name || item.name, artist: item.creator, cover: body.playlist?.coverImgUrl || item.cover, trackCount: tracks.length, tracks };
+    return { albumId: 0, playlistId: item.id, name: body.playlist.name || item.name, artist: body.playlist.creator?.nickname || item.creator, cover: body.playlist.coverImgUrl || item.cover, description: body.playlist.description || "", tags: body.playlist.tags || [], trackCount: Number(body.playlist.trackCount ?? ids.length), tracks };
   }
   async playlistStats(id: number, cookie: string): Promise<{ count: number; duration?: number }> {
     const body = await this.call("/api/v6/playlist/detail", { id, n: 100000, s: 0 }, cookie);

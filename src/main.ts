@@ -33,6 +33,7 @@ import {
   searchAlbums as searchAlbumsApi,
 } from "./core/metadata";
 import { emptyWall, insertItem, mergeWalls, parseWall } from "./core/store";
+import { wallCollectionId } from "./core/collection";
 import { checkGit } from "./core/git";
 import { LoginDiagnosticError } from "./core/loginDiagnostics";
 import { qrLoginRequester } from "./core/mobileLoginRequest";
@@ -70,7 +71,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, styleLabel, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.3.3-exp-1";
+const BUILD_TAG = "1.3.4-exp-1";
 
 function normalizePathJoin(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
@@ -460,7 +461,7 @@ export default class MusicWallPlugin extends Plugin {
 
   /** 墙上菜单「加入播放器」：无播放器打开时静默无操作（按约定不自动创建） */
   addToPlayer(item: WallItem, srcPath: string): void {
-    void this.enqueueAlbum(item.meta);
+    void this.enqueueAlbum({ ...item.meta, playbackWallPath: srcPath }).catch(() => new Notice(t("library.failed")));
   }
 
   /** 状态栏条目：显示正在播放并可点击打开播放器 */
@@ -563,17 +564,22 @@ export default class MusicWallPlugin extends Plugin {
   async enqueueAlbum(meta: AlbumMeta): Promise<void> {
     if (!(await this.ensureNeteaseLogin())) return;
     if (this.settings.playbackMode !== "internal") { new Notice(t("queue.internalOnly")); return; }
+    const generation = this.authGeneration;
+    meta = await this.fetchCollectionDetail(meta);
+    if (generation !== this.authGeneration || this.unloading) return;
+    if (meta.playlistId) { this.internalPlayer.enqueuePlaylist(meta); new Notice(t("queue.playlistAdded")); return; }
     new Notice(t(this.internalPlayer.enqueueAlbum(meta) ? "queue.added" : "queue.duplicate"));
   }
   /** Search results can be collected into any wall without binding the library to a file. */
   addLibraryAlbum(meta: AlbumMeta): void {
+    if (meta.playlistId ? !Number.isSafeInteger(meta.playlistId) || meta.playlistId <= 0 : meta.albumId <= 0) return;
     const files = this.wallFiles();
     if (!files.length) { new Notice(t("library.noWalls")); return; }
     new WallTreePickerModal(this.app, t("library.addToWall"), files.map(file => ({ label: file.basename, path: file.path })), index => {
       const target = files[index]; if (!target || this.unloading) return;
       const open = this.allWallViews().find(view => view.getFile()?.path === target.path);
       if (open) { open.addAlbum(meta, "search"); return; }
-      const item: WallItem = { albumId: meta.albumId, meta, source: "search", locked: true, addedAt: new Date().toISOString() };
+      const item: WallItem = { albumId: wallCollectionId(meta), meta, source: "search", locked: true, addedAt: new Date().toISOString() };
       void (async () => {
         let added = false;
         await this.app.vault.process(target, content => {
@@ -811,6 +817,16 @@ export default class MusicWallPlugin extends Plugin {
     );
   }
 
+  /** Fetch details on every open/play; wall metadata is only a display snapshot. */
+  async fetchCollectionDetail(meta: AlbumMeta): Promise<AlbumMeta> {
+    let detail: AlbumMeta;
+    if (meta.playlistId && meta.playlistId > 0) {
+      detail = await this.libraryApi.detail({ id: meta.playlistId, name: meta.name, creator: meta.artist, cover: meta.cover, count: meta.trackCount, owner: 0, special: 0 }, this.settings.neteaseCookie);
+    } else if (!meta.playlistId && meta.albumId > 0) detail = await this.fetchAlbumDetail(meta.albumId);
+    else return meta;
+    return { ...detail, playbackWallPath: meta.playbackWallPath };
+  }
+
   /** 供播放/详情面板使用的播放依赖 */
   getPlaybackDeps(wallPath?: string): PlaybackDeps {
     const pid = parseInt(this.settings.playbackPlaylistId, 10);
@@ -833,10 +849,12 @@ export default class MusicWallPlugin extends Plugin {
         };
       },
       isCurrent,
+      loadCollection: meta => this.fetchCollectionDetail(meta),
       playInside: this.settings.playbackMode !== "client" && this.internalPlayer
         ? async (meta, startIndex) => {
           if (!isCurrent()) return false;
-          return this.internalPlayer.playAlbum(wallPath ? { ...meta, playbackWallPath: wallPath } : meta, startIndex);
+          const collection = wallPath ? { ...meta, playbackWallPath: wallPath } : meta;
+          return meta.playlistId ? this.internalPlayer.playPlaylist(collection, startIndex) : this.internalPlayer.playAlbum(collection, startIndex);
         }
         : undefined,
       onPlaylistResolved: (id) => {

@@ -132,7 +132,7 @@ export const zhCN = {
       "playNext": "下一首播放",
       "nextAdded": "已加入下一首：{name}",
       "addToWall": "添加到音乐墙",
-      "noWalls": "请先创建一个音乐墙，再添加专辑。",
+      "noWalls": "请先创建一个音乐墙，再添加专辑或歌单。",
       "expandNav": "展开侧边栏",
       "collapseNav": "收起侧边栏",
       "closeNav": "关闭侧边栏"

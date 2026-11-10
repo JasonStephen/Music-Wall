@@ -56,7 +56,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): ()
   // 右：metadata
   const right = container.createDiv({ cls: "mw-panel__right" });
   const name = right.createEl(opts.navigation ? "button" : "div", { cls: "mw-panel__title", text: opts.meta.name });
-  const artist = right.createEl(opts.navigation ? "button" : "div", {
+  const artist = right.createEl(opts.navigation && !opts.meta.playlistId ? "button" : "div", {
     cls: "mw-panel__artist",
     text: opts.meta.artist || t("common.unknownArtist"),
   });
@@ -64,7 +64,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): ()
   let refs = opts.meta.artistRefs;
   if (opts.navigation && opts.app) {
     const nav = opts.navigation, app = opts.app;
-    for (const link of [name, artist]) { link.addClass("mw-panel__link", "clickable-icon"); link.setAttr("type", "button"); link.title = link.textContent || ""; }
+    for (const link of opts.meta.playlistId ? [name] : [name, artist]) { link.addClass("mw-panel__link", "clickable-icon"); link.setAttr("type", "button"); link.title = link.textContent || ""; }
     name.addEventListener("click", event => {
       event.stopPropagation(); opts.onNavigate?.();
       void nav.openAlbum(opts.meta).catch(() => new Notice(t("library.failed")));
@@ -75,6 +75,7 @@ export function renderAlbumPanel(container: HTMLElement, opts: PanelOptions): ()
       const valid = () => alive && token === request && artist.isConnected && account === nav.accountKey();
       picker?.close(); picker = null;
       void (async () => {
+        if (opts.meta.playlistId) return;
         if (!refs?.length) refs = (await nav.fetchAlbum(opts.meta.albumId)).artistRefs;
         if (!valid()) return;
         const artists = [...new Map((refs || []).filter(a => a.id > 0).map(a => [a.id, a])).values()];
@@ -180,6 +181,8 @@ export class AlbumPanelModal extends Modal {
   private onRate?: (rating: number | undefined) => void;
   private navigation?: AlbumPanelNavigation;
   private disposePanel?: () => void;
+  private loadMeta?: () => Promise<AlbumMeta>;
+  private loadRequest = 0;
 
   constructor(
     app: App,
@@ -194,6 +197,7 @@ export class AlbumPanelModal extends Modal {
       rating?: number;
       onRate?: (rating: number | undefined) => void;
       navigation?: AlbumPanelNavigation;
+      loadMeta?: () => Promise<AlbumMeta>;
     }
   ) {
     super(app);
@@ -207,14 +211,35 @@ export class AlbumPanelModal extends Modal {
     this.rating = normalizeRating(args.rating);
     this.onRate = args.onRate;
     this.navigation = args.navigation;
+    this.loadMeta = args.loadMeta;
   }
 
-  onOpen(): void {
+  async onOpen(): Promise<void> {
+    const request = ++this.loadRequest;
     // 弹窗跟随全局缩放（--mw-zoom 设在 body 上，这里只是挂上作用域类）
     this.modalEl.addClass("mw-modal-zoom");
     applyModalTheme(this.modalEl);
     const { contentEl } = this;
+    contentEl.empty();
     contentEl.addClass("mw-album-modal");
+    if (this.loadMeta) {
+      contentEl.createDiv({ text: t("mini.loading") });
+      const account = this.navigation?.accountKey();
+      try {
+        const meta = await this.loadMeta();
+        if (request !== this.loadRequest) return;
+        if (account !== this.navigation?.accountKey()) { this.close(); return; }
+        this.meta = meta;
+      } catch {
+        if (request !== this.loadRequest) return;
+        contentEl.empty();
+        contentEl.createDiv({ text: t("library.failed") });
+        const retry = contentEl.createEl("button", { text: t("library.retry") });
+        retry.addEventListener("click", () => { void this.onOpen(); });
+        return;
+      }
+      contentEl.empty();
+    }
     contentEl.createEl("h2", {
       text: this.mode === "play" ? t("panel.playTitle") : t("panel.addTitle"),
       cls: "mw-album-modal__heading",
@@ -275,6 +300,7 @@ export class AlbumPanelModal extends Modal {
   }
 
   onClose(): void {
+    ++this.loadRequest;
     this.disposePanel?.(); this.disposePanel = undefined;
     this.contentEl.empty();
   }

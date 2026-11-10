@@ -134,7 +134,7 @@ export const zhTW: typeof zhCN = {
       "playNext": "下一首播放",
       "nextAdded": "已加入下一首：{name}",
       "addToWall": "新增至音樂牆",
-      "noWalls": "請先建立一個音樂牆，再新增專輯。",
+      "noWalls": "請先建立一個音樂牆，再新增專輯或歌單。",
       "expandNav": "展開側邊欄",
       "collapseNav": "收起側邊欄",
       "closeNav": "關閉側邊欄"

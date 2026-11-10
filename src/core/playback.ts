@@ -9,6 +9,7 @@ import type { AlbumMeta } from "../types";
 import type { Requester } from "./metadata";
 import { replacePlaylistWithAlbumTracks, hasLoginCookie, ensureTempPlaylist } from "./playlist";
 import { t } from "../i18n";
+import { collectionUrl } from "./collection";
 
 export interface PlaybackDeps {
   isDesktop: boolean;
@@ -21,6 +22,7 @@ export interface PlaybackDeps {
   /** 登录后重新获取依赖，避免已打开面板继续使用旧账号的 Cookie。 */
   authorize?: () => Promise<PlaybackDeps | null>;
   isCurrent?: () => boolean;
+  loadCollection?: (meta: AlbumMeta) => Promise<AlbumMeta>;
   playInside?: (meta: AlbumMeta, startIndex: number) => Promise<boolean>;
 }
 
@@ -40,7 +42,7 @@ export function orpheusPlaylistUrl(playlistId: number): string {
 }
 
 export function h5FallbackUrl(meta: AlbumMeta): string {
-  return `https://music.163.com/album?id=${meta.albumId}`;
+  return collectionUrl(meta);
 }
 
 function delay(ms: number): Promise<void> {
@@ -100,8 +102,17 @@ export async function playAlbum(meta: AlbumMeta, deps: PlaybackDeps, startIndex 
     deps = authorized;
   }
   if (deps.isCurrent && !deps.isCurrent()) return;
+  if (deps.loadCollection) {
+    try { meta = await deps.loadCollection(meta); }
+    catch { new Notice(t("library.failed")); return; }
+    if (deps.isCurrent && !deps.isCurrent()) return;
+  }
   if (deps.playInside) {
     await deps.playInside(meta, startIndex);
+    return;
+  }
+  if (meta.playlistId && meta.playlistId > 0 && startIndex === 0) {
+    if (!(await openScheme(orpheusPlaylistUrl(meta.playlistId), deps))) await openWeb(h5FallbackUrl(meta), deps);
     return;
   }
   if (!meta.tracks?.length) {

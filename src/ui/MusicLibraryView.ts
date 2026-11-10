@@ -457,7 +457,7 @@ export class MusicLibraryView extends ItemView {
     info.createDiv({ cls: "mw-cloud__summary", text: collectionSummary(collection) });
     svgAction(head, "play", t("panel.play"), () => this.play(collection, 0));
     svgAction(head, "link", t("libraryDetails.copyLink"), () => this.copy(collection.playlistId ? "playlist" : "album", collection.playlistId || collection.albumId));
-    if (collection.albumId > 0 && !collection.playlistId) svgAction(head, "folder-plus", t("library.addToWall"), () => this.plugin.addLibraryAlbum(collection));
+    if (collection.playlistId ? collection.playlistId > 0 : collection.albumId > 0) svgAction(head, "folder-plus", t("library.addToWall"), () => this.plugin.addLibraryAlbum(collection));
     svgAction(head, "list-plus", t(this.albumItem ? "queue.add" : "queue.addPlaylist"), async () => {
       if (!(await this.authorizeInternal())) return;
       if (this.albumItem) await this.plugin.enqueueAlbum(collection);
@@ -649,6 +649,11 @@ export class MusicLibraryView extends ItemView {
     return [
       { label: t("libraryDetails.viewDetails"), icon: "list-music", run: () => this.openPlaylist(item) },
       { label: t("panel.play"), icon: "play", run: () => act(false) },
+      { label: t("library.addToWall"), icon: "folder-plus", run: async () => {
+        const token = this.generation, cookie = this.plugin.settings.neteaseCookie;
+        const meta = await this.plugin.libraryApi.detail(item, cookie);
+        if (this.current(token, cookie)) this.plugin.addLibraryAlbum(meta);
+      } },
       { label: t("queue.addPlaylist"), icon: "list-plus", run: () => act(true) },
       { label: t("libraryDetails.copyLink"), icon: "link", run: () => this.copy("playlist", item.id) },
     ];

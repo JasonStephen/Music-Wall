@@ -60,6 +60,7 @@ export interface AlbumMeta {
 
 /** 一面墙里的一个条目 */
 export interface WallItem {
+  /** Wall key: album ID for albums, negative playlist ID for playlists. */
   albumId: number;
   source: AlbumSource;
   /** 锁定：禁止元数据编辑（搜索导入默认 true） */
@@ -267,8 +268,8 @@ export function clampZoom(v: number): number {
 /** 画布缩放用的 CSS 变量名（设在 body 上，模态框也能继承） */
 export const ZOOM_CSS_VAR = "--mw-zoom";
 
-/** 当前 .mw 文件 schema 版本（v2：新增 groups / order / view） */
-export const WALL_FILE_VERSION = 2;
+/** v3 adds playlist entries with negative wall keys; v1/v2 files remain readable. */
+export const WALL_FILE_VERSION = 3;
 /** 分组 id 前缀 */
 export const GROUP_ID_PREFIX = "g";
 /** 文件扩展名 */

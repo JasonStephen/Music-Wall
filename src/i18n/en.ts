@@ -134,7 +134,7 @@ export const en: typeof zhCN = {
       "playNext": "Play next",
       "nextAdded": "Added to play next: {name}",
       "addToWall": "Add to a music wall",
-      "noWalls": "Create a music wall before adding an album.",
+      "noWalls": "Create a music wall before adding an album or playlist.",
       "expandNav": "Expand sidebar",
       "collapseNav": "Collapse sidebar",
       "closeNav": "Close sidebar"

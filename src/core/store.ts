@@ -155,6 +155,7 @@ function isWallItem(x: any): x is WallItem {
     typeof x.locked === "boolean" &&
     x.meta &&
     typeof x.meta.albumId === "number" &&
+    (x.meta.playlistId === undefined || Number.isSafeInteger(x.meta.playlistId) && x.meta.playlistId > 0 && x.albumId === -x.meta.playlistId && x.meta.albumId === 0) &&
     typeof x.meta.name === "string" &&
     typeof x.addedAt === "string"
   );

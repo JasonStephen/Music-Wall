@@ -1211,7 +1211,7 @@ export class MusicPlayerView extends ItemView {
     const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
     const source = this.el.source; if (!source) return;
     const wall = meta?.playbackWallPath;
-    const kind = wall ? "wallAlbum" : meta?.playlistId || this.plugin.internalPlayer?.contentKind === "playlist" ? "playlist" : "album";
+    const kind = meta?.playlistId || this.plugin.internalPlayer?.contentKind === "playlist" ? "playlist" : wall ? "wallAlbum" : "album";
     source.setText(meta ? `${t(`libraryDetails.${kind}`)}·${meta.name}` : "");
     source.title = source.textContent || ""; source.toggleClass("is-hidden", !meta);
   }
@@ -1219,7 +1219,7 @@ export class MusicPlayerView extends ItemView {
     const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
     if (!meta) return;
     if (meta.playbackWallPath) {
-      await this.plugin.revealWallAlbum(meta.playbackWallPath, meta.albumId);
+      await this.plugin.revealWallAlbum(meta.playbackWallPath, meta.playlistId ? -meta.playlistId : meta.albumId);
     } else await this.plugin.openLibraryCollection(meta);
   }
 }
