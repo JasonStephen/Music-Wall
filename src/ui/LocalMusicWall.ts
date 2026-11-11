@@ -464,7 +464,8 @@ export class LocalMusicWall {
             c.meta.tracks = tracks.map(track => visibleIds.has(String(track.id)) ? byId.get(ids[position++])! : track); this.songSort = "manual"; this.songAsc = true;
           }).catch(() => new Notice(t("localWall.updateFailed")));
         });
-    }, clearPage);
+    }, clearPage, true);
+    this.cleanup.push(() => pager.dispose());
     const render = () => {
       selected.setText(t("localWall.selected", { count: this.selected.size })); add.disabled = remove.disabled = !this.selected.size;
       pager.setItems(filtered());

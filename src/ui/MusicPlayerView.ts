@@ -151,7 +151,7 @@ export class MusicPlayerView extends Component {
       void this.refreshMatch().then(() => this.updateNow());
     });
     this.register(() => this.offNow?.());
-    this.registerDomEvent(window, "resize", () => this.syncLayout());
+    if (typeof ResizeObserver === "undefined") this.registerDomEvent(window, "resize", () => this.syncLayout());
     // Ctrl/Alt + 滚轮：与音乐墙同一套全局缩放
     this.registerDomEvent(
       this.contentEl,
@@ -422,7 +422,7 @@ export class MusicPlayerView extends Component {
    */
   private syncTopbarHeight(bar: HTMLElement): void {
     const h = bar.offsetHeight;
-    if (h > 0) this.contentEl.style.setProperty("--mw-topbar-h", `${h}px`);
+    if (h > 0 && this.contentEl.style.getPropertyValue("--mw-topbar-h") !== `${h}px`) this.contentEl.style.setProperty("--mw-topbar-h", `${h}px`);
   }
 
   /** 顶栏：只有标题 + 右上角一个样式图标（点开滑出「样式 / 背景」抽屉） */

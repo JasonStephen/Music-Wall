@@ -37,23 +37,25 @@ export interface ZoomHost {
  * 用户实测的「右侧 + 底部大量留白」正是这个形状（右边窄、下边宽），
  * 而本地在任意缩放下都复现不出来（CSS calc 正常生效）。
  *
- * 所以这里按窗格**像素**把尺寸写进行内样式（行内优先级高于样式表），
- * 并用 ResizeObserver 跟随窗格尺寸变化。CSS 那条仍是基础实现，本函数只负责「保证」。
+ * 首次测量确认 CSS 能铺满窗格后，交给 CSS 自适应尺寸，避免每次拖动都再布局一次。
+ * 解析异常时才写入像素尺寸，并用 ResizeObserver 的测量值跟随窗格变化。
  */
 const zoomObservers = new WeakMap<HTMLElement, ResizeObserver>();
+const nativeZoomBoxes = new WeakSet<HTMLElement>();
 
-function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number): void {
+function applyZoomBoxSize(root: HTMLElement, box: HTMLElement, scale: number, size?: Pick<DOMRectReadOnly, "width" | "height">): void {
   const z = effectiveZoom(scale);
-  const w = root.clientWidth;
-  const h = root.clientHeight;
+  const w = size?.width ?? root.clientWidth;
+  const h = size?.height ?? root.clientHeight;
   if (w <= 0 || h <= 0) return;
   // 向下取整而不是四舍五入：缩放盒会被 transform 再放大 z 倍，
   // 行内尺寸若被 round 到「略大」，放大后就会比窗格宽出零点几个千分位像素，
   // 配合根节点 overflow:auto（见 base.css 的滚动条抽动说明）会让最外层
   // 滚动条周期性出现/消失。floor 保证换算回来的视觉尺寸永远 ≤ 窗格。
   const px = (v: number) => `${Math.floor(v * 1000) / 1000}px`;
-  box.style.width = px(w / z);
-  box.style.height = px(h / z);
+  const width = px(w / z), height = px(h / z);
+  if (box.style.width !== width) box.style.width = width;
+  if (box.style.height !== height) box.style.height = height;
 }
 
 /**
@@ -77,17 +79,28 @@ export function syncZoomBox(root: HTMLElement, scale: number): void {
   // 观察者是「跟随窗格尺寸」的增强，拿不到就算了（render 绝不能因为环境缺 API 而抛错）。
   // Obsidian 桌面/移动端都有 ResizeObserver，这里的守卫是给离线冒烟等非浏览器环境留的。
   if (!zoomObservers.has(root) && typeof ResizeObserver !== "undefined") {
-    const ro = new ResizeObserver(() => {
+    const ro = new ResizeObserver(entries => {
       // 重新查询：只有当前挂在 root 下的那只缩放盒才是活的（render 会重建它）
       const live = root.querySelector<HTMLElement>(":scope > .mw-zoombox");
-      if (!live) return;
+      if (!live || nativeZoomBoxes.has(live)) return;
       const z = Number(root.dataset.mwZoom ?? "1") || 1;
-      applyZoomBoxSize(root, live, z);
+      applyZoomBoxSize(root, live, z, entries[0]?.contentRect);
     });
     ro.observe(root);
     zoomObservers.set(root, ro);
   }
-  applyZoomBoxSize(root, box, scale);
+  const width = root.clientWidth, height = root.clientHeight, zoom = effectiveZoom(scale);
+  if (width <= 0 || height <= 0) return;
+  if (box.style.width) box.style.removeProperty("width");
+  if (box.style.height) box.style.removeProperty("height");
+  // Prefer CSS sizing when it resolves correctly. The observer remains a
+  // fallback for hosts whose percentage height or calc sizing is broken.
+  if (Math.abs(box.clientWidth - width / zoom) < 1 && Math.abs(box.clientHeight - height / zoom) < 1) {
+    nativeZoomBoxes.add(box);
+  } else {
+    nativeZoomBoxes.delete(box);
+    applyZoomBoxSize(root, box, scale);
+  }
 }
 
 /** 视图关闭时断开观察者（视图会被反复创建，不清理会攒住已废弃的根节点） */

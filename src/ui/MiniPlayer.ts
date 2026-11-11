@@ -125,7 +125,7 @@ export class MiniPlayer {
     parent.ownerDocument.addEventListener("pointercancel", this.releaseSeek);
     this.off = plugin.nowPlaying.on(() => this.update());
     if (typeof ResizeObserver !== "undefined") {
-      this.observer = new ResizeObserver(() => this.reserveSpace());
+      this.observer = new ResizeObserver(entries => this.reserveSpace(entries[0]?.borderBoxSize?.[0]?.blockSize));
       this.observer.observe(this.root);
     }
     this.update();
@@ -198,10 +198,10 @@ export class MiniPlayer {
     }
     if (this.openPanel === "playlist") this.queueControls.locateCurrent();
   }
-  private reserveSpace(): void {
+  private reserveSpace(height?: number): void {
     if (this.openPanel === "more" && !this.buttons.more.getClientRects().length) this.showPanel(null);
     this.parent.toggleClass("has-mini", this.visible);
-    const measured = this.visible ? this.root.offsetHeight : 0;
+    const measured = this.visible ? (height === undefined ? this.root.offsetHeight : Math.round(height)) : 0;
     if (!Number.isFinite(measured) || measured === this.height) return;
     this.height = measured;
     this.parent.style.setProperty("--mw-mini-height", `${measured}px`);

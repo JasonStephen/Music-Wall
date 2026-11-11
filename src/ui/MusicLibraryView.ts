@@ -126,7 +126,7 @@ export class MusicLibraryView extends ItemView {
     this.miniPlayer = new MiniPlayer(box, this.plugin, () => !this.embeddedPlayer && this.app.workspace?.activeLeaf === this.leaf);
     this.registerDomEvent(root, "wheel", (event: WheelEvent) => handleZoomWheel(event, this.plugin, root), { capture: true, passive: false });
     this.registerDomEvent(root, "keydown", (event: KeyboardEvent) => { if (event.key === "Escape" && this.drawer) { event.preventDefault(); this.closeDrawer(); } });
-    if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(() => this.updateLayout()); this.resize.observe(root); }
+    if (typeof ResizeObserver !== "undefined") { this.resize = new ResizeObserver(entries => this.updateLayout(entries[0]?.contentRect.width)); this.resize.observe(root); }
     this.updateLayout(); this.render(); this.stopInset = watchHostInset(root);
     let content = this.wallContent();
     if (this.plugin.wallLibrary) this.register(this.plugin.wallLibrary.on(() => { const next = this.wallContent(); if (next === content) return; content = next; this.localWall?.changed(); if (!this.closed) this.render(); }));
@@ -222,9 +222,10 @@ export class MusicLibraryView extends ItemView {
     }
     this.render();
   }
-  private updateLayout(): void {
+  private updateLayout(width?: number): void {
     if (!this.layout) return;
-    const narrow = this.contentEl.clientWidth / effectiveZoom(this.plugin.settings.zoomScale) < 700;
+    const narrow = (width ?? this.contentEl.clientWidth) / effectiveZoom(this.plugin.settings.zoomScale) < 700;
+    if (width !== undefined && narrow === this.narrow) return;
     if (narrow !== this.narrow) { this.narrow = narrow; this.drawer = false; }
     this.layout.toggleClass("is-narrow", this.narrow);
     this.layout.toggleClass("is-collapsed", !this.wideExpanded);
@@ -638,7 +639,8 @@ export class MusicLibraryView extends ItemView {
       const menu = bindLibraryMenu(row, () => this.trackActions(track, collection, index)); pageMenus.push(menu.dispose);
       const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
       more.dataset.trackAction = "more";
-    }, clearPage);
+    }, clearPage, true);
+    this.menuCleanups.push(() => pager.dispose());
     pager.setItems(tracks);
   }
   private renderArtist(content: ArtistContent): void {

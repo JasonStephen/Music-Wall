@@ -397,5 +397,58 @@ let dispose = async () => {};
  check(root.scrollWidth<=root.clientWidth+1,'No root horizontal overflow');const content=root.querySelector<HTMLElement>('.mw-cloud__body')!;check(content.scrollWidth<=content.clientWidth+1,'No body horizontal overflow: '+[...content.querySelectorAll<HTMLElement>('*')].filter(el=>el.getBoundingClientRect().right>bodyRect.right+1).slice(0,8).map(el=>el.className).join(','));
  check(!/localWall\.|labels\.sort\.|\?\?\?/.test(root.textContent||''),'All labels resolved');
  dispose=async()=>{engine.stop();await view.onClose();view.contentEl.remove();};
+ if(config.resize) {
+  (window as any).verifyResizeCompatibility=async()=>{
+   const root=view.contentEl,box=root.querySelector<HTMLElement>(':scope > .mw-zoombox')!;
+   const style=document.head.createEl('style',{text:'.mw-view[data-zoom-fallback] > .mw-zoombox { width:auto; height:auto; }'});
+   const failures:string[]=[],originalWidth=root.style.width,originalFlex=root.style.flex;
+   const fits=()=>{const a=root.getBoundingClientRect(),b=box.getBoundingClientRect();return Math.abs(a.width-b.width)<2&&Math.abs(a.height-b.height)<2;};
+   try {
+    root.setAttribute('data-zoom-fallback','');view.syncZoomBox();await tick(80);
+    if(!box.style.width||!box.style.height||!fits())failures.push('Broken CSS sizing falls back to exact pixel sizing');
+    root.style.flex='0 0 auto';root.style.width='730px';await tick(80);
+    if(!fits())failures.push('Pixel sizing fallback follows pane resizing');
+   } finally {
+    root.removeAttribute('data-zoom-fallback');style.remove();root.style.width=originalWidth;root.style.flex=originalFlex;view.syncZoomBox();await tick(80);
+   }
+   if(box.style.width||box.style.height||!fits())failures.push('Normal CSS sizing resumes after the fallback is no longer needed');
+   return failures;
+  };
+  const songs=Array.from({length:334},(_,i)=>({...tracks[i%tracks.length],id:200000+i,name:`Resize song ${i+1}`}));
+  await store.update(d=>{const c=d.collections.find(c=>c.id===localId)!;c.meta.tracks=songs;c.meta.trackCount=songs.length;});
+  view.showWall('local',null,localEntry);await engine.playPlaylist({albumId:0,playlistId:991,name:'Resize playlist',artist:'Artist',cover,tracks:songs});
+  await tick(100);
+  (window as any).measureUnifiedResize=async()=>{
+   const failures:string[]=[],expect=(ok:unknown,label:string)=>{if(!ok)failures.push(label);};
+   const root=view.contentEl,list=root.querySelector('.mw-cloud__tracks')!,first=list.querySelector('[data-local-song]')!;
+   let childChanges=0,resizeErrors=0;const errors=(e:ErrorEvent)=>{if(e.message.includes('ResizeObserver'))resizeErrors++;};
+   addEventListener('error',errors);
+   const changes=new MutationObserver(records=>childChanges+=records.filter(r=>r.type==='childList').length);
+   changes.observe(list,{subtree:true,childList:true});
+   const intervals:number[]=[],start=performance.now();let previous=start;
+   try {
+    for(let i=0;i<120;i++) {
+     await new Promise(requestAnimationFrame);const now=performance.now();intervals.push(now-previous);previous=now;
+     root.style.flex='0 0 auto';root.style.width=`${1320-650*(1-Math.cos(i/119*Math.PI*2))/2}px`;
+    }
+    await tick(400);changes.disconnect();
+    expect(childChanges===0&&first.isConnected&&root.querySelector('.mw-cloud__tracks')===list,'Resizing retains song rows and their event handlers');
+    expect(resizeErrors===0,'Resizing does not trigger ResizeObserver loops');
+    expect(list.querySelectorAll('[data-local-song]').length===100,'Resizing keeps the mounted song count bounded');
+    const box=root.querySelector<HTMLElement>(':scope > .mw-zoombox')!,outer=root.getBoundingClientRect(),inner=box.getBoundingClientRect();
+    expect(Math.abs(outer.width-inner.width)<2&&Math.abs(outer.height-inner.height)<2,'Resized zoom box fills its pane');
+    first.dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));
+    expect(first.classList.contains('is-selected'),'Retained song selection handlers remain active');
+    const sorted=[...intervals].sort((a,b)=>a-b);
+    const sample={frames:intervals.length,p95:sorted[Math.floor(sorted.length*.95)],max:Math.max(...intervals),over33:intervals.filter(ms=>ms>33).length,childChanges,resizeErrors};
+    const next=list.querySelector<HTMLButtonElement>(`.mw-song-pager button[aria-label="${t('localWall.nextPage')}"]`)!;next.click();await tick(100);
+    expect(list.querySelector<HTMLElement>('[data-local-song]')?.dataset.localSong==='200100','Pagination still works after continuous resizing');
+    const scroller=root.querySelector<HTMLElement>('.mw-cloud__body')!;scroller.scrollTop=scroller.scrollHeight;await tick(120);
+    const last=list.querySelector<HTMLElement>('[data-local-song="200199"]')!,bounds=last.getBoundingClientRect(),viewport=scroller.getBoundingClientRect();
+    expect(bounds.top<viewport.bottom&&bounds.bottom>viewport.top&&last.querySelector('.mw-cloud__name')!.getBoundingClientRect().height>0,`Offscreen songs render when scrolled into view (${bounds.top}/${bounds.bottom}, viewport ${viewport.top}/${viewport.bottom}, scroll ${scroller.scrollTop}/${scroller.scrollHeight})`);
+    return {...sample,failures};
+   } finally {changes.disconnect();removeEventListener('error',errors);root.style.removeProperty('flex');root.style.removeProperty('width');}
+  };
+ }
  return {checks,failures,stress,tabCount,body:{width:bodyRect.width,height:bodyRect.height},root:{width:roots.width,height:roots.height},text:root.textContent!.slice(0,160),menus:MENU_LOG.length};
 };

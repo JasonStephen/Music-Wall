@@ -30,7 +30,8 @@ export class SongPager<T> {
   private label: HTMLElement;
   private range: HTMLElement;
   private controls: HTMLElement;
-  constructor(parent: HTMLElement, private row: (parent: HTMLElement, item: T, index: number) => void, private beforeRender = () => {}) {
+  private rowSizes: ResizeObserver | null = null;
+  constructor(parent: HTMLElement, private row: (parent: HTMLElement, item: T, index: number) => void, private beforeRender = () => {}, private deferRows = false) {
     this.nav = parent.createDiv({ cls: "mw-song-pager" });
     this.range = this.nav.createSpan({ cls: "mw-song-pager__range" });
     this.controls = this.nav.createDiv({ cls: "mw-song-pager__controls" });
@@ -63,6 +64,7 @@ export class SongPager<T> {
     revealInList(this.rows.firstElementChild as HTMLElement | null);
   }
   private render(): void {
+    this.rowSizes?.disconnect();
     this.beforeRender(); this.rows.empty();
     const pages = Math.max(1, Math.ceil(this.items.length / SongPager.size));
     this.nav.hidden = pages === 1;
@@ -76,5 +78,21 @@ export class SongPager<T> {
     this.range.setText(`${Math.min(start + 1, this.items.length)}–${Math.min(start + SongPager.size, this.items.length)} / ${this.items.length.toLocaleString()}`);
     this.range.setAttr("title", description);
     this.items.slice(start, start + SongPager.size).forEach((item, offset) => this.row(this.rows, item, start + offset));
+    // Measure each row once before deferring offscreen layout. Real heights
+    // preserve scroll geometry for wrapped metadata and unavailable-song hints.
+    if (this.deferRows && this.rows.childElementCount > 20 && typeof ResizeObserver !== "undefined") {
+      const observer = this.rowSizes = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          const row = entry.target as HTMLElement;
+          if (!row.isConnected) { observer.unobserve(row); continue; }
+          if (!entry.contentRect.width || !entry.contentRect.height) continue;
+          row.style.setProperty("--mw-row-height", `${entry.contentRect.height}px`);
+          row.addClass("mw-song-row--deferred");
+          observer.unobserve(row);
+        }
+      });
+      for (const row of Array.from(this.rows.children)) observer.observe(row);
+    }
   }
+  dispose(): void { this.rowSizes?.disconnect(); this.rowSizes = null; }
 }
