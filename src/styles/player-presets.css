@@ -1,6 +1,6 @@
 .mw-player-presets { display:flex; gap:3px; justify-self:end; align-items:center; }
 .mw-player .mw-player-presets button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:32px; height:34px; padding:5px; border:0; border-radius:7px; background:transparent; box-shadow:none; color:var(--text-normal); }
-.mw-player-presets svg { width:20px; height:20px; flex-shrink:0; }
+.mw-player-presets svg { width:var(--mw-topbar-icon-size,20px); height:var(--mw-topbar-icon-size,20px); flex-shrink:0; }
 .mw-player .mw-player-presets button[aria-pressed="true"] { background:var(--background-modifier-hover); }
 .mw-player .mw-player-presets button:hover { background:transparent; }
 .mw-player .mw-player-presets .mw-toolbtn.is-active,
@@ -71,10 +71,9 @@
   .mw-player__bar .mw-player-presets { grid-column:3; grid-row:1; justify-self:end; }
 }
 @container mw-pane (max-width:300px) {
-  .mw-player .mw-player__bar { padding-inline:6px; gap:3px; }
+  .mw-player .mw-player__bar { --mw-topbar-icon-size:18px; padding-inline:6px; gap:3px; }
   .mw-player .mw-player-presets { gap:0; }
   .mw-player .mw-player-presets button { width:25px; height:30px; padding:3px; }
-  .mw-player .mw-player-presets svg { width:18px; height:18px; }
   .mw-player--full-cover .mw-lyrics { padding:10px; }
 }
 @media(prefers-reduced-motion:reduce) { .mw-preset-switch,.mw-preset-switch::before { transition:none; } }
