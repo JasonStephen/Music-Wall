@@ -54,6 +54,20 @@
   box-shadow: 0 6px 24px #0003;
 }
 .mw-mini__playlist { width: 420px; }
+/* Only the rows scroll; no song can pass behind or above the toolbar. */
+.mw-mini .mw-mini__panel.mw-mini__playlist { overflow: hidden; }
+.mw-mini .mw-mini__playlist:not(.is-hidden) { display: flex; flex-direction: column; }
+.mw-mini__playlist > .mw-queue {
+  display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0;
+  max-height: 32cqh; overflow: hidden;
+}
+.mw-mini__playlist > .mw-queue:has(+ [hidden]) { flex: 1 1 auto; max-height: none; }
+.mw-mini__playlist > .mw-queue > .mw-queue__toolbar { position: relative; flex: 0 0 auto; background: transparent; }
+.mw-mini__playlist > .mw-queue > .mw-queue__list,
+.mw-mini__playlist-body {
+  min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+}
+.mw-mini__playlist-body { flex: 1 1 auto; }
 .mw-mini__playlist-title { padding: 6px 8px; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .mw-mini .mw-mini__track, .mw-mini .mw-mini__quality-option {
   width: 100%; height: auto; min-height: 28px; padding: 5px 8px; margin: 0; border: 0; border-radius: 5px;

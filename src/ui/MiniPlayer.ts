@@ -113,7 +113,7 @@ export class MiniPlayer {
     }
     this.queueControls = new QueueControls(this.panels.playlist.createDiv(), plugin.internalPlayer, () => plugin.ensureNeteaseLogin(), () => { this.albumKey = ""; this.update(); }, () => { plugin.settings.playbackOrder = plugin.internalPlayer.order; void plugin.saveData(plugin.settings); });
     this.queueControls.onLocateTrack = () => this.trackPager?.reveal(plugin.internalPlayer.index);
-    this.playlistBody = this.panels.playlist.createDiv();
+    this.playlistBody = this.panels.playlist.createDiv({ cls: "mw-mini__playlist-body" });
     this.volume = this.panels.volume.createEl("input", { cls: "mw-range", attr: { type: "range", min: "0", max: "1", step: "0.01", "aria-label": t("internal.volume") } });
     decorateRange(this.volume, true);
     this.volume.addEventListener("input", () => { const value = Number(this.volume.value); plugin.internalPlayer.setVolume(value); plugin.settings.playerVolume = value; void plugin.saveData(plugin.settings); });

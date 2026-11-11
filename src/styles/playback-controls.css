@@ -168,8 +168,7 @@
   text-shadow: none;
 }
 .mw-player.mw-bg--art .mw-player__playlist {
-  background: transparent;
-  --mw-panel-bg: transparent;
+  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 88%, transparent);
   --mw-panel-fg: var(--mw-full-foreground, #f2f4f8);
   --mw-panel-fg-dim: var(--mw-full-foreground, #f2f4f8);
 }

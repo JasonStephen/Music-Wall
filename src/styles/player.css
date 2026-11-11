@@ -879,7 +879,7 @@
   /* 面板本身不滚动，纵向滚动只发生在内部的曲目列表里 */
   overflow: hidden;
   padding: 12px clamp(16px, 3vw, 32px) 18px;
-  background: transparent;
+  background: color-mix(in srgb, var(--mw-player-panel-bg) 88%, transparent);
   border-top: 1px solid var(--background-modifier-border);
   box-shadow: none;
 }
@@ -890,7 +890,7 @@
 
 /* Full-cover mode keeps the cover visible through the queue. */
 .mw-player.mw-player--full-cover .mw-player__playlist {
-  background: transparent;
+  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 88%, transparent);
   border-color: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 42%, transparent);
 }
 @keyframes mw-panel-reveal {
