@@ -635,7 +635,7 @@ export class MusicLibraryView extends ItemView {
         if (event.defaultPrevented || event.button !== 0 || target?.closest("button, a, input, select, textarea, [role=button]")) return;
         event.preventDefault(); play.click();
       });
-      svgAction(actions, "list-plus", t("library.playNext"), () => this.single(track, false)).dataset.trackAction = "next";
+      svgAction(actions, "list-plus", t("library.playNext"), () => this.single(track, false, collection)).dataset.trackAction = "next";
       const menu = bindLibraryMenu(row, () => this.trackActions(track, collection, index)); pageMenus.push(menu.dispose);
       const more = svgAction(actions, "ellipsis", t("libraryDetails.moreActions"), () => { const r = more.getBoundingClientRect(); menu.open(r.right, r.bottom); });
       more.dataset.trackAction = "more";
@@ -776,7 +776,7 @@ export class MusicLibraryView extends ItemView {
   private trackActions(track: AlbumTrackSnapshot, collection?: AlbumMeta, index = 0): LibraryMenuAction[] {
     return [
       { label: t("panel.play"), icon: "play", run: () => collection ? this.play(collection, index) : this.single(track, true) },
-      { label: t("library.playNext"), icon: "list-plus", run: () => this.single(track, false) },
+      { label: t("library.playNext"), icon: "list-plus", run: () => this.single(track, false, collection) },
       { label: t("localWall.addSongs"), icon: "list-music", run: () => this.plugin.addSongsToLocalPlaylist([track]) },
       { label: t("libraryDetails.viewAlbum"), icon: "disc", run: () => this.trackAlbum(track, collection) },
       { label: t("libraryDetails.viewArtist"), icon: "user-round", run: () => this.trackArtist(track) },
@@ -824,7 +824,7 @@ export class MusicLibraryView extends ItemView {
     if (this.plugin.settings.playbackMode !== "internal") { new Notice(t("queue.internalOnly")); return false; }
     return true;
   }
-  private async single(track: AlbumTrackSnapshot, now: boolean): Promise<void> {
+  private async single(track: AlbumTrackSnapshot, now: boolean, collection?: AlbumMeta | null): Promise<void> {
     const intent = ++this.playIntent;
     if (!(await this.authorizeInternal()) || intent !== this.playIntent) return;
     const cookie = this.plugin.settings.neteaseCookie;
@@ -833,7 +833,7 @@ export class MusicLibraryView extends ItemView {
       catch { /* The existing song can still be played while metadata is unavailable. */ }
       if (this.closed || intent !== this.playIntent || cookie !== this.plugin.settings.neteaseCookie) return;
     }
-    await this.plugin.internalPlayer.insertTrack(track, now);
+    await this.plugin.internalPlayer.insertTrack(track, now, collection);
     if (!now) new Notice(t("library.nextAdded", { name: track.name }));
   }
   private async play(collection: AlbumMeta, index: number): Promise<void> {

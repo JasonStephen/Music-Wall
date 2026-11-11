@@ -280,25 +280,72 @@ async function main() {
     snapshot.index=99;assert.equal(api.parsePlaybackSession(JSON.stringify(snapshot)),null);
     first.instance.stop();assert.ok(api.parsePlaybackSession(JSON.stringify(first.instance.exportSession())));
   });
-  await test('Inserted search songs retain source name, identity and original membership', async () => {
+  await test('Every queued song retains its own collection or search origin across queue edits and restore', async () => {
     const {instance:p}=player();
     const source={...album(0),playlistId:123,name:'Original playlist',cover:'playlist.jpg',wallEntryId:'saved-list'};
     await p.playPlaylist(source);
     const extra={id:1001,name:'Search result',artists:'Artist',cover:'song.jpg',duration:120000};
     await p.insertTrack(extra,true);
-    assert.equal(p.album.name,source.name);assert.equal(p.album.playlistId,123);assert.equal(p.album.wallEntryId,'saved-list');
-    assert.equal(p.currentCover,'song.jpg');assert.equal(p.state.title,'Search result');
-    assert.equal(p.sourceCollection.name,source.name);assert.equal(p.sourceCollection.trackCount,3);assert.equal(p.sourceCollection.tracks.length,3);
+    assert.equal(p.album.name,source.name);assert.equal(p.album.playlistId,123);
+    assert.equal(p.currentCover,'song.jpg');assert.equal(p.sourceCollection,null);
     assert.equal(source.tracks.length,3);assert.equal(p.songQueue.length,4);
-    await p.insertTrack({...extra,id:1002,name:'Next search'},false);await p.next();
-    assert.equal(p.state.songId,1002);assert.equal(p.album.name,source.name);assert.equal(p.sourceCollection.tracks.length,3);
-    await p.playSongQueue(0);assert.equal(p.sourceCollection.trackCount,3);
-    p.enqueuePlaylist({...album(6),playlistId:666,name:'Appended playlist'});
-    assert.equal(p.sourceCollection.name,source.name);assert.equal(p.album.name,source.name);
-    const restored=player().instance;restored.restoreSession(api.parsePlaybackSession(JSON.stringify(p.exportSession())));
-    assert.equal(restored.sourceCollection.name,source.name);assert.equal(restored.sourceCollection.tracks.length,3);
-    await restored.insertTrack({...extra,id:1003},true);assert.equal(restored.sourceCollection.trackCount,3);
+    await p.prev();assert.equal(p.sourceCollection.name,source.name);
+    await p.next();assert.equal(p.sourceCollection,null);
+    await p.next();assert.equal(p.sourceCollection.name,source.name);
+    await p.insertTrack({...extra,id:1002},false);await p.next();
+    assert.equal(p.state.songId,1002);assert.equal(p.sourceCollection,null);
+    const other={...album(6),playlistId:666,name:'Appended playlist'};
+    p.enqueuePlaylist(other);
+    await p.playSongQueue(p.songQueue.findIndex(t=>t.id===61));
+    assert.equal(p.sourceCollection.name,other.name);assert.equal(p.sourceCollection.tracks.length,3);
+    await p.insertTrack({...extra,id:1003},true,other);assert.equal(p.sourceCollection.playlistId,666);
+    const saved=api.parsePlaybackSession(JSON.stringify(p.exportSession()));assert.ok(saved);
+    const restored=player().instance;restored.restoreSession(saved);
+    assert.equal(restored.sourceCollection.playlistId,666);
+    for (const song of restored.songQueue) {
+      await restored.select(restored.album.tracks.findIndex(t=>t.id===song.id));
+      const expected=song.id===1001||song.id===1002?null:song.id>=61?666:123;
+      assert.equal(restored.sourceCollection?.playlistId||null,expected);
+      if(expected)assert.equal(restored.sourceCollection.trackCount,3);
+    }
+    await restored.removeSong(1001);
+    await restored.playSongQueue(restored.songQueue.findIndex(t=>t.id===1002));assert.equal(restored.sourceCollection,null);
+    restored.setOrder('shuffle');await restored.next();
+    assert.equal(restored.sourceCollection?.playlistId||null,[1001,1002].includes(restored.state.songId)?null:restored.state.songId>=61?666:123);
     p.stop();restored.stop();
+  });
+  await test('Album songs keep album origin after a search insertion and legacy sessions recover known origins', async () => {
+    const {instance:p}=player();await p.playAlbum(album(8));
+    await p.insertTrack({id:1001,name:'Search',duration:120000},true);
+    assert.equal(p.sourceCollection,null);
+    await p.prev();assert.equal(p.sourceCollection.albumId,8);
+    const saved=JSON.parse(JSON.stringify(p.exportSession()));delete saved.trackSources;
+    saved.playlistSource=album(8);
+    const restored=player().instance;restored.restoreSession(api.parsePlaybackSession(JSON.stringify(saved)));
+    assert.equal(restored.sourceCollection.albumId,8);
+    await restored.next();assert.equal(restored.sourceCollection,null);
+    p.stop();restored.stop();
+    const legacy=player().instance;await legacy.playAlbum(album(4));
+    const legacySaved=JSON.parse(JSON.stringify(legacy.exportSession()));delete legacySaved.trackSources;
+    const resumed=player().instance;resumed.restoreSession(api.parsePlaybackSession(JSON.stringify(legacySaved)));
+    await resumed.insertTrack({id:1008,name:'New search',duration:120000},true);
+    await resumed.prev();assert.equal(resumed.sourceCollection.albumId,4);
+    legacy.stop();resumed.stop();
+  });
+  await test('Removing earlier songs keeps the playing song and source; source snapshots remain shared', async () => {
+    const {instance:p}=player();
+    const source={...album(3),playlistId:333,albumId:0};await p.playPlaylist(source,2);
+    await p.removeSong(31);assert.equal(p.state.songId,33);assert.equal(p.sourceCollection.playlistId,333);
+    const large={...album(9),albumId:0,playlistId:999,tracks:Array.from({length:2000},(_,i)=>({id:20000+i,name:'Song '+i,duration:120000})),trackCount:2000};
+    await p.playPlaylist(large);
+    await p.insertTrack({id:90001,name:'Collection insert',duration:120000},false,large);
+    await p.insertTrack({id:90002,name:'Collection insert 2',duration:120000},false,large);
+    const snapshot=p.exportSession();
+    assert.equal(Object.keys(snapshot.trackSources).length,1);
+    assert.equal(new Set(snapshot.songQueue.map(t=>t.playbackSourceId)).size,1);
+    assert.ok(JSON.stringify(snapshot).length<JSON.stringify(large).length*8);
+    await p.clearSongQueue();assert.equal(p.sourceCollection,null);
+    p.stop();
   });
   await test('Search playback without a playlist uses a queue label and song artwork', async () => {
     const {instance:p}=player();

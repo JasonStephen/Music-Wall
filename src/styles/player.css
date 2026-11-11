@@ -232,7 +232,7 @@
 .mw-player .mw-player__bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
 .mw-player button.mw-player__source { grid-column: 2; justify-self: center; display: block; width: auto; max-width: min(60cqw, 680px); min-width: 0; height: auto; padding: 4px; border: 0; background: transparent; box-shadow: none; color: inherit; font: inherit; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .mw-player .mw-player-presets { grid-column: 3; justify-self: end; }
-.mw-player button.mw-player__source:hover { text-decoration: underline; }
+.mw-player button.mw-player__source:enabled:hover { text-decoration: underline; }
 .mw-player button.mw-player__source.is-hidden { visibility: hidden; }
 /* 图标钮只有图标：颜色跟随背景模式的 --text-normal/--text-muted，
    因此四种背景下都能辨认（原来只设了 border/color 没设 background，
@@ -972,3 +972,5 @@
 .mw-statusbar.is-active {
   color: var(--text-accent);
 }
+
+.mw-player button.mw-player__source:disabled { opacity: 1; cursor: default; text-decoration: none; }

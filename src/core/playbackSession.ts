@@ -13,6 +13,7 @@ export interface PlaybackSession {
   songQueue: AlbumTrackSnapshot[];
   queuedPlaylist: AlbumMeta | null;
   playlistSource?: AlbumMeta | null;
+  trackSources?: Record<string, AlbumMeta>;
   savedAlbum: { id: string; index: number } | null;
   savedPlaylist: { index: number } | null;
   priorityNext: number[];
@@ -23,6 +24,7 @@ export function parsePlaybackSession(text: string): PlaybackSession | null {
   try {
     const value = JSON.parse(text);
     const track = (item: any): boolean => !!item && Number.isSafeInteger(item.id) && item.id > 0
+      && (item.playbackSourceId == null || typeof item.playbackSourceId === "string")
       && typeof item.name === "string" && Number.isFinite(item.duration) && item.duration >= 0;
     const album = (item: any): boolean => !!item && Number.isFinite(item.albumId)
       && typeof item.name === "string" && typeof item.artist === "string" && typeof item.cover === "string"
@@ -36,6 +38,8 @@ export function parsePlaybackSession(text: string): PlaybackSession | null {
       || typeof value.currentEntryId !== "string" || !Array.isArray(value.songQueue) || !value.songQueue.every(track)
       || !(value.queuedPlaylist === null || album(value.queuedPlaylist))
       || !(value.playlistSource == null || album(value.playlistSource))
+      || !(value.trackSources == null || typeof value.trackSources === "object" && !Array.isArray(value.trackSources)
+        && Object.entries(value.trackSources).every(([key, item]) => /^[1-9]\d*$/.test(key) && album(item)))
       || !(value.savedPlaylist === null || index(value.savedPlaylist?.index, value.queuedPlaylist))
       || !(value.savedAlbum === null || typeof value.savedAlbum?.id === "string"
         && index(value.savedAlbum.index, value.albumQueue.find((entry: AlbumQueueEntry) => entry.id === value.savedAlbum.id)?.album))

@@ -1026,7 +1026,7 @@ export class MusicPlayerView extends Component {
     const menu = new Menu();
     menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewArtist")).setIcon("user-round").onClick(() => void this.openCurrentArtist()));
     menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewAlbum")).setIcon("disc").onClick(() => void this.openCurrentAlbum()));
-    menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewSource")).setIcon("link").onClick(() => void this.openSource()));
+    menu.addItem(item => item.setSection("music-wall").setTitle(t("player.viewSource")).setIcon("link").setDisabled(this.now.source === "internal" && !this.plugin.internalPlayer?.sourceCollection).onClick(() => void this.openSource()));
     menu.showAtPosition({x:event.clientX,y:event.clientY});
   }
 
@@ -1252,15 +1252,18 @@ export class MusicPlayerView extends Component {
   // ---- 跳转到所在墙 ----
 
   private updateSource(): void {
-    const meta = this.plugin.internalPlayer?.sourceCollection || this.matchedAlbum() || this.current?.meta;
-    const source = this.el.source; if (!source) return;
+    const internal = this.now.source === "internal" ? this.plugin.internalPlayer : null;
+    const meta = internal ? internal.sourceCollection : this.matchedAlbum() || this.current?.meta;
+    const source = this.el.source as HTMLButtonElement | undefined; if (!source) return;
     const wall = meta?.playbackWallPath;
-    const kind = meta?.playlistId || this.plugin.internalPlayer?.contentKind === "playlist" ? "playlist" : wall ? "wallAlbum" : "album";
-    source.setText(meta ? `${t(`libraryDetails.${kind}`)}·${meta.name}` : "");
-    source.title = source.textContent || ""; source.toggleClass("is-hidden", !meta);
+    const kind = meta?.playlistId || meta?.localPlaylistId ? "playlist" : wall ? "wallAlbum" : "album";
+    source.setText(meta ? `${t(`libraryDetails.${kind}`)}·${meta.name}` : internal?.album ? t("library.search") : "");
+    source.disabled = !meta;
+    source.title = source.textContent || ""; source.toggleClass("is-hidden", !meta && !internal?.album);
   }
   private async openSource(): Promise<void> {
-    const meta = this.plugin.internalPlayer?.sourceCollection || this.matchedAlbum() || this.current?.meta;
+    const internal = this.now.source === "internal" ? this.plugin.internalPlayer : null;
+    const meta = internal ? internal.sourceCollection : this.matchedAlbum() || this.current?.meta;
     if (!meta) return;
     if (meta.wallEntryId) { await this.plugin.revealLocalEntry(meta.wallEntryId); return; }
     if (meta.playbackWallPath) {

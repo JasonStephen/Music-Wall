@@ -21,6 +21,7 @@ export type AlbumSource = "search" | "manual";
 
 /** 单曲条目（快照，离线可读） */
 export interface AlbumTrackSnapshot {
+  playbackSourceId?: string;
   id: number;
   name: string;
   /** 时长，毫秒 */
