@@ -13,6 +13,8 @@ import { effectiveZoom, syncZoomBox } from '../src/ui/zoom';
 import { verifyHiddenZoom } from './hidden-zoom-ui';
 import { showArtistAlbumMenu } from '../src/ui/artistAlbumSettings';
 import { LocalMusicWall } from '../src/ui/LocalMusicWall';
+import { revealInList } from '../src/ui/SongPager';
+import { suppressHoverHints } from '../src/ui/hoverHints';
 installDomHelpers();
 const tick = (ms=25) => new Promise(resolve => setTimeout(resolve,ms));
 class Audio extends EventTarget {currentTime=0;duration=200;paused=true;ended=false;volume=1;async play(){this.paused=false;this.dispatchEvent(new Event('playing'));}pause(){this.paused=true;this.dispatchEvent(new Event('pause'));}removeAttribute(){}load(){}}
@@ -20,6 +22,13 @@ let dispose = async () => {};
 (window as any).setupUnified = async (config: any = {}) => {
  await dispose(); setLanguage(config.lang || 'zh-CN'); document.body.className=`theme-${config.theme || 'light'}`; document.body.style.setProperty('--mw-zoom',String(effectiveZoom(config.zoom || 1)));document.body.classList.toggle('mw-zoomed',effectiveZoom(config.zoom || 1)!==1);
  const mount=document.querySelector<HTMLElement>('#mount')!;mount.empty();const failures:string[]=[];let checks=0;const check=(value:unknown,label:string)=>{checks++;if(!value)failures.push(label);};
+ const hintScope=document.body.createDiv({cls:'mw-view'});
+ const hinted=hintScope.createEl('button',{attr:{title:'Hint','aria-label':'Control name'}});
+ const hintIcon=hinted.createSpan();
+ document.addEventListener('mouseover',suppressHoverHints,true);
+ hintIcon.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));
+ check(!hinted.hasAttribute('title')&&hinted.getAttribute('aria-label')==='Control name','Plugin hover hints are removed while accessible names remain');
+ document.removeEventListener('mouseover',suppressHoverHints,true);hintScope.remove();
  const memory = new Map<string,string>();const adapter={exists:async(p:string)=>memory.has(p),read:async(p:string)=>memory.get(p)!,write:async(p:string,s:string)=>{memory.set(p,s)},mkdir:async(p:string)=>{memory.set(p,'')}};
  const store=new WallLibraryStore(adapter);await store.ready();
  const cover=probeCoverUri('6e8eaf');const tracks=Array.from({length:7},(_,i)=>({id:100+i,name:`Song ${i+1}`,artists:'Artist',albumName:`Album ${i+1}`,albumId:i+1,duration:200000,cover:probeCoverUri(['6e8eaf','b96d85','b9a276','798b6c'][i%4])}));
@@ -236,7 +245,31 @@ let dispose = async () => {};
   check(current(mini)?.dataset.song==='100805','Opening mini queue reveals current song across pages');
   locate(full).click();await tick();
   check(current(full)?.dataset.song==='100805','Full queue locates current song across pages');
-  full.querySelector<HTMLButtonElement>('.mw-np__ctrl--list')!.click();await tick(360);
+  const movingParts = [...full.querySelectorAll<HTMLElement>('.mw-player__body, .mw-np__disc, .mw-lyrics, .mw-player__bar')];
+  const beforeOpen = movingParts.map(el => el.getBoundingClientRect().top);
+  const scrollParents: HTMLElement[] = [];
+  for (let el: HTMLElement | null = full; el; el = el.parentElement) scrollParents.push(el);
+  const scrollBefore = scrollParents.map(el => el.scrollTop);
+  full.querySelector<HTMLButtonElement>('.mw-np__ctrl--list')!.click();
+  let geometryStable = true;
+  for (let frame = 0; frame < 24; frame++) {
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    geometryStable &&= movingParts.every((el, i) => Math.abs(el.getBoundingClientRect().top - beforeOpen[i]) < 1);
+    geometryStable &&= scrollParents.every((el, i) => el.scrollTop === scrollBefore[i]);
+  }
+  check(geometryStable, 'Queue opening keeps player geometry and ancestor scroll positions stable on every sampled frame');
+  const panelStyle = getComputedStyle(full.querySelector('.mw-player__playlist')!);
+  check(panelStyle.backgroundColor === 'rgba(0, 0, 0, 0)', 'Fullscreen queue background is transparent');
+  check(getComputedStyle(full.querySelector('.mw-player__scrim')!).backgroundColor === 'rgba(0, 0, 0, 0)', 'Queue opening does not dim the cover background');
+  const clipped = document.createElement('div');
+  clipped.style.cssText = 'position:fixed;left:0;top:0;width:100px;height:100px;overflow:hidden;transform:scale(1.25)';
+  const listProbe = clipped.appendChild(document.createElement('div'));
+  listProbe.style.cssText = 'position:absolute;top:200px;width:100px;height:80px;overflow-y:auto';
+  const spacer = listProbe.appendChild(document.createElement('div'));spacer.style.height='600px';
+  const probeRow = listProbe.appendChild(document.createElement('div'));probeRow.style.height='20px';
+  document.body.appendChild(clipped);revealInList(probeRow);
+  check(listProbe.scrollTop > 0 && clipped.scrollTop === 0, 'Row reveal scrolls only the list even outside a clipped and scaled ancestor');
+  clipped.remove();
   check(getComputedStyle(full.querySelector('.mw-player__playlist')!).backdropFilter==='none'&&getComputedStyle(mini.querySelector('.mw-mini__playlist')!).backdropFilter==='none','Queue surfaces do not create blurred backdrop layers');
   check(getComputedStyle(full).transform==='none','Expanded player releases its animation transform');
   for (const host of [mini,full]) {

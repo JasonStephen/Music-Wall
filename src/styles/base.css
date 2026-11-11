@@ -340,3 +340,8 @@ body.mw-zoomed .mw-modal-zoom .modal {
   max-width: calc(92vw / var(--mw-zoom, 1));
   max-height: calc(88vh / var(--mw-zoom, 1));
 }
+
+/* 插件内统一关闭悬停黑色气泡提示。 */
+body:has(:is(.mw-view, .mw-modal-zoom, .mw-settings):hover) .tooltip {
+  display: none !important;
+}

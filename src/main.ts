@@ -1,5 +1,6 @@
 import { normalizePlayerPresets } from "./ui/playerPresets";
 import { effectiveZoom } from "./ui/zoom";
+import { suppressHoverHints } from "./ui/hoverHints";
 import type { WorkspaceLeaf } from "obsidian";
 // Music Wall 插件主入口：注册扩展名/视图/命令/设置，并实现
 // 网络请求适配、创建/导入/导出/Git 导入等服务。
@@ -110,6 +111,7 @@ export default class MusicWallPlugin extends Plugin {
   private githubLoginPromise: Promise<boolean> | null = null;
 
   async onload(): Promise<void> {
+    this.registerDomEvent(document, "mouseover", suppressHoverHints, true);
     console.log(`[music-wall] loaded, build ${BUILD_TAG}`);
     await this.loadSettings();
     this.wallLibrary = new WallLibraryStore(this.app.vault.adapter, WALL_LIBRARY_PATH, this.settings.defaultStyle);

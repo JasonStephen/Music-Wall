@@ -1,5 +1,5 @@
 import { setIcon } from "obsidian";
-import { SongPager } from "./SongPager";
+import { SongPager, revealInList } from "./SongPager";
 import { t } from "../i18n";
 import type { InternalPlayer } from "../core/internalPlayer";
 
@@ -149,7 +149,7 @@ export class QueueControls {
       this.songPager?.reveal(songIndex);
       this.updateHighlights();
     } else {
-      this.root.querySelector<HTMLElement>(".mw-queue__row.is-current")?.scrollIntoView({ block: "nearest" });
+      revealInList(this.root.querySelector<HTMLElement>(".mw-queue__row.is-current"));
       this.onLocateTrack?.();
     }
   }

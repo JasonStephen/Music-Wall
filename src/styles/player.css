@@ -849,7 +849,7 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  background: rgba(0, 0, 0, 0.28);
+  background: transparent;
   opacity: 0;
   pointer-events: none !important;
   transition: opacity 0.3s ease;
@@ -861,7 +861,7 @@
 /* 上拉面板默认必须是「真隐藏」：早先用 transform: translateY(101%) 靠父节点裁剪，
    但根节点的 height/overflow 与 Obsidian 的 .view-content 是同一档特异性，谁生效不稳定；
    一旦父节点高度是内容撑开的、或裁剪没生效，滑出去的抽屉就会掉进下方可视区里露出来。
-   改为 display:none（正交、不依赖裁剪，也不占布局），展开时用动画滑入。 */
+   使用 display:none 保持关闭状态不占布局，展开时只动画裁剪区域。 */
 .mw-player__playlist {
   position: absolute;
   left: 0;
@@ -879,27 +879,23 @@
   /* 面板本身不滚动，纵向滚动只发生在内部的曲目列表里 */
   overflow: hidden;
   padding: 12px clamp(16px, 3vw, 32px) 18px;
-  background: var(--mw-player-panel-bg, var(--background-primary));
+  background: transparent;
   border-top: 1px solid var(--background-modifier-border);
-  box-shadow: 0 -16px 38px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
 }
 .mw-player__playlist.is-open {
   display: flex;
-  animation: mw-panel-up 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: mw-panel-reveal 0.28s ease-out;
 }
 
-/* Full-cover mode uses the extracted cover tone for its overlay surface. */
+/* Full-cover mode keeps the cover visible through the queue. */
 .mw-player.mw-player--full-cover .mw-player__playlist {
-  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 68%, #11161e);
-  border-color: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 42%, var(--background-modifier-border));
+  background: transparent;
+  border-color: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 42%, transparent);
 }
-@keyframes mw-panel-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+@keyframes mw-panel-reveal {
+  from { clip-path: inset(100% 0 0 0); }
+  to { clip-path: inset(0 0 0 0); }
 }
 .mw-player__playlist-head {
   display: flex;

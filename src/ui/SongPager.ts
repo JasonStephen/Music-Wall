@@ -1,6 +1,23 @@
 import { t } from "../i18n";
 import { setIcon } from "obsidian";
 
+/** Reveal a row inside its list without scrolling the player or workspace. */
+export function revealInList(row: HTMLElement | null | undefined): void {
+  if (!row) return;
+  for (let container = row.parentElement; container; container = container.parentElement) {
+    const win = container.ownerDocument.defaultView;
+    if (!win || !/^(auto|scroll|overlay)$/.test(win.getComputedStyle(container).overflowY)) continue;
+    const bounds = container.getBoundingClientRect(), item = row.getBoundingClientRect();
+    if (!container.clientHeight || !bounds.height) return;
+    const scale = bounds.height / container.offsetHeight || 1;
+    const top = bounds.top + container.clientTop * scale;
+    const bottom = top + container.clientHeight * scale;
+    if (item.top < top) container.scrollTop += (item.top - top) / scale;
+    else if (item.bottom > bottom) container.scrollTop += (item.bottom - bottom) / scale;
+    return;
+  }
+}
+
 /** Keep DOM size bounded while retaining the complete ordered collection. */
 export class SongPager<T> {
   static readonly size = 100;
@@ -38,12 +55,12 @@ export class SongPager<T> {
     if (index < 0 || index >= this.items.length) return;
     const page = Math.floor(index / SongPager.size);
     if (page !== this.page) { this.page = page; this.render(); }
-    (this.rows.children[index % SongPager.size] as HTMLElement)?.scrollIntoView({ block: "nearest" });
+    revealInList(this.rows.children[index % SongPager.size] as HTMLElement);
   }
   private turn(direction: number): void {
     this.page = Math.max(0, Math.min(this.page + direction, Math.ceil(this.items.length / SongPager.size) - 1));
     this.render();
-    this.rows.firstElementChild?.scrollIntoView({ block: "nearest" });
+    revealInList(this.rows.firstElementChild as HTMLElement | null);
   }
   private render(): void {
     this.beforeRender(); this.rows.empty();

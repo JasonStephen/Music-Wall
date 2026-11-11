@@ -159,7 +159,7 @@
 }
 
 
-/* Keep queue text on a solid surface instead of a scaled backdrop layer. */
+/* Keep queue text sharp without a backdrop-filter compositing layer. */
 .mw-player .mw-player__playlist,
 .mw-player.mw-bg--art .mw-player__playlist,
 .mw-mini .mw-mini__panel.mw-mini__playlist {
@@ -168,5 +168,8 @@
   text-shadow: none;
 }
 .mw-player.mw-bg--art .mw-player__playlist {
-  background: color-mix(in srgb, var(--mw-np-accent, #1d4e89) 58%, #11161e);
+  background: transparent;
+  --mw-panel-bg: transparent;
+  --mw-panel-fg: var(--mw-full-foreground, #f2f4f8);
+  --mw-panel-fg-dim: var(--mw-full-foreground, #f2f4f8);
 }
