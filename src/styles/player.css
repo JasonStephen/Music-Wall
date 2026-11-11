@@ -870,6 +870,9 @@
   z-index: 4;
   max-height: 62%;
   height: min(62%, 560px);
+  flex: 0 0 auto;
+  contain: layout paint;
+  isolation: isolate;
   display: none;
   flex-direction: column;
   gap: 8px;
@@ -887,7 +890,7 @@
 
 /* Full-cover mode uses the extracted cover tone for its overlay surface. */
 .mw-player.mw-player--full-cover .mw-player__playlist {
-  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 24%, var(--background-primary));
+  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 68%, #11161e);
   border-color: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 42%, var(--background-modifier-border));
 }
 @keyframes mw-panel-up {
