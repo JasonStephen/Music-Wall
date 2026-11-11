@@ -15,12 +15,31 @@
 .mw-cloud .mw-cloud__head { flex-wrap:wrap; }
 .mw-cloud .mw-cloud__heading { min-width:80px; }
 .mw-cloud .mw-cloud__heading h2 { white-space:nowrap; }
-.mw-local__landing { flex:1; display:flex; align-items:center; justify-content:center; gap:24px; padding:36px 12px; flex-wrap:wrap; min-height:300px; }
-.mw-cloud button.mw-local__portal { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; width:190px; min-height:220px; padding:24px; border:1px solid var(--mw-panel-line); border-radius:16px; color:var(--mw-panel-fg); background:var(--mw-panel-bg); box-shadow:none; }
-.mw-cloud button.mw-local__portal:hover { background:var(--mw-panel-hover); transform:translateY(-3px); }
-.mw-local__portal-icon { display:grid; place-items:center; width:68px; height:68px; border-radius:18px; background:var(--mw-panel-hover); color:var(--interactive-accent); }
+.mw-cloud__body:has(> .mw-local__landing) { container:mw-wall-home / inline-size; }
+.mw-local__landing { flex:1 0 auto; display:grid; grid-template-columns:repeat(3,minmax(0,160px)); align-content:center; align-items:center; justify-content:center; gap:28px; padding:24px 12px; min-width:0; }
+.mw-cloud button.mw-local__portal { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; width:100%; min-width:0; height:auto; min-height:120px; padding:12px 8px; border:0; border-radius:0; color:var(--mw-panel-fg); background:transparent; box-shadow:none; white-space:normal; }
+.mw-cloud button.mw-local__portal:hover { background:transparent; }
+.mw-cloud button.mw-local__portal:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:2px; }
+.mw-local__portal-icon { display:grid; place-items:center; flex:0 0 auto; width:68px; height:68px; border-radius:18px; background:var(--mw-panel-hover); color:var(--interactive-accent); transition:background .15s ease; }
+.mw-local__portal:hover .mw-local__portal-icon { background:color-mix(in srgb,var(--interactive-accent) 16%,transparent); }
 .mw-local__portal-icon svg { width:36px; height:36px; }
-.mw-local__portal > span:last-child { color:var(--mw-panel-fg-dim); font-size:12px; }
+.mw-local__portal > strong { min-width:0; font-size:14px; line-height:1.5; font-weight:600; overflow-wrap:anywhere; }
+@container mw-wall-home (max-width:520px) {
+  .mw-local__landing { grid-template-columns:minmax(0,240px); gap:16px; padding:20px 8px; }
+  .mw-cloud button.mw-local__portal { flex-direction:row; justify-content:flex-start; gap:20px; min-height:76px; padding:10px 16px; text-align:left; }
+  .mw-local__portal-icon { width:56px; height:56px; border-radius:15px; }
+  .mw-local__portal-icon svg { width:30px; height:30px; }
+}
+@container mw-wall-home (max-width:260px) {
+  .mw-local__landing { gap:12px; padding-inline:0; }
+  .mw-cloud button.mw-local__portal { gap:12px; padding-inline:8px; }
+  .mw-local__portal-icon { width:48px; height:48px; border-radius:13px; }
+  .mw-local__portal > strong { font-size:13px; }
+}
+@container mw-wall-home (max-width:160px) {
+  .mw-cloud button.mw-local__portal { flex-direction:column; justify-content:center; gap:10px; padding:8px 0; text-align:center; }
+  .mw-local__portal-icon { width:44px; height:44px; }
+}
 .mw-cloud__sidebar > [data-section="wall"] { border-top:1px solid var(--mw-panel-line); margin-top:10px; padding-top:12px; }
 .mw-local-tree { display:flex; flex:0 0 auto; flex-direction:column; gap:10px; padding-bottom:14px; }
 .mw-local-tree__section { min-width:0; }
@@ -121,10 +140,8 @@
   .mw-embedded-player.mw-player .mw-player__bar { grid-template-columns:32px minmax(0,1fr) auto; column-gap:0; }
 }
 @container mw-pane (max-width:600px) {
-  .mw-local__landing { gap:12px; }
-  .mw-cloud button.mw-local__portal { width:150px; min-height:170px; padding:18px; }
   .mw-local__grid { grid-template-columns:repeat(auto-fill,minmax(min(100%,130px),1fr)); gap:10px; }
   .mw-local__fixed .mw-local__tools { width:auto; }
   .mw-local__detail-art { width:90px; height:90px; flex-basis:90px; }
 }
-@media (prefers-reduced-motion:reduce) { .mw-cloud button.mw-local__portal:hover { transform:none; } .mw-cloud > .mw-embedded-player { transition:none; } }
+@media (prefers-reduced-motion:reduce) { .mw-local__portal-icon, .mw-cloud > .mw-embedded-player { transition:none; } }

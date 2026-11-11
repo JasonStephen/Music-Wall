@@ -143,7 +143,6 @@ export class LocalMusicWall {
     for (const kind of WALL_KINDS) {
       const button = landing.createEl("button", { cls: "mw-local__portal", attr: { type: "button", "data-wall-portal": kind } });
       setIcon(button.createSpan({ cls: "mw-local__portal-icon" }), iconFor(kind)); button.createEl("strong", { text: t(`localWall.${kind}`) });
-      button.createSpan({ text: t("localWall.folderCount", { count: this.data.entries.filter(e => this.data.collections.some(c => c.id === e.collection && c.kind === kind)).length }) });
       button.addEventListener("click", () => this.open(kind));
     }
   }

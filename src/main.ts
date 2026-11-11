@@ -63,7 +63,7 @@ import { MusicWallSettingTab } from "./settings";
 import { applyLanguagePref, t } from "./i18n";
 
 /** 构建标识：启动时打印到控制台，用于确认当前运行版本 */
-const BUILD_TAG = "1.4.0-exp-4";
+const BUILD_TAG = "1.4.0-exp-5";
 
 
 export default class MusicWallPlugin extends Plugin {
