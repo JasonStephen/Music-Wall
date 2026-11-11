@@ -261,7 +261,15 @@ let dispose = async () => {};
   const panelStyle = getComputedStyle(full.querySelector('.mw-player__playlist')!);
   const alpha = Number(panelStyle.backgroundColor.match(/(?:,|\/)\s*([\d.]+)\s*\)$/)?.[1] ?? 1);
   check(alpha > 0 && alpha < 1, 'Fullscreen queue background is semitransparent');
-  check(getComputedStyle(full.querySelector('.mw-player__scrim')!).backgroundColor === 'rgba(0, 0, 0, 0)', 'Queue opening does not dim the cover background');
+  check(getComputedStyle(full.querySelector('.mw-player__scrim')!).backgroundColor === 'rgba(0, 0, 0, 0.4)', 'Queue opening dims the entire player background');
+  const queuePanel=full.querySelector<HTMLElement>('.mw-player__playlist')!;
+  const queueBox=queuePanel.parentElement!;
+  full.style.setProperty('--mw-host-bottom','40px');
+  check(Math.abs(queuePanel.getBoundingClientRect().bottom-queueBox.getBoundingClientRect().bottom)<1&&Number.parseFloat(getComputedStyle(queuePanel).paddingBottom)>=40,'Queue surface reaches the bottom while content clears the host status bar');
+  full.style.removeProperty('--mw-host-bottom');
+  const queueList=full.querySelector<HTMLElement>('.mw-queue__list')!;
+  const queueScale=queuePanel.getBoundingClientRect().height/queuePanel.offsetHeight;
+  check(queuePanel.getBoundingClientRect().bottom-queueList.getBoundingClientRect().bottom<=(Number.parseFloat(getComputedStyle(queuePanel).paddingBottom)+8)*queueScale,'Song queue uses the panel height without a large empty area below the rows');
   const clipped = document.createElement('div');
   clipped.style.cssText = 'position:fixed;left:0;top:0;width:100px;height:100px;overflow:hidden;transform:scale(1.25)';
   const listProbe = clipped.appendChild(document.createElement('div'));
@@ -336,6 +344,9 @@ let dispose = async () => {};
   check(current(mini)?.dataset.song==='101206'&&current(full)?.dataset.song==='101206','Album song changes refresh song queue highlights');
   full.querySelector<HTMLElement>('[data-song="101208"] .mw-queue__name')!.click();await tick();
   check(full.querySelector<HTMLElement>('[data-song]')?.dataset.song==='101200'&&current(full)?.dataset.song==='101208','Switching from album playback to song playback keeps the browsed page');
+  const longPanelHeight=queuePanel.getBoundingClientRect().height;
+  await engine.playPlaylist({albumId:0,playlistId:10001,name:'Short queue',artist:'Artist',cover,tracks:longTracks.slice(0,1),trackCount:1});await tick();
+  check(queuePanel.getBoundingClientRect().height<longPanelHeight&&full.querySelectorAll('.mw-queue__row').length===1,'Short song queues shrink the panel to fit their content');
 
   await view.collapsePlayer();engine.stop();
  }

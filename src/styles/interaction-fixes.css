@@ -63,7 +63,10 @@
 .mw-player .mw-np__track.is-playable:focus-visible {
   outline: 1px solid var(--mw-panel-fg-dim); outline-offset: -1px; box-shadow: none;
 }
-.mw-player .mw-player__playlist { bottom: var(--mw-host-bottom, 0px); }
+.mw-player .mw-player__playlist {
+  bottom: 0;
+  padding-bottom: max(18px, var(--mw-host-bottom, 0px), env(safe-area-inset-bottom, 0px));
+}
 .mw-player__body { padding-bottom: calc(20px + var(--mw-host-bottom, 0px)); }
 @container mw-pane (max-width: 420px) {
   .mw-player .mw-np__popover { bottom: calc(16px + var(--mw-host-bottom, 0px)); }

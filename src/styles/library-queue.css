@@ -70,6 +70,7 @@
 /* Keep the toolbar outside the scrolling album rows. It shares the overlay's
    existing surface instead of painting a second dark translucent rectangle. */
 .mw-player__playlist > .mw-queue { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; max-height: 32cqh; overflow: hidden; }
+.mw-player__playlist > .mw-queue:has(+ .mw-np__tracks.is-hidden) { flex: 0 1 auto; max-height: none; }
 .mw-player__playlist > .mw-queue > .mw-queue__toolbar { position: relative; flex: 0 0 auto; background: transparent; }
 .mw-player__playlist > .mw-queue > .mw-queue__list { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .mw-player__playlist > .mw-np__tracks { min-height: min(80px, 10cqh); }

@@ -167,8 +167,12 @@
   -webkit-backdrop-filter: none;
   text-shadow: none;
 }
-.mw-player.mw-bg--art .mw-player__playlist {
-  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 88%, transparent);
-  --mw-panel-fg: var(--mw-full-foreground, #f2f4f8);
-  --mw-panel-fg-dim: var(--mw-full-foreground, #f2f4f8);
+.mw-player:is(.mw-bg--art, .mw-player--full-cover) .mw-player__playlist {
+  background: color-mix(in srgb, color-mix(in srgb, var(--mw-full-tone, #1d4e89) 30%, #101216) 92%, transparent);
+  --mw-panel-fg: #f2f4f8;
+  --mw-panel-fg-dim: #c5ccd7;
+  --text-normal: var(--mw-panel-fg);
+  --text-muted: var(--mw-panel-fg-dim);
+  --mw-panel-line: rgba(255, 255, 255, 0.18);
+  --mw-panel-hover: rgba(255, 255, 255, 0.1);
 }
