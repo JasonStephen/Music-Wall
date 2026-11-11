@@ -265,6 +265,8 @@
   grid-template-columns: minmax(0, 1fr);
   padding: 20px clamp(16px, 3vw, 36px);
   overflow: hidden;
+  /* The queue is an overlay. Keep the main player geometry fixed while it opens. */
+  contain: layout;
 }
 /* 窄屏同样不出滚动条（整页唯一可滚动的是曲目列表） */
 .mw-player--narrow .mw-player__body {
@@ -867,6 +869,7 @@
   bottom: 0;
   z-index: 4;
   max-height: 62%;
+  height: min(62%, 560px);
   display: none;
   flex-direction: column;
   gap: 8px;
@@ -880,6 +883,12 @@
 .mw-player__playlist.is-open {
   display: flex;
   animation: mw-panel-up 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Full-cover mode uses the extracted cover tone for its overlay surface. */
+.mw-player.mw-player--full-cover .mw-player__playlist {
+  background: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 24%, var(--background-primary));
+  border-color: color-mix(in srgb, var(--mw-full-tone, #1d4e89) 42%, var(--background-modifier-border));
 }
 @keyframes mw-panel-up {
   from {

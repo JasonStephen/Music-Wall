@@ -168,6 +168,5 @@
   text-shadow: none;
 }
 .mw-player.mw-bg--art .mw-player__playlist {
-  --mw-panel-bg: #171a20;
   background: var(--mw-panel-bg);
 }
