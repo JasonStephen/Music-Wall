@@ -170,14 +170,7 @@ export default class MusicWallPlugin extends Plugin {
     this.playbackSessionStore = new PlaybackSessionStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/playback-session.json`);
     const savedSession = this.settings.playbackMode === "internal" ? await this.playbackSessionStore.load() : null;
     if (savedSession) this.internalPlayer.restoreSession(savedSession);
-    this.playbackSessionStore.watch(this.internalPlayer, savedSession?.playing);
-    let resumeSession = savedSession?.playing ?? false;
-    this.register(this.internalPlayer.on(() => { resumeSession = false; }));
-    this.app.workspace.onLayoutReady(() => {
-      if (!resumeSession || this.unloading || this.settings.playbackMode !== "internal" || !hasLoginCookie(this.settings.neteaseCookie)) return;
-      resumeSession = false;
-      void this.internalPlayer.play();
-    });
+    this.playbackSessionStore.watch(this.internalPlayer);
     // Register only after services are ready: Obsidian may immediately restore
     // the last active player/library as soon as its view factory is registered.
     this.registerView(PLAYER_VIEW_TYPE, (leaf) => new MusicLibraryView(leaf, this));

@@ -64,9 +64,9 @@ export class PlaybackSessionStore {
     try { return await this.adapter.exists(this.path) ? parsePlaybackSession(await this.adapter.read(this.path)) : null; }
     catch (error) { console.warn("[music-wall] Playback session could not be read", error); return null; }
   }
-  watch(player: InternalPlayer, initialPlaying = player.playingRequested): void {
+  watch(player: InternalPlayer): void {
     this.off?.();
-    let previous = this.key(player, initialPlaying);
+    let previous = this.key(player);
     this.off = player.on(() => {
       const key = this.key(player);
       if (key === previous) return;

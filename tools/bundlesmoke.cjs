@@ -310,6 +310,7 @@ const origLoad = Module._load;
   let layoutReady;
   fakeWorkspace.onLayoutReady=callback=>{layoutReady=callback};
   for (const scenario of ['playing','paused','interrupted','client','corrupt']) {
+    layoutReady=undefined;
     sessionFiles.set(sessionPath,scenario==='corrupt'?'{bad':JSON.stringify({...seed,playing:scenario!=='paused'}));
     const restarted=new Plugin(fakeApp,{id:'music-wall'});
     restarted.loadData=async()=>({playbackMode:scenario==='client'?'client':'internal',neteaseCookie:'MUSIC_U=test;'});
@@ -321,10 +322,11 @@ const origLoad = Module._load;
       return true;
     };
     if(scenario==='interrupted')await restarted.internalPlayer.pause();
-    layoutReady();
-    if(resumed!==(scenario==='playing'?1:0))throw Error('Unexpected startup autoplay: '+scenario);
+    layoutReady?.();
+    if(resumed!==0)throw Error('Unexpected startup autoplay: '+scenario);
     if(['playing','paused','interrupted'].includes(scenario)) {
       if(restarted.internalPlayer.state.songId!==92||restarted.internalPlayer.songQueue.length!==2)throw Error('Session was not restored');
+      if(restarted.internalPlayer.state.status!=='paused'||restarted.internalPlayer.playingRequested)throw Error('Restored session must remain paused: '+scenario);
       restarted.internalPlayer.setOrder('repeat');
       await restarted.playbackSessionStore.flush();
       const before=sessionFiles.get(sessionPath);
@@ -332,7 +334,7 @@ const origLoad = Module._load;
       if(sessionFiles.get(sessionPath)!==before)throw Error('Unloading cleared the saved playback session');
     } else restarted.onunload();
   }
-  console.log('Playback session startup, autoplay, paused state, cancellation and teardown passed');
+  console.log('Playback session startup never autoplays; restored song, queue, paused state and teardown passed');
   console.log("\n== main.js 冒烟测试通过 ==");
   process.exit(0);
 })().catch((e) => {
