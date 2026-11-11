@@ -20,7 +20,7 @@
 .mw-cloud .mw-cloud__heading { min-width:80px; }
 .mw-cloud .mw-cloud__heading h2 { white-space:nowrap; }
 .mw-cloud__body:has(> .mw-local__landing) { container:mw-wall-home / inline-size; }
-.mw-local__landing { flex:1 0 auto; display:grid; grid-template-columns:repeat(3,minmax(0,160px)); align-content:center; align-items:center; justify-content:center; gap:28px; padding:24px 12px; min-width:0; }
+.mw-local__landing { flex:1 0 auto; display:grid; grid-template-columns:repeat(3,minmax(0,160px)); align-content:center; align-items:center; justify-content:center; gap:clamp(4px,calc((100cqw - 504px) / 2),28px); padding:24px 12px; min-width:0; }
 .mw-cloud button.mw-local__portal { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; width:100%; min-width:0; height:auto; min-height:120px; padding:12px 8px; border:0; border-radius:0; color:var(--mw-panel-fg); background:transparent; box-shadow:none; white-space:normal; }
 .mw-cloud button.mw-local__portal:hover { background:transparent; }
 .mw-cloud button.mw-local__portal:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:2px; }
@@ -28,7 +28,13 @@
 .mw-local__portal:hover .mw-local__portal-icon { background:color-mix(in srgb,var(--interactive-accent) 16%,transparent); }
 .mw-local__portal-icon svg { width:36px; height:36px; }
 .mw-local__portal > strong { min-width:0; font-size:14px; line-height:1.5; font-weight:600; overflow-wrap:anywhere; }
-@container mw-wall-home (max-width:520px) {
+@container mw-wall-home (max-width:380px) {
+  .mw-local__landing { grid-template-columns:minmax(0,240px); gap:16px; padding:20px 8px; }
+  .mw-cloud button.mw-local__portal { flex-direction:row; justify-content:flex-start; gap:20px; min-height:76px; padding:10px 16px; text-align:left; }
+  .mw-local__portal-icon { width:56px; height:56px; border-radius:15px; }
+  .mw-local__portal-icon svg { width:30px; height:30px; }
+}
+@container mw-pane (max-aspect-ratio:1/1) {
   .mw-local__landing { grid-template-columns:minmax(0,240px); gap:16px; padding:20px 8px; }
   .mw-cloud button.mw-local__portal { flex-direction:row; justify-content:flex-start; gap:20px; min-height:76px; padding:10px 16px; text-align:left; }
   .mw-local__portal-icon { width:56px; height:56px; border-radius:15px; }

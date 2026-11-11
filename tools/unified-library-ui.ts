@@ -399,6 +399,17 @@ let dispose = async () => {};
  if(config.queue){view.contentEl.querySelector<HTMLButtonElement>('.mw-embedded-player .mw-np__ctrl--list')!.click();}
  await tick(400);
  const root=view.contentEl;const bodyRect=root.querySelector('.mw-cloud__body')!.getBoundingClientRect();const roots=root.getBoundingClientRect();
+ if(config.page==='landing') {
+  const portals=[...root.querySelectorAll<HTMLElement>('[data-wall-portal]')].map(el=>el.getBoundingClientRect());
+  const landing=root.querySelector<HTMLElement>('.mw-local__landing')!;
+  const bodyWidth=contentWidth();
+  function contentWidth(){const el=root.querySelector<HTMLElement>('.mw-cloud__body')!,s=getComputedStyle(el);return el.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight);}
+  const vertical=config.width<=config.height||bodyWidth<=380;
+  check(portals.length===3,'Landing retains all three entries');
+  check(vertical?portals.every((r,i)=>i===0||r.top>=portals[i-1].bottom):portals.every(r=>Math.abs(r.top-portals[0].top)<1),'Landing stacks in portrait and stays in a row in landscape');
+  if(!vertical&&bodyWidth<560)check(parseFloat(getComputedStyle(landing).columnGap)<28,'Narrow landing reduces gaps before shrinking the entry columns');
+  for(const r of portals)check(r.left>=bodyRect.left&&r.right<=bodyRect.right+1,'Landing entry remains within the body');
+ }
  check(root.scrollWidth<=root.clientWidth+1,'No root horizontal overflow');const content=root.querySelector<HTMLElement>('.mw-cloud__body')!;check(content.scrollWidth<=content.clientWidth+1,'No body horizontal overflow: '+[...content.querySelectorAll<HTMLElement>('*')].filter(el=>el.getBoundingClientRect().right>bodyRect.right+1).slice(0,8).map(el=>el.className).join(','));
  check(!/localWall\.|labels\.sort\.|\?\?\?/.test(root.textContent||''),'All labels resolved');
  dispose=async()=>{engine.stop();await view.onClose();view.contentEl.remove();};
