@@ -57,6 +57,8 @@ export const Platform = {
  * 生成，保证字节合法），让取色链路可以被确定性地断言；其余 URL 一律抛错，
  * 用来验证「取不到就回退主题强调色」这条路径。
  */
+let coverRequestOverride: ((url: string) => Promise<ArrayBuffer | null>) | null = null;
+export function overrideCoverRequests(handler: typeof coverRequestOverride): void { coverRequestOverride = handler; }
 export async function requestUrl(req: { url: string }): Promise<{
   status: number;
   arrayBuffer: ArrayBuffer;
@@ -64,6 +66,10 @@ export async function requestUrl(req: { url: string }): Promise<{
   headers: Record<string, string>;
 }> {
   const url = String(req?.url ?? "");
+  if (coverRequestOverride) {
+    const bytes = await coverRequestOverride(url);
+    if (bytes) return { status: 200, arrayBuffer: bytes, text: "", headers: {} };
+  }
   const m = /accent-probe-([0-9a-f]{6})/i.exec(url);
   if (m) {
     const buf = probePng(`#${m[1]}`);

@@ -10,6 +10,9 @@
 .mw-view .mw-song-pager button.mw-svg-action :is(.mw-control-icon, svg) { width:16px; min-width:16px; height:16px; flex-basis:16px; }
 .mw-song-pager[hidden] { display:none; }
 .mw-song-pager__rows { display:contents; }
+.mw-queue__toolbar > .mw-song-pager { position:static; margin:6px 0 0; padding:4px 0 0; border:0; background:transparent; color:var(--mw-panel-fg-dim); gap:8px; }
+.mw-queue__toolbar > .mw-song-pager .mw-song-pager__controls { border-color:transparent; border-radius:6px; background:var(--mw-panel-hover); }
+.mw-queue:has(> .mw-queue__toolbar > .mw-song-pager) > .mw-queue__list { margin-top:0; padding-top:0; }
 .mw-cloud .mw-song-row--deferred { content-visibility:auto; contain-intrinsic-block-size:auto var(--mw-row-height); }
 .mw-cloud .mw-cloud__body { display:flex; flex-direction:column; }
 .mw-cloud .mw-cloud__sidebar { flex-basis:240px; }

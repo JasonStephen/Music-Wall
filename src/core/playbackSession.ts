@@ -12,6 +12,7 @@ export interface PlaybackSession {
   currentEntryId: string;
   songQueue: AlbumTrackSnapshot[];
   queuedPlaylist: AlbumMeta | null;
+  playlistSource?: AlbumMeta | null;
   savedAlbum: { id: string; index: number } | null;
   savedPlaylist: { index: number } | null;
   priorityNext: number[];
@@ -34,6 +35,7 @@ export function parsePlaybackSession(text: string): PlaybackSession | null {
       || new Set(value.albumQueue.map((entry: AlbumQueueEntry) => entry.id)).size !== value.albumQueue.length
       || typeof value.currentEntryId !== "string" || !Array.isArray(value.songQueue) || !value.songQueue.every(track)
       || !(value.queuedPlaylist === null || album(value.queuedPlaylist))
+      || !(value.playlistSource == null || album(value.playlistSource))
       || !(value.savedPlaylist === null || index(value.savedPlaylist?.index, value.queuedPlaylist))
       || !(value.savedAlbum === null || typeof value.savedAlbum?.id === "string"
         && index(value.savedAlbum.index, value.albumQueue.find((entry: AlbumQueueEntry) => entry.id === value.savedAlbum.id)?.album))

@@ -110,6 +110,7 @@ export class QueueControls {
       row.createSpan({ cls: "mw-queue__duration", text: `${Math.floor(track.duration / 60000)}:${String(Math.floor(track.duration / 1000) % 60).padStart(2, "0")}` });
       this.button(actions, "trash-2", t("queue.removeSong"), () => void this.player.removeSong(track.id));
     });
+    pager.mountControls(toolbar);
     pager.setItems(this.player.songQueue, true, this.songPage);
     return true;
   }
@@ -126,6 +127,7 @@ export class QueueControls {
       && activeTracks?.length === collection.tracks?.length
       && activeTracks?.every((item, i) => item.id === collection.tracks?.[i]?.id);
     if (this.player.album === collection || activePlaylist) await this.player.select(selected);
+    else if (this.view === "playlist") await this.player.playSongQueue(selected);
     else await this.player.playPlaylist(collection, selected);
   }
   isCurrent(index: number): boolean {

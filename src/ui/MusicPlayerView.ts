@@ -94,6 +94,7 @@ export class MusicPlayerView extends Component {
   private el: Record<string, HTMLElement> = {};
   private trackRows: HTMLElement[] = [];
   private albumKey = "";
+  private discKey = "";
   private iconPaused: boolean | null = null;
   /** 设备上的数字显示屏（TRxx 曲目号），不显示时间 */
   private readoutEl: HTMLElement | null = null;
@@ -337,6 +338,7 @@ export class MusicPlayerView extends Component {
     this.backdrop?.dispose(); root.empty();
     root.addClass("mw-view", "mw-player");
     this.backdrop = new CoverBackdrop(root);
+    this.discKey = "";
     this.el = {};
     this.trackRows = [];
     this.popover = null; this.qualityKey = ""; this.volumeIcon = "";
@@ -400,7 +402,9 @@ export class MusicPlayerView extends Component {
     }
     // Palette sampling must not depend on decoding the larger backdrop image.
     if (this.coverPalette && this.caseToneKey === sizedCover(art, 300)) this.applyCoverPalette(this.coverPalette);
-    this.backdrop?.set(art, () => {});
+    this.setArtTone(this.backdrop?.tone?.luma ?? null);
+    this.applyRegionContrast();
+    this.backdrop?.set(art, tone => { this.setArtTone(tone.luma); this.applyRegionContrast(); });
   }
 
   /**
@@ -793,6 +797,8 @@ export class MusicPlayerView extends Component {
     if (typeof ResizeObserver !== "undefined") {
       this.transportObserver = new ResizeObserver(() => this.syncTransportSpace());
       this.transportObserver.observe(transport);
+      const now = this.contentEl.querySelector<HTMLElement>(".mw-player__now");
+      if (now) this.transportObserver.observe(now);
     }
   }
 
@@ -928,11 +934,12 @@ export class MusicPlayerView extends Component {
     }
     this.applyCaseAppearance();
     const album = this.displayAlbum();
+    const discKey = `${album?.cover || DEFAULT_COVER}|${this.discStyle}|${this.showMachine()}`;
+    if (discKey !== this.discKey) { this.discKey = discKey; this.renderDisc(album); }
     if (this.el.fullCover) this.el.fullCover.style.backgroundImage = `url("${sizedCover(album?.cover || DEFAULT_COVER, 1200)}")`;
     const albumKey = album ? `${album.albumId}|${album.playlistId ?? ""}|${album.cover}|${this.plugin.internalPlayer?.revision || 0}|${this.discStyle ?? "def"}|${this.showMachine()}` : "";
     if (albumKey !== this.albumKey) {
       this.albumKey = albumKey;
-      this.renderDisc(album);
       const previewCover = sizedCover(album?.cover || DEFAULT_COVER, 300);
       for (const image of Array.from(this.contentEl.querySelectorAll<HTMLImageElement>(".mw-style-preview img"))) image.src = previewCover;
       for (const background of Array.from(this.contentEl.querySelectorAll<HTMLElement>(".mw-style-preview__background, .mw-style-preview__cover"))) background.style.backgroundImage = `url("${previewCover}")`;
@@ -1141,7 +1148,7 @@ export class MusicPlayerView extends Component {
     root.style.setProperty("--mw-np-accent-fg", foreground);
     root.style.setProperty("--mw-full-tone", accent);
     root.style.setProperty("--mw-full-foreground", presetForeground(accent, LYRICS_CONTRAST_THRESHOLD));
-    if (this.bg === "art") this.setArtTone(tone.luma);
+    if (this.bg === "art") this.setArtTone(this.backdrop?.tone?.luma ?? null);
     this.applyRegionContrast();
   }
 
@@ -1149,12 +1156,13 @@ export class MusicPlayerView extends Component {
     const root = this.contentEl, bounds = root.getBoundingClientRect();
     const lyrics = root.querySelector<HTMLElement>(".mw-lyrics");
     const rect = lyrics?.getBoundingClientRect();
-    const color = this.coverPalette && rect ? backdropForeground(this.coverPalette, bounds.width, bounds.height, {
+    const palette = this.backdrop?.tone;
+    const color = palette && rect ? backdropForeground(palette, bounds.width, bounds.height, {
       x: (rect.left - bounds.left) / bounds.width, y: (rect.top - bounds.top) / bounds.height,
       width: rect.width / bounds.width, height: rect.height / bounds.height,
     }) : null;
     for (const region of Array.from(root.querySelectorAll<HTMLElement>(".mw-player__now, .mw-lyrics, .mw-player__bar, .mw-player__dock"))) {
-      if (this.bg !== "art" || this.preset()?.fullCover || !this.coverPalette || !bounds.width || !bounds.height) {
+      if (this.bg !== "art" || this.preset()?.fullCover || !palette || !bounds.width || !bounds.height) {
         region.style.removeProperty("--mw-region-fg");
         region.style.removeProperty("--mw-region-shadow");
         continue;
@@ -1196,6 +1204,8 @@ export class MusicPlayerView extends Component {
   }
 
   private syncTransportSpace(): void {
+    const now = this.contentEl.querySelector<HTMLElement>(".mw-player__now");
+    this.contentEl.toggleClass("mw-player--short-now", !!now && now.clientHeight > 0 && now.clientHeight <= 240);
     const { stack, transport } = this.el;
     if (!stack || !transport) return;
     const style = stack.ownerDocument.defaultView?.getComputedStyle(stack);
@@ -1242,7 +1252,7 @@ export class MusicPlayerView extends Component {
   // ---- 跳转到所在墙 ----
 
   private updateSource(): void {
-    const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
+    const meta = this.plugin.internalPlayer?.sourceCollection || this.matchedAlbum() || this.current?.meta;
     const source = this.el.source; if (!source) return;
     const wall = meta?.playbackWallPath;
     const kind = meta?.playlistId || this.plugin.internalPlayer?.contentKind === "playlist" ? "playlist" : wall ? "wallAlbum" : "album";
@@ -1250,7 +1260,7 @@ export class MusicPlayerView extends Component {
     source.title = source.textContent || ""; source.toggleClass("is-hidden", !meta);
   }
   private async openSource(): Promise<void> {
-    const meta = this.plugin.internalPlayer?.album || this.matchedAlbum() || this.current?.meta;
+    const meta = this.plugin.internalPlayer?.sourceCollection || this.matchedAlbum() || this.current?.meta;
     if (!meta) return;
     if (meta.wallEntryId) { await this.plugin.revealLocalEntry(meta.wallEntryId); return; }
     if (meta.playbackWallPath) {

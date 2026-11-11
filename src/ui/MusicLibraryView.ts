@@ -827,6 +827,12 @@ export class MusicLibraryView extends ItemView {
   private async single(track: AlbumTrackSnapshot, now: boolean): Promise<void> {
     const intent = ++this.playIntent;
     if (!(await this.authorizeInternal()) || intent !== this.playIntent) return;
+    const cookie = this.plugin.settings.neteaseCookie;
+    if (!track.cover) {
+      try { track = { ...track, ...(await this.plugin.libraryApi.songs([track.id], cookie))[0] }; }
+      catch { /* The existing song can still be played while metadata is unavailable. */ }
+      if (this.closed || intent !== this.playIntent || cookie !== this.plugin.settings.neteaseCookie) return;
+    }
     await this.plugin.internalPlayer.insertTrack(track, now);
     if (!now) new Notice(t("library.nextAdded", { name: track.name }));
   }

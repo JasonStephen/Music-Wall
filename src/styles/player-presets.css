@@ -329,9 +329,7 @@
   .mw-player:not(.mw-player--portrait) .mw-np__artist { font-size:.9em; }
   .mw-player:not(.mw-player--portrait) .mw-np__quality-button { height:24px; }
 }
-@container mw-now (max-height:240px) {
-  .mw-player:not(.mw-player--portrait) .mw-np__stage { display:none; }
-}
+.mw-player.mw-player--short-now:not(.mw-player--portrait) .mw-np__stage { display:none; }
 @media (prefers-reduced-motion: reduce) {
   .mw-player.mw-player--portrait .mw-player__body > :is(.mw-player__now, .mw-lyrics), .mw-player--full-cover .mw-full-cover { transition: none; }
 }

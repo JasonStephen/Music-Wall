@@ -280,6 +280,32 @@ async function main() {
     snapshot.index=99;assert.equal(api.parsePlaybackSession(JSON.stringify(snapshot)),null);
     first.instance.stop();assert.ok(api.parsePlaybackSession(JSON.stringify(first.instance.exportSession())));
   });
+  await test('Inserted search songs retain source name, identity and original membership', async () => {
+    const {instance:p}=player();
+    const source={...album(0),playlistId:123,name:'Original playlist',cover:'playlist.jpg',wallEntryId:'saved-list'};
+    await p.playPlaylist(source);
+    const extra={id:1001,name:'Search result',artists:'Artist',cover:'song.jpg',duration:120000};
+    await p.insertTrack(extra,true);
+    assert.equal(p.album.name,source.name);assert.equal(p.album.playlistId,123);assert.equal(p.album.wallEntryId,'saved-list');
+    assert.equal(p.currentCover,'song.jpg');assert.equal(p.state.title,'Search result');
+    assert.equal(p.sourceCollection.name,source.name);assert.equal(p.sourceCollection.trackCount,3);assert.equal(p.sourceCollection.tracks.length,3);
+    assert.equal(source.tracks.length,3);assert.equal(p.songQueue.length,4);
+    await p.insertTrack({...extra,id:1002,name:'Next search'},false);await p.next();
+    assert.equal(p.state.songId,1002);assert.equal(p.album.name,source.name);assert.equal(p.sourceCollection.tracks.length,3);
+    await p.playSongQueue(0);assert.equal(p.sourceCollection.trackCount,3);
+    p.enqueuePlaylist({...album(6),playlistId:666,name:'Appended playlist'});
+    assert.equal(p.sourceCollection.name,source.name);assert.equal(p.album.name,source.name);
+    const restored=player().instance;restored.restoreSession(api.parsePlaybackSession(JSON.stringify(p.exportSession())));
+    assert.equal(restored.sourceCollection.name,source.name);assert.equal(restored.sourceCollection.tracks.length,3);
+    await restored.insertTrack({...extra,id:1003},true);assert.equal(restored.sourceCollection.trackCount,3);
+    p.stop();restored.stop();
+  });
+  await test('Search playback without a playlist uses a queue label and song artwork', async () => {
+    const {instance:p}=player();
+    await p.insertTrack({id:77,name:'Standalone song',cover:'standalone.jpg',duration:120000},true);
+    assert.notEqual(p.album.name,'Standalone song');assert.equal(p.currentCover,'standalone.jpg');
+    p.stop();
+  });
   console.log(`\n${passed} internal playback checks passed`);
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

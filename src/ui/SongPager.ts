@@ -47,6 +47,7 @@ export class SongPager<T> {
     return button;
   }
   get currentPage(): number { return this.page; }
+  mountControls(parent: HTMLElement): void { parent.appendChild(this.nav); }
   setItems(items: readonly T[], reset = true, initialPage?: number): void {
     this.items = items;
     this.page = Math.max(0, Math.min(initialPage ?? (reset ? 0 : this.page), Math.max(0, Math.ceil(items.length / SongPager.size) - 1)));

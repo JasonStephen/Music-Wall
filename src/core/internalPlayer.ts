@@ -49,6 +49,8 @@ export class InternalPlayer implements NowPlayingProvider {
   albumQueue: AlbumQueueEntry[] = [];
   currentEntryId = "";
   queuedPlaylist: AlbumMeta | null = null;
+  private playlistSource: AlbumMeta | null = null;
+  get sourceCollection(): AlbumMeta | null { return this.contentKind === "playlist" ? this.playlistSource || this.album : this.album; }
   /** Independent song list; never aliases an album queue entry. */
   songQueue: AlbumTrackSnapshot[] = [];
   private prioritySongs: number[] = [];
@@ -81,7 +83,7 @@ export class InternalPlayer implements NowPlayingProvider {
     return {
       version: 1, album: this.album, index: this.index, playing: this.wanted,
       contentKind: this.contentKind, order: this.order, albumQueue: this.albumQueue,
-      currentEntryId: this.currentEntryId, songQueue: this.songQueue, queuedPlaylist: this.queuedPlaylist,
+      currentEntryId: this.currentEntryId, songQueue: this.songQueue, queuedPlaylist: this.queuedPlaylist, playlistSource: this.playlistSource,
       savedAlbum: this.savedAlbum ? { id: this.savedAlbum.id, index: this.savedAlbum.index } : null,
       savedPlaylist: this.savedPlaylist ? { index: this.savedPlaylist.index } : null,
       priorityNext: this.priorityNext, prioritySongs: this.prioritySongs,
@@ -97,6 +99,7 @@ export class InternalPlayer implements NowPlayingProvider {
       ? this.albumQueue.find(entry => entry.id === saved.currentEntryId)?.album || saved.album : saved.album;
     this.index = saved.index;
     this.songQueue = saved.songQueue; this.queuedPlaylist = saved.queuedPlaylist;
+    this.playlistSource = saved.playlistSource || saved.queuedPlaylist;
     this.savedAlbum = saved.savedAlbum ? { ...saved.savedAlbum, positionMs: 0 } : null;
     this.savedPlaylist = saved.savedPlaylist ? { ...saved.savedPlaylist, positionMs: 0 } : null;
     this.entrySerial = this.albumQueue.reduce((max, entry) => Math.max(max, Number(entry.id) || 0), 0);
@@ -153,9 +156,10 @@ export class InternalPlayer implements NowPlayingProvider {
     const saved = this.savedAlbum?.id === id ? this.savedAlbum : null; this.savedAlbum = null;
     return this.select(saved?.index || 0, saved ? { positionMs: saved.positionMs, playing: true } : undefined);
   }
-  async playPlaylist(collection: AlbumMeta, index = 0, restore?: { positionMs: number; playing: boolean }): Promise<boolean> {
+  async playPlaylist(collection: AlbumMeta, index = 0, restore?: { positionMs: number; playing: boolean }, source = collection): Promise<boolean> {
     if (!collection.tracks?.length || index < 0 || index >= collection.tracks.length) return false;
     if (this.contentKind === "album" && this.album) this.savedAlbum = { id: this.currentEntryId, index: this.index, positionMs: this.state.positionMs };
+    this.playlistSource = { ...source, tracks: source.tracks?.map(track => ({ ...track })) };
     this.priorityNext = []; this.prioritySongs = []; this.contentKind = "playlist"; ++this.revision; this.album = { ...collection, tracks: collection.tracks.map(track => ({ ...track })) };
     this.songQueue = this.album.tracks?.map(track => ({...track})) || [];
     this.queuedPlaylist = this.album; this.savedPlaylist = null;
@@ -163,20 +167,26 @@ export class InternalPlayer implements NowPlayingProvider {
   }
   enqueuePlaylist(collection: AlbumMeta): number {
     if (!collection.tracks?.length) return 0;
-    const seen = new Set(this.songQueue.map(track => track.id));
+    const existing = this.contentKind === "album" ? this.queuedPlaylist?.tracks || [] : this.songQueue;
+    const seen = new Set(existing.map(track => track.id));
     const added = collection.tracks.filter(track => !seen.has(track.id)).map(track => ({...track}));
     if (!added.length) return 0;
-    this.songQueue = [...this.songQueue, ...added];
-    this.queuedPlaylist = { ...collection, name: t("queue.playlistQueue"), tracks: this.songQueue.map(track => ({...track})), trackCount: this.songQueue.length };
+    this.songQueue = [...existing, ...added];
+    this.queuedPlaylist = { ...(this.queuedPlaylist || collection), tracks: this.songQueue.map(track => ({...track})), trackCount: this.songQueue.length };
+    if (!this.playlistSource) this.playlistSource = { ...collection, tracks: collection.tracks.map(track => ({ ...track })) };
     if (this.contentKind === "playlist") { ++this.revision; this.album = this.queuedPlaylist; this.randomBag = []; }
     this.emit();
-    if (!this.album) void this.playPlaylist(this.queuedPlaylist);
+    if (!this.album) void this.playPlaylist(this.queuedPlaylist, 0, undefined, this.playlistSource || this.queuedPlaylist);
     return added.length;
   }
   async resumePlaylist(): Promise<boolean> {
     const playlist = this.queuedPlaylist, saved = this.savedPlaylist;
     if (!playlist) return false;
-    return this.playPlaylist(playlist, saved?.index || 0, saved ? { positionMs: saved.positionMs, playing: true } : undefined);
+    return this.playPlaylist(playlist, saved?.index || 0, saved ? { positionMs: saved.positionMs, playing: true } : undefined, this.playlistSource || playlist);
+  }
+  async playSongQueue(index: number): Promise<boolean> {
+    const source = this.playlistSource || { albumId: 0, name: t("queue.playlistQueue"), artist: "", cover: "", trackCount: this.songQueue.length, tracks: this.songQueue.map(track => ({ ...track })) };
+    return this.playPlaylist({ ...source, tracks: this.songQueue.map(track => ({ ...track })), trackCount: this.songQueue.length }, index, undefined, source);
   }
   /** Single tracks live in their own queue and never mutate an album queue. */
   async insertTrack(track: AlbumTrackSnapshot, playNow = false): Promise<boolean> {
@@ -187,8 +197,7 @@ export class InternalPlayer implements NowPlayingProvider {
       this.songQueue.splice(target, 0, {...track}); index = target;
     }
     if (playNow) {
-      const collection: AlbumMeta = { albumId: 0, name: track.name, artist: track.artists || "", cover: track.cover || "", trackCount: this.songQueue.length, tracks: this.songQueue.map(item => ({...item})) };
-      return this.playPlaylist(collection, index);
+      return this.playSongQueue(index);
     }
     this.prioritySongs = this.prioritySongs.filter(id => id !== track.id); this.prioritySongs.push(track.id);
     ++this.revision; this.emit(); return true;
@@ -198,14 +207,14 @@ export class InternalPlayer implements NowPlayingProvider {
     this.songQueue.splice(index, 1); this.prioritySongs = this.prioritySongs.filter(songId => songId !== id);
     if (this.contentKind === "playlist" && this.album?.albumId === 0) {
       const currentId = this.album.tracks?.[this.index]?.id;
-      if (currentId === id) { if (this.songQueue.length) await this.playPlaylist({...this.album, tracks:this.songQueue.map(track=>({...track})), trackCount:this.songQueue.length}, Math.min(index, this.songQueue.length-1)); else this.stop(false); return; }
+      if (currentId === id) { if (this.songQueue.length) await this.playSongQueue(Math.min(index, this.songQueue.length-1)); else this.stop(false); return; }
       this.album = {...this.album, tracks:this.songQueue.map(track=>({...track})), trackCount:this.songQueue.length};
       this.index = Math.min(this.index, Math.max(0, (this.album.tracks?.length || 1)-1));
     }
     ++this.revision; this.emit();
   }
   clearSongQueue(): void {
-    this.songQueue = []; this.prioritySongs = []; this.queuedPlaylist = null; this.savedPlaylist = null;
+    this.songQueue = []; this.prioritySongs = []; this.queuedPlaylist = null; this.savedPlaylist = null; this.playlistSource = null;
     if (this.contentKind === "playlist" && this.album?.albumId === 0) this.stop(false);
     else { ++this.revision; this.emit(); }
   }
@@ -222,7 +231,7 @@ export class InternalPlayer implements NowPlayingProvider {
     if (this.priorityNext.length) return this.playInserted(this.priorityNext[0]);
     if (this.prioritySongs.length) {
       const id = this.prioritySongs.shift()!, index = this.songQueue.findIndex(track => track.id === id);
-      if (index >= 0) return this.playPlaylist({ albumId: 0, name: this.songQueue[index].name, artist: this.songQueue[index].artists || "", cover: this.songQueue[index].cover || "", trackCount: this.songQueue.length, tracks: this.songQueue.map(track => ({...track})) }, index);
+      if (index >= 0) return this.playSongQueue(index);
     }
     if (automatic && this.order === "one") return this.loadTrack(this.index);
     if (this.order === "shuffle" && this.contentKind === "playlist") {
@@ -276,7 +285,7 @@ export class InternalPlayer implements NowPlayingProvider {
     this.wanted = false;
     this.loadingAbort?.abort(); this.cancelPrefetch();
     this.release();
-    if (clearQueues) { this.queuedPlaylist = null; this.savedPlaylist = null; }
+    if (clearQueues) { this.queuedPlaylist = null; this.savedPlaylist = null; this.playlistSource = null; }
     this.priorityNext = []; this.prioritySongs = []; this.songQueue = []; this.albumQueue = []; this.currentEntryId = ""; this.savedAlbum = null; this.contentKind = "album";
     if (this.order === "shuffle") this.order = "order"; this.resetRandom();
     ++this.revision; this.album = null; this.index = -1; this.loading = false;

@@ -1,6 +1,6 @@
 {
   "name": "music-wall",
-  "version": "1.4.0-exp-5",
+  "version": "1.4.0-exp-6",
   "description": "Obsidian 音乐墙：整理专辑与歌单，创建本地歌单，在音乐库中播放。",
   "main": "main.js",
   "type": "module",

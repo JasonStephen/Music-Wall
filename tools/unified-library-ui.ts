@@ -14,6 +14,7 @@ import { verifyHiddenZoom } from './hidden-zoom-ui';
 import { showArtistAlbumMenu } from '../src/ui/artistAlbumSettings';
 import { LocalMusicWall } from '../src/ui/LocalMusicWall';
 import { revealInList } from '../src/ui/SongPager';
+import { verifyCoverBackdrop } from './player-artwork-ui';
 import { suppressHoverHints } from '../src/ui/hoverHints';
 installDomHelpers();
 const tick = (ms=25) => new Promise(resolve => setTimeout(resolve,ms));
@@ -223,7 +224,8 @@ let dispose = async () => {};
   target.getBoundingClientRect();stress={milliseconds:performance.now()-started,rows:target.querySelectorAll('[data-song-id]').length,nodes:target.querySelectorAll('*').length};
   check(target.querySelectorAll('[data-song-id]').length===100,'Long remote list mounts at most 100 songs');
   const verifyPagerSeal=async(label:string)=>{
-   target.scrollTop=180;await tick();
+   const initialPager=target.querySelector<HTMLElement>('.mw-song-pager')!;
+   target.scrollTop=Math.max(180,(initialPager.getBoundingClientRect().top-target.getBoundingClientRect().top)/effectiveZoom(config.zoom||1)+100);await tick();
    const pager=target.querySelector<HTMLElement>('.mw-song-pager')!,bounds=target.getBoundingClientRect(),bar=pager.getBoundingClientRect();
    check(Math.abs(bounds.top-bar.top)<1,`${label} pagination seals the top of the scroll viewport`);
    const x=bar.left+8,y=bounds.top+1;
@@ -322,8 +324,11 @@ let dispose = async () => {};
     const scrollHost=list;
     const toolbar=host.querySelector<HTMLElement>('.mw-queue__toolbar')!;
     const toolbarTop=toolbar.getBoundingClientRect().top;
+    const pager=host.querySelector<HTMLElement>('.mw-song-pager')!,pagerTop=pager.getBoundingClientRect().top;
     scrollHost.scrollTop=180;
     const offset=scrollHost.scrollTop;
+    check(pager.parentElement===toolbar&&getComputedStyle(pager).backgroundColor==='rgba(0, 0, 0, 0)','Queue pagination shares the toolbar surface outside song scrolling');
+    check(pager.getBoundingClientRect().top===pagerTop&&list.getBoundingClientRect().top>=toolbar.getBoundingClientRect().bottom,'Queue pagination and toolbar seal the top of the scrolling rows');
     if (host===mini) {
       const panel=mini.querySelector<HTMLElement>('.mw-mini__playlist')!;
       check(offset>0&&panel.scrollTop===0&&toolbar.getBoundingClientRect().top===toolbarTop,'Mini queue scrolls its rows while keeping toolbar and panel fixed');
@@ -449,6 +454,54 @@ let dispose = async () => {};
     return {...sample,failures};
    } finally {changes.disconnect();removeEventListener('error',errors);root.style.removeProperty('flex');root.style.removeProperty('width');}
   };
+ }
+ if(config.artwork) {
+  plugin.settings.playerPresetGroup='vinyl';plugin.settings.playerPresetChoices.vinyl='color';
+  const player=v.embeddedPlayer as any;player.refreshPresetAppearance();await tick(900);
+  const host=player.contentEl as HTMLElement,plate=host.querySelector('.mw-np__disc .mw-record__plate')!;
+  player.now={...player.now,status:'playing'};player.updateNow();await tick(50);
+  const motion=plate.getAnimations()[0],bounds=host.querySelector('.mw-np__disc')!.getBoundingClientRect();
+  let last=Number(motion?.currentTime),resets=0,moved=false;
+  for(let i=0;i<80;i++) {
+   await new Promise(requestAnimationFrame);player.now={...player.now,positionMs:i*120};player.updateNow();
+   const animation=plate.getAnimations()[0],time=Number(animation?.currentTime),rect=host.querySelector('.mw-np__disc')!.getBoundingClientRect();
+   if(animation!==motion||time<last)resets++;last=time;
+   if(Math.abs(rect.width-bounds.width)>1||Math.abs(rect.y-bounds.y)>1)moved=true;
+  }
+  check(resets===0,'Playing progress retains the same continuous record animation');
+  check(!moved&&plate===host.querySelector('.mw-np__disc .mw-record__plate'),'Record geometry and DOM remain stable during playback');
+  for(let i=0;i<6;i++) {
+   engine.setVolume((i+1)/10);engine.setOrder(i%2?'order':'repeat');
+   player.togglePopover(i%2?'volume':null);player.togglePlaylist(i%2===0);
+   await tick(50);
+   check(plate.getAnimations()[0]===motion&&Number(motion.currentTime)>=last,'Volume, playback order and panel updates preserve the record animation');last=Number(motion.currentTime);
+  }
+  player.togglePlaylist(false);player.togglePopover(null);
+  engine.enqueuePlaylist({albumId:0,playlistId:177,name:'Extra queue songs',artist:'Artist',cover,trackCount:1,tracks:[{id:88999,name:'Extra queued song',duration:120000}]});await tick(60);
+  check(plate===host.querySelector('.mw-np__disc .mw-record__plate')&&plate.getAnimations()[0]===motion,'Queue edits preserve the playing record and its rotation');
+  await engine.pause();await tick(50);const pausedTime=Number(motion.currentTime);await tick(70);
+  check(plate.getAnimations()[0]===motion&&Math.abs(Number(motion.currentTime)-pausedTime)<2,'Pause freezes the current angle without rebuilding the animation');
+  await engine.play();await tick(70);
+  check(plate.getAnimations()[0]===motion&&Number(motion.currentTime)>pausedTime,'Resume continues rotation from its saved angle');
+  check([...host.querySelectorAll('.mw-player__backdrop')].some(el=>getComputedStyle(el).opacity==='1'&&getComputedStyle(el).backgroundImage!=='none'),'Cover backdrop is painted');
+  const source={albumId:0,playlistId:882,name:'Original source playlist',artist:'Owner',cover,trackCount:tracks.length,tracks};
+  await engine.playPlaylist(source);await engine.insertTrack({id:77888,name:'Inserted search song',cover:probeCoverUri('dd8844'),duration:120000},true);await tick(100);
+  check(host.querySelector('.mw-player__source')?.textContent?.includes(source.name),'Inserted songs retain the fullscreen source playlist title');
+  let opened:any=null;plugin.openLibraryCollection=async(meta:any)=>{opened=meta;};await player.openSource();
+  check(opened?.playlistId===882&&opened?.trackCount===tracks.length&&opened?.tracks.length===tracks.length,'Opening source uses original membership instead of the expanded playback queue');
+  const originalSongs=plugin.libraryApi.songs;let hydrated=0;
+  plugin.libraryApi.songs=async(ids:number[])=>{hydrated++;return [{id:ids[0],name:'Search metadata',cover:probeCoverUri('4488bb'),duration:120000}];};
+  try {await v.single({id:77889,name:'Search metadata',duration:120000},true);check(hydrated===1&&engine.currentCover===probeCoverUri('4488bb'),'Search songs with missing artwork fetch full metadata before playback');}
+  finally {plugin.libraryApi.songs=originalSongs;}
+  await verifyCoverBackdrop(check);
+  const many=Array.from({length:337},(_,i)=>({...tracks[i%tracks.length],id:900000+i,name:`Queue song ${i+1}`}));
+  await engine.playPlaylist({...source,tracks:many,trackCount:many.length});await tick(500);
+  player.togglePlaylist(true);await tick(300);
+  const list=host.querySelector<HTMLElement>('.mw-queue__list')!,toolbar=host.querySelector<HTMLElement>('.mw-queue__toolbar')!;
+  list.scrollTop=180;
+  const r=list.getBoundingClientRect(),x=r.left+Math.min(35,r.width/2);
+  check(!document.elementFromPoint(x,r.top-2)?.closest('[data-song]'),'Scrolled songs cannot paint into the gap above the list');
+  check(host.querySelector('.mw-song-pager')?.parentElement===toolbar,'Long queue pagination remains inside the fixed toolbar');
  }
  return {checks,failures,stress,tabCount,body:{width:bodyRect.width,height:bodyRect.height},root:{width:roots.width,height:roots.height},text:root.textContent!.slice(0,160),menus:MENU_LOG.length};
 };
