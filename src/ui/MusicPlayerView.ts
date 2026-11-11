@@ -34,6 +34,7 @@ import { cyclePlayOrder, updatePlayOrderButton } from "./playOrder";
 import { PickerModal } from "./smallModals";
 import { PlayerLyrics } from "./PlayerLyrics";
 import { svgAction } from "./svgAction";
+import { OverflowMarquee } from "./OverflowMarquee";
 import { COLLECTION_MIME, readCollection } from "./libraryDrag";
 
 /** 面板最小宽度：低于则上下堆叠 */
@@ -106,6 +107,9 @@ export class MusicPlayerView extends Component {
   private onPresetTheme = () => this.refreshPresetAppearance();
   /** 窗格尺寸观察者：窄屏类名与顶栏高度要跟随窗格，不能只听 window.resize */
   private paneObserver: ResizeObserver | null = null;
+  private transportObserver: ResizeObserver | null = null;
+  private titleMarquee: OverflowMarquee | null = null;
+  private artistMarquee: OverflowMarquee | null = null;
 
   constructor(private leaf: WorkspaceLeaf, plugin: MusicWallPlugin, host?: HTMLElement, private active?: () => boolean) {
     super();
@@ -228,6 +232,7 @@ export class MusicPlayerView extends Component {
   }
   async onClose(): Promise<void> {
     ++this.renderGeneration;
+    this.disposeMetadata();
     this.presetMedia?.removeEventListener("change", this.onPresetTheme); this.presetMedia = null;
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     this.artistRequest++; this.artistPicker?.close(); this.artistPicker = null;
@@ -322,6 +327,7 @@ export class MusicPlayerView extends Component {
 
   private async render(): Promise<void> {
     const generation = ++this.renderGeneration;
+    this.disposeMetadata();
     this.playerLyrics?.dispose(); this.playerLyrics = null;
     const root = this.contentEl;
     const prevDrawer = this.drawer?.currentKey() ?? null;
@@ -365,6 +371,7 @@ export class MusicPlayerView extends Component {
 
     this.syncLayout();
     this.updateNow();
+    this.syncTransportSpace();
     this.togglePlaylist(this.playlistOpen);
     // 缩放盒尺寸兜底（与音乐墙同一套，见 zoom.ts syncZoomBox）：
     // CSS 的 calc 反除补偿若退化成 auto，内容会缩在左上角、右/下留白
@@ -693,6 +700,8 @@ export class MusicPlayerView extends Component {
     const meta = transport.createDiv({ cls: "mw-np__meta" });
     this.el.title = meta.createDiv({ cls: "mw-np__title" });
     this.el.artist = meta.createEl("button", { cls: "mw-np__artist", attr: { type: "button" } });
+    this.titleMarquee = new OverflowMarquee(this.el.title);
+    this.artistMarquee = new OverflowMarquee(this.el.artist);
     this.el.artist.addEventListener("click", () => { void this.openCurrentArtist().catch(() => new Notice(t("library.failed"))); });
     const line = meta.createDiv({ cls: "mw-np__line" });
     this.el.status = line.createSpan({ cls: "mw-np__status" });
@@ -781,6 +790,10 @@ export class MusicPlayerView extends Component {
     setIcon(qualityButton.createSpan({ cls: "mw-control-icon", attr: { "aria-hidden": "true" } }), "chevron-down");
     qualityButton.addEventListener("click", () => this.togglePopover(this.popover === "quality" ? null : "quality"));
     this.el.qualityPanel = qualityAnchor.createDiv({ cls: "mw-np__popover mw-np__quality-panel is-hidden", attr: { role: "group", "aria-label": t("quality.choose") } });
+    if (typeof ResizeObserver !== "undefined") {
+      this.transportObserver = new ResizeObserver(() => this.syncTransportSpace());
+      this.transportObserver.observe(transport);
+    }
   }
 
   private togglePopover(next: "volume" | "quality" | null): void {
@@ -929,19 +942,19 @@ export class MusicPlayerView extends Component {
     }
 
     if (this.el.title) {
-      this.el.title.textContent = this.now.active
+      this.titleMarquee?.set(this.now.active
         ? this.now.title || t("player.unknownTrack")
         : album
           ? album.name
-          : t("player.notPlaying");
+          : t("player.notPlaying"));
     }
     if (this.el.artist) {
       (this.el.artist as HTMLButtonElement).disabled = !this.now.active || !this.now.songId;
-      this.el.artist.textContent = this.now.active
+      this.artistMarquee?.set(this.now.active
         ? this.now.artist || t("common.unknownArtist")
         : album
           ? album.artist || t("common.unknownArtist")
-          : t("player.dragHint");
+          : t("player.dragHint"));
     }
     if (this.el.status) this.el.status.textContent = this.statusText();
     this.updateSource();
@@ -1179,6 +1192,23 @@ export class MusicPlayerView extends Component {
     const bar = this.contentEl.querySelector<HTMLElement>(".mw-player__bar");
     if (bar) this.syncTopbarHeight(bar);
     this.applyRegionContrast();
+    this.syncTransportSpace();
+  }
+
+  private syncTransportSpace(): void {
+    const { stack, transport } = this.el;
+    if (!stack || !transport) return;
+    const style = stack.ownerDocument.defaultView?.getComputedStyle(stack);
+    const gap = Number.parseFloat(style?.rowGap || "0") || 0;
+    const space = transport.parentElement === stack ? transport.offsetHeight + gap + 4 : 0;
+    const value = `${space}px`;
+    if (stack.style.getPropertyValue("--mw-transport-space") !== value) stack.style.setProperty("--mw-transport-space", value);
+  }
+
+  private disposeMetadata(): void {
+    this.transportObserver?.disconnect(); this.transportObserver = null;
+    this.titleMarquee?.dispose(); this.titleMarquee = null;
+    this.artistMarquee?.dispose(); this.artistMarquee = null;
   }
 
   /**

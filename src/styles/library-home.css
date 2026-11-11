@@ -39,7 +39,7 @@
 @media (prefers-reduced-motion:reduce) { .mw-cloud__sidebar, .mw-cloud .mw-cloud__layout.is-narrow .mw-cloud__overlay { transition:none; } }
 .mw-cloud .mw-cloud__head { flex-wrap: nowrap; padding: 14px 16px; gap: 6px; }
 .mw-cloud .mw-cloud__head h2 { flex-basis: auto; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mw-cloud .mw-cloud__body { padding: 4px 20px calc(24px + var(--mw-host-bottom, 0px)); }
+.mw-cloud .mw-cloud__body { padding: 0 20px calc(24px + var(--mw-host-bottom, 0px)); }
 .mw-cloud .has-mini .mw-cloud__body { padding-bottom: 20px; }
 .mw-cloud__home { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-block: 24px; }
 .mw-cloud__home h1 { margin: 0 0 24px; max-width: 100%; text-align: center; font-size: clamp(22px, 4cqw, 38px); font-weight: 600; overflow-wrap: anywhere; color: var(--mw-panel-fg); }

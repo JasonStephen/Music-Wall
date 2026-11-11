@@ -148,6 +148,32 @@ let dispose = async () => {};
  const playerAccent=getComputedStyle(openingHost).getPropertyValue('--mw-ui-accent').trim();
  const colorProbe=document.createElement('span');openingHost.append(colorProbe);colorProbe.style.color=playerAccent;
  check(getComputedStyle(selectedPage).backgroundColor==='rgba(0, 0, 0, 0)'&&getComputedStyle(selectedPage).color===getComputedStyle(colorProbe).color,'Cover and lyrics tabs use the plugin accent without a colored pill');colorProbe.remove();
+ if(config.metadata) {
+  const player=v.embeddedPlayer as any, originalNow={...player.now};
+  for(const long of [false,true]) {
+   player.now={...originalNow,active:true,source:'internal',title:long?'Dawn（黎明将至）（《三角洲行动》红狼蚀金玫瑰皮肤主题曲）'.repeat(3):'Out of Body',artist:long?'Alan Walker / Farruko / Sofia Reyes / 三角洲行动 / Lithium Done'.repeat(3):'NEHCA'};
+   player.updateNow();await tick(150);
+   const labels=[...openingHost.querySelectorAll<HTMLElement>('.mw-np__title,.mw-np__artist')];
+   check(labels.every(label=>label.scrollHeight<=label.clientHeight+1),'Song and artist names remain single line');
+   check(labels.every(label=>label.classList.contains('is-overflowing')===long),'Only overflowing metadata scrolls');
+   const quality=openingHost.querySelector<HTMLElement>('.mw-np__quality-button')!, qr=quality.getBoundingClientRect();
+   let visible=qr.width>0&&qr.height>0;
+   for(let ancestor=quality.parentElement;ancestor;ancestor=ancestor.parentElement) {
+    const style=getComputedStyle(ancestor), bounds=ancestor.getBoundingClientRect();
+    if(/^(hidden|auto|scroll|clip)$/.test(style.overflowY)) visible&&=qr.top>=bounds.top-1&&qr.bottom<=bounds.bottom+1;
+    if(ancestor===openingHost)break;
+   }
+   check(visible,`Quality button is fully visible with ${long?'long':'short'} metadata`);
+   if(long) {
+    const text=labels[0].querySelector<HTMLElement>('.mw-marquee__text')!, motion=text.getAnimations()[0];
+    check(!!motion,'Long metadata starts its marquee automatically');
+    player.updateNow();await tick(60);
+    check(text.getAnimations()[0]===motion,'Playback updates retain the current marquee animation');
+   }
+  }
+  player.now=originalNow;player.updateNow();await tick(80);
+  check([...openingHost.querySelectorAll('.mw-marquee__text')].every(text=>text.getAnimations().length===0),'Short replacement names stop scrolling');
+ }
  view.contentEl.querySelector<HTMLButtonElement>('.mw-player__collapse')!.click();await tick(70);
  check(openingHost.isConnected&&openingHost.classList.contains('is-closing')&&openingHost.querySelector('.mw-np__ctrl--main')!==null,'Collapse keeps player content mounted during its animation');
  check(openingHost.getBoundingClientRect().top>libraryRect.top&&openingHost.getBoundingClientRect().top<libraryRect.bottom,'Collapse slides down before removing the overlay');
@@ -196,6 +222,15 @@ let dispose = async () => {};
   const started=performance.now();v.renderTracks(target,longTracks,{albumId:0,playlistId:10000,name:'Long playlist',artist:'Artist',cover,tracks:longTracks});
   target.getBoundingClientRect();stress={milliseconds:performance.now()-started,rows:target.querySelectorAll('[data-song-id]').length,nodes:target.querySelectorAll('*').length};
   check(target.querySelectorAll('[data-song-id]').length===100,'Long remote list mounts at most 100 songs');
+  const verifyPagerSeal=async(label:string)=>{
+   target.scrollTop=180;await tick();
+   const pager=target.querySelector<HTMLElement>('.mw-song-pager')!,bounds=target.getBoundingClientRect(),bar=pager.getBoundingClientRect();
+   check(Math.abs(bounds.top-bar.top)<1,`${label} pagination seals the top of the scroll viewport`);
+   const x=bar.left+8,y=bounds.top+1;
+   check(document.elementFromPoint(x,y)?.closest('.mw-song-pager')===pager,`${label} pagination covers scrolled song text`);
+   target.scrollTop=0;await tick();
+  };
+  await verifyPagerSeal('Remote');
   const remoteRows=()=>[...target.querySelectorAll<HTMLElement>('[data-song-id]')];
   remoteRows()[0].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));
   target.querySelector<HTMLButtonElement>(`.mw-song-pager button[aria-label="${t('localWall.nextPage')}"]`)!.click();await tick();
@@ -216,6 +251,7 @@ let dispose = async () => {};
   const restored=new LocalMusicWall(plugin,{} as any);check(!restored.location.entry&&restored.location.kind==='local','Large details restore to folder without loading all songs on startup');restored.dispose();
   view.showWall('local',null,localEntry);await tick(100);
   check(target.querySelectorAll('[data-local-song]').length===100,'Long local playlist mounts at most 100 songs');
+  await verifyPagerSeal('Local');
   target.querySelector<HTMLButtonElement>(`.mw-song-pager button[aria-label="${t('localWall.nextPage')}"]`)!.click();await tick();
   check(target.querySelector<HTMLElement>('[data-local-song]')?.dataset.localSong==='100100','Local playlist page uses the full song order');
   const localSearch=view.contentEl.querySelector<HTMLInputElement>('.mw-local__song-tools input')!;localSearch.value='Long song 2000';localSearch.dispatchEvent(new Event('input'));

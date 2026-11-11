@@ -675,6 +675,7 @@
   flex-direction: column;
   gap: 3px;
   text-align: center;
+  min-width: 0;
 }
 .mw-np__title {
   font-size: 1.25em;
@@ -685,7 +686,7 @@
   color: var(--text-muted);
 }
 .mw-player button.mw-np__artist {
-  display: inline;
+  display: block;
   height: auto;
   max-width: 100%;
   padding: 0;
@@ -694,9 +695,13 @@
   background: transparent;
   box-shadow: none;
   font: inherit;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
+.mw-player .mw-marquee { display:block; width:100%; min-width:0; min-height:1.5em; line-height:1.5; overflow:hidden; white-space:nowrap; overflow-wrap:normal; text-align:center; }
+.mw-player .mw-marquee.is-overflowing { text-align:left; }
+.mw-marquee__text { display:inline-block; width:max-content; max-width:none; white-space:nowrap; vertical-align:top; }
+@media (prefers-reduced-motion:reduce) { .mw-player .mw-marquee.is-overflowing { overflow-x:auto; } }
 .mw-player button.mw-np__artist:not(:disabled):hover { text-decoration: underline; cursor: pointer; }
 .mw-player button.mw-np__artist:disabled { opacity: 1; cursor: default; }
 .mw-player button.mw-np__artist:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 3px; }

@@ -299,7 +299,7 @@
 .mw-player--full-cover .mw-full-cover { transition: opacity .28s ease, filter .28s ease, transform .28s ease; }
 .mw-player.mw-player--portrait .mw-lyrics__line { text-align: center; }
 .mw-player--portrait .mw-lyrics__track { padding-inline: 60px; }
-.mw-np__transport { display: flex; flex-direction: column; gap: inherit; width: 100%; min-width: 0; }
+.mw-np__transport { display: flex; flex:0 0 auto; flex-direction: column; gap: inherit; width: 100%; min-width: 0; }
 .mw-player__dock { display: none; }
 .mw-player.mw-player--portrait .mw-player__dock { display: flex; justify-content: center; flex: 0 0 auto; position: relative; z-index: 2; padding: 8px 20px max(20px, var(--mw-host-bottom, 0px), env(safe-area-inset-bottom, 0px)); }
 .mw-player--portrait .mw-player__dock .mw-np__transport { max-width: 400px; gap: 12px; }
@@ -317,6 +317,20 @@
   .mw-player.mw-player--portrait .mw-player__dock .mw-np__ctrl { width: 22px; height: 22px; }
   .mw-player.mw-player--portrait .mw-player__dock .mw-np__ctrl--main { width: 26px; height: 26px; }
   .mw-player--portrait .mw-player__dock .mw-np__ctrl svg { width: 14px; height: 14px; }
+}
+@container mw-pane (max-height:380px) {
+  .mw-player--lyrics-stacked .mw-player__body { grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); grid-template-rows:minmax(0,1fr); }
+  .mw-player:not(.mw-player--portrait) .mw-np__stack { gap:6px; }
+  .mw-player:not(.mw-player--portrait) .mw-np__transport { gap:6px; }
+  .mw-player:not(.mw-player--portrait) .mw-np__controls { gap:4px; margin-top:0; }
+  .mw-player:not(.mw-player--portrait) .mw-np__ctrl { width:28px; height:28px; }
+  .mw-player:not(.mw-player--portrait) .mw-np__ctrl--main { width:36px; height:36px; }
+  .mw-player:not(.mw-player--portrait) .mw-np__title { font-size:1.05em; }
+  .mw-player:not(.mw-player--portrait) .mw-np__artist { font-size:.9em; }
+  .mw-player:not(.mw-player--portrait) .mw-np__quality-button { height:24px; }
+}
+@container mw-now (max-height:240px) {
+  .mw-player:not(.mw-player--portrait) .mw-np__stage { display:none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mw-player.mw-player--portrait .mw-player__body > :is(.mw-player__now, .mw-lyrics), .mw-player--full-cover .mw-full-cover { transition: none; }

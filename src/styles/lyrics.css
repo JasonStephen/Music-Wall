@@ -3,7 +3,7 @@
 .mw-player .mw-player__now { container-type: size; container-name: mw-now; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* Size the artwork from this column's actual height, independently of the
    controls' width. Keep the stack intact; scroll only when content cannot fit. */
-.mw-player .mw-np__stack { --mw-np-size: clamp(80px, calc(100cqh - 250px), 340px); max-width: min(100%, 340px); flex-shrink: 0; gap: 12px; }
+.mw-player .mw-np__stack { --mw-np-size: clamp(48px, calc(100cqh - var(--mw-transport-space, 250px)), 340px); max-width: min(100%, 340px); flex-shrink: 0; gap: 12px; }
 .mw-player .mw-np__disc { width: min(100%, var(--mw-np-size)); margin-inline: auto; }
 .mw-player .mw-np__controls { flex-wrap: wrap; justify-content: center; }
 .mw-player, .mw-player * { scrollbar-width: none; }
@@ -38,7 +38,7 @@
 .mw-lyrics__seek svg { width: 13px; height: 13px; }
 .mw-lyrics__seek > span { display: flex; align-items: center; }
 .mw-player--lyrics-stacked .mw-player__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(100px, .9fr); gap: 12px; padding: 8px 16px; }
-.mw-player--lyrics-stacked .mw-np__stack { --mw-np-size: clamp(48px, calc(100cqh - 190px), 100px); max-width: min(100%, 320px); gap: 6px; flex-shrink: 0; }
+.mw-player--lyrics-stacked .mw-np__stack { --mw-np-size: clamp(48px, calc(100cqh - var(--mw-transport-space, 190px)), 100px); max-width: min(100%, 320px); gap: 6px; flex-shrink: 0; }
 .mw-player--lyrics-stacked .mw-np__disc { max-width: var(--mw-np-size); }
 .mw-player--lyrics-stacked .mw-lyrics__line { font-size: 19px; }
 .mw-player--lyrics-stacked .mw-lyrics__track { padding-top: 40px; padding-bottom: 180px; }
